@@ -8,11 +8,14 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const explicitA=process.argv.includes('--variant=a'),explicitB=process.argv.includes('--variant=b');
 if(explicitA&&explicitB)throw Error('Choose one UI variant.');
 const variant=explicitA?'a':'b';
+/* The guide's stylesheet module is empty in source; the build fills it with the packaged sweetalert2 CSS text so no stylesheet is fetched at run time. */
+const swalCssText=await readFile(path.join(root,'node_modules/sweetalert2/dist/sweetalert2.min.css'),'utf8');
+const swalCssPlugin={name:'swal-css',setup(b){b.onLoad({filter:/guide-swal-css\.ts$/},()=>({contents:`export default ${JSON.stringify(swalCssText)};`,loader:'ts'}))}};
 const output=explicitA?'dist-a':explicitB?'dist-b':'dist';
 await rm(path.join(root,output),{recursive:true,force:true});
 await mkdir(path.join(root,output,'data'),{recursive:true});
-await build({entryPoints:{panel:path.join(root,variant==='b'?'src/panel-b.tsx':'src/panel.tsx'),background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'private-match':path.join(root,'src/private-match.tsx'),'confirm-send':path.join(root,'src/confirm-send.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')}});
-try{await readFile(path.join(root,'src/site-content.ts'));await build({entryPoints:[path.join(root,'src/site-content.ts')],outfile:path.join(root,output,'site-content.js'),bundle:true,format:'iife',platform:'browser',target:'chrome142',minify:true,legalComments:'eof'});}catch(error){if(error.code!=='ENOENT')throw error;}
+await build({entryPoints:{panel:path.join(root,variant==='b'?'src/panel-b.tsx':'src/panel.tsx'),background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'private-match':path.join(root,'src/private-match.tsx'),'confirm-send':path.join(root,'src/confirm-send.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')},plugins:[swalCssPlugin]});
+try{await readFile(path.join(root,'src/site-content.ts'));await build({entryPoints:[path.join(root,'src/site-content.ts')],outfile:path.join(root,output,'site-content.js'),bundle:true,format:'iife',platform:'browser',target:'chrome142',minify:true,legalComments:'eof',plugins:[swalCssPlugin]});}catch(error){if(error.code!=='ENOENT')throw error;}
 if(variant==='b')console.log('Building primary Version B presentation.');
 const sites=JSON.parse(await readFile(path.join(root,'sites.json'),'utf8'));
 const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
