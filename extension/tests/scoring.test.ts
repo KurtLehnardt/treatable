@@ -352,3 +352,21 @@ test('an auth failure still aborts globally', async () => {
   assert.equal(result.mode, 'unrefined');
   assert.match(result.failure!, /403/);
 });
+
+test('checklist validation: short fragments, claim phrases, and claim questions are dropped', () => {
+  const text = study().eligibility.criteriaText;
+  const item = (criterion: string, source_quote: string) => ({criterion, patient_status: 'unknown', source_quote});
+  const run = (items: unknown[], questions: string[] = []) => validateChecklist({items, questions_for_study_team: questions}, text, 'NCT12345678');
+  // Header fragment used to launder an eligibility claim.
+  assert.equal(run([item('You meet all inclusion criteria', 'inclusion criteria')]).items.length, 0);
+  // Claim text is dropped even with a long, genuine quote.
+  assert.equal(run([item('You meet all inclusion criteria', 'Thoracic disc degeneration on MRI')]).items.length, 0);
+  assert.equal(run([item('You are eligible', 'Thoracic disc degeneration on MRI')]).items.length, 0);
+  // Short generic fragment that is not a whole line is dropped.
+  assert.equal(run([item('Age', 'Age 18')]).items.length, 0);
+  // A short quote that is a full source line is kept; a long verbatim quote is kept.
+  assert.equal(run([item('Age 18 to 75', 'Age 18 to 75 years')]).items.length, 1);
+  assert.equal(run([item('Prior spine surgery excluded', 'Prior spine surgery')]).items.length, 1);
+  assert.equal(run([item('Disc degeneration on MRI', 'Thoracic disc degeneration on MRI')]).items.length, 1);
+  assert.deepEqual(run([], ['Do you accept thoracic disc patients?', 'You can enroll in this trial', 'Is the patient eligible?']).questions_for_study_team, ['Do you accept thoracic disc patients?', 'Is the patient eligible?']);
+});

@@ -7,7 +7,7 @@
  * confirm a cap; they can never lift a study past one.
  */
 import {z} from 'zod';
-import type {PatientProfile} from './core';
+import {CLAIM_RE, type PatientProfile} from './core';
 import type {LocalScreen, SpineRegion} from './match';
 import {UNREFINED_CAP} from './match';
 
@@ -256,11 +256,14 @@ export function validateChecklist(raw: unknown, sourceText: string, studyId: str
   const parsed = ChecklistSchema.safeParse(raw);
   if (!parsed.success) throw new ProviderFormatError('The checklist came back in an unexpected format.');
   const source = normalize(sourceText);
+  const lines = new Set(sourceText.split(/\r?\n/).map(normalize).filter(Boolean));
   const items = parsed.data.items.filter(item => {
     const quote = normalize(item.source_quote);
-    return quote.length >= 8 && source.includes(quote);
+    // A short quote counts only when it is a whole source line; otherwise it must be long enough to be specific.
+    const specific = quote.length >= 20 || (quote.length >= 8 && lines.has(quote));
+    return specific && source.includes(quote) && !CLAIM_RE.test(item.criterion);
   });
-  const questions = parsed.data.questions_for_study_team.filter(q => !/https?:\/\//i.test(q) && (q.match(/\bNCT\d{8}\b/gi) || []).every(id => id.toUpperCase() === studyId));
+  const questions = parsed.data.questions_for_study_team.filter(q => !/https?:\/\//i.test(q) && !CLAIM_RE.test(q) && (q.match(/\bNCT\d{8}\b/gi) || []).every(id => id.toUpperCase() === studyId));
   return {items, questions_for_study_team: questions, droppedCitations: parsed.data.items.length - items.length};
 }
 
