@@ -12,7 +12,7 @@ npm ci
 npm run build:all
 npm run typecheck
 node --import tsx --test tests/*.test.ts
-node --test native/test/core.test.mjs
+node --test native/test/*.test.mjs
 ```
 
 From the repository root:
@@ -25,6 +25,8 @@ node extension/native/credentials-setup.mjs configure
 The second command securely prompts in a terminal and writes only the dedicated macOS Keychain item. Never put the key in Chrome, a command argument, environment variable, a configuration file, chat, or logs. [Native/API setup](native/API_SETUP.md) describes the exact permissions and retention limits. Setup does not verify API authorization or make a provider request.
 
 Chrome → Extensions → Developer mode → Load unpacked → choose `extension/dist-b` for B or `extension/dist` for A. Both use the same pinned extension ID and native helper; test only one variant in a Chrome profile at a time. No Chrome installation or switching was performed by the agents. Do not uninstall an existing installation as an implicit switching step. Unpacked switching and real Chrome/native handshake remain unverified.
+
+Built packages: `artifacts/treatable-version-a-current.zip` and `artifacts/treatable-version-b-current.zip` (manifest at archive root). Extract into a dedicated folder before loading unpacked.
 
 **Current A and B share the new security policy.** Any original A ZIP retained from the earlier prototype is an archived **PRE-PRIVACY BASELINE — NOT CURRENT** artifact. It includes the former storage behavior and is not the current MVP download.
 
@@ -69,7 +71,7 @@ Agents keeps provider state until deletion and is not a zero-data-retention endp
 
 ## Verification
 
-The previous combined checkpoint passed 43 extension and 14 native tests. The real-consent UI adds scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions; final combined verification is required after native integration. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
+The combined real-consent checkpoint passes 49 extension tests, 21 native tests, typecheck and both builds. Gates include scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
 
 [North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
 
