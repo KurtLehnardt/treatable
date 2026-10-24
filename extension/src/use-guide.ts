@@ -24,6 +24,8 @@ export interface GuideViewModel {
   canSearchHelp: boolean;
   startSearchHelp(): void;
   replayIntro(): void;
+  /** Stops a running intro tour or search help quietly, closing its dialog. Used before another dialog needs the same dialog library. */
+  stop(): void;
 }
 
 export interface GuideDeps {
@@ -113,6 +115,11 @@ export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel 
       if (!host.connected) return;
       searchHelp.current = undefined;
       void parts.intro.start();
+    },
+    stop() {
+      searchHelp.current = undefined;
+      parts.intro.stop();
+      setActive(false);
     },
   };
 }
