@@ -14,7 +14,7 @@ export async function runAgent(transport,payload,{signal,onTrace=()=>{}}={}){
  onTrace({stage:'agent.request'});
  try{
   const events=await transport.request('POST','/v1/agents/sessions',agentPayload(fixture),{signal:combined,stream:true,timeout:90000});
-  for await(const event of events){if(!isRecord(event)||typeof event.type!=='string')throw new ApiError('INVALID_STREAM');remember(event);if(event.turn?.subagent_id)throw new ApiError('UNEXPECTED_SUBAGENT');
+  for await(const event of events){if(!isRecord(event)||typeof event.type!=='string')throw new ApiError('INVALID_STREAM');remember(event);if(event.subagent_id||event.turn?.subagent_id)throw new ApiError('UNEXPECTED_SUBAGENT');
    if(event.type==='agent.session.requires_action'){
     if(!sessionId)throw new ApiError('MISSING_SESSION_ID');const session=await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,{signal:combined});if(session.id!==sessionId||!Array.isArray(session.required_actions)||!session.required_actions.length||session.required_actions.length>6)throw new ApiError('INVALID_REQUIRED_ACTION');
     for(const action of session.required_actions){if(!exactKeys(action,['type','turn_id','call_id','name','arguments'])||action.type!=='function_call'||action.name!=='get_public_trial_evidence'||!providerId(action.turn_id)||!providerId(action.call_id)||!exactKeys(action.arguments,['nctId']))throw new ApiError('INVALID_TOOL_CALL');const study=fixture.studies.find(x=>x.id===action.arguments.nctId);if(!study)throw new ApiError('INVALID_TOOL_STUDY');const key=`${action.turn_id}:${action.call_id}`;if(handled.has(key))throw new ApiError('DUPLICATE_TOOL_CALL');if(++toolCalls>6)throw new ApiError('TOOL_LIMIT');handled.add(key);onTrace({stage:'agent.tool.request',nctId:study.id});await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:true,output:JSON.stringify({public:true,study})}]},{signal:combined});evidenceRead.add(study.id);onTrace({stage:'agent.tool.result',nctId:study.id});}
@@ -25,7 +25,7 @@ export async function runAgent(transport,payload,{signal,onTrace=()=>{}}={}){
   }
   if(!completed||!sessionId||!toolCalls||fixture.studies.some(x=>!evidenceRead.has(x.id)))throw new ApiError('INCOMPLETE_AGENT_TURN');plan=parsePlan(text,fixture);parseDemoResult({kind:'agentDemo',fixtureId:fixture.id,mode:transport.mode,...plan,toolCalls,cleanup:'failed'});onTrace({stage:'agent.complete'});
  }finally{
-  if(sessionId){for(let attempt=0;attempt<2;attempt++){try{await transport.request('DELETE',`/v1/agents/sessions/${sessionId}`,undefined,{timeout:2500});cleanup='deleted';break;}catch{}}onTrace({stage:cleanup==='deleted'?'agent.cleanup.deleted':'agent.cleanup.failed',sessionId});}
+  if(sessionId){for(let attempt=0;attempt<2;attempt++){try{await transport.request('DELETE',`/v1/agents/sessions/${sessionId}`,undefined,{timeout:2500});cleanup='deleted';break;}catch{}}onTrace({stage:cleanup==='deleted'?'agent.cleanup.deleted':'agent.cleanup.failed',sessionId});}else{onTrace({stage:'agent.cleanup.failed'});}
  }
  return parseDemoResult({kind:'agentDemo',fixtureId:fixture.id,mode:transport.mode,...plan,toolCalls,cleanup});
 }
