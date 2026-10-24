@@ -58,7 +58,9 @@ test('page source is revalidated and canonicalized without private query/hash da
  assert.equal(source.url,'https://clinicaltrials.gov/study/NCT12345678');assert.doesNotMatch(source.url,/SyntheticPrivateName/);
  assert.equal(parsePageSource({url:'https://clinicaltrials.gov/search?cond=condition',title:'Search',text:'Public study listings'}).url,'https://clinicaltrials.gov/search');
  assert.throws(()=>parsePageReply({ok:true,source:[]}));assert.throws(()=>parsePageSource({...source,nctId:'NCT87654321'}));
- assert.throws(()=>parsePageSource({...source,text:'SyntheticPrivateName\u0000'}));
+ // Controls are stripped from display-only page text (L5); text that is nothing but controls is still refused without echo.
+ assert.equal(parsePageSource({...source,text:'Study\u0000 criteria'}).text,'Study criteria');
+ assert.throws(()=>parsePageSource({...source,text:'\u0000\u200b\u202e'}),error=>error instanceof Error&&!/\u0000/.test(error.message));
 });
 
 test('current demo client validates correlated status through the per-panel message boundary',async()=>{const runtime=new FakeRuntime(),client=new DemoClient(runtime);await client.open(()=>{});assert.equal((await client.status()).configured,true);const task=client.run('scoreDemo','fibromyalgia',true,()=>{},new AbortController().signal);const operation=runtime.operations[0];operation.port.reply({id:operation.request.id,type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'pancreatic',mode:'test',scores:[{nctId:'NCT12345678',index:50,confidence:.5}]}});await assert.rejects(task,/Mismatched/);client.disconnect()});

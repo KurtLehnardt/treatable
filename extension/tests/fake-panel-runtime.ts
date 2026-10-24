@@ -19,3 +19,10 @@ export class FakeRuntime{
  fail=(code:string,operation=this.operations.at(-1)!)=>operation.port.reply({id:operation.request.id,type:'result',ok:false,code,error:'SyntheticPrivateName transported text'});
  score=(operation=this.operations.at(-1)!)=>{const f=getDemoFixture(operation.request.payload.fixtureId);operation.port.reply({id:operation.request.id,type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:f.id,mode:'test',scores:f.studies.map(s=>({nctId:s.id,index:50,confidence:.5}))}})};
 }
+/** Replaces setTimeout/clearTimeout so timers of the listed durations can be fired by hand; all others run normally. */
+export function manualTimers(durations:number[]){
+ const original={set:globalThis.setTimeout,clear:globalThis.clearTimeout},timers=new Map<number,{fn:()=>void;ms:number}>();let next=1;
+ globalThis.setTimeout=((fn:(...args:any[])=>void,ms?:number,...args:any[])=>{if(ms!==undefined&&durations.includes(ms)){const id=next++;timers.set(id,{fn:()=>fn(...args),ms});return id}return original.set(fn,ms,...args)}) as any;
+ globalThis.clearTimeout=((id:any)=>{if(typeof id==='number'&&timers.has(id)){timers.delete(id);return}original.clear(id)}) as any;
+ return{pending:(ms:number)=>[...timers.values()].filter(t=>t.ms===ms).length,fire(ms:number){const due=[...timers].filter(([,t])=>t.ms===ms);for(const[id,t]of due){timers.delete(id);t.fn()}return due.length},restore(){globalThis.setTimeout=original.set;globalThis.clearTimeout=original.clear}};
+}

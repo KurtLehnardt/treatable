@@ -1,3 +1,4 @@
+import './zod-jitless';
 import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-background';
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';

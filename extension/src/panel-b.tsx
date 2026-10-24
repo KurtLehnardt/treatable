@@ -1,3 +1,4 @@
+import './zod-jitless';
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {usePanelController} from './use-panel-controller';

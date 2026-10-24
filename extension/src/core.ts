@@ -1,4 +1,4 @@
-import {boundedText,parseFormInput,record,exactKeys} from './validation';
+import {boundedText,parseFormInput,record,exactKeys,sanitizePageText} from './validation';
 import {isSupportedSite} from './sites';
 import { PatientProfileSchema, type PatientProfile } from '../../scaffold/lib/contracts/patientProfile';
 import { StudySchema, type Study } from '../../scaffold/lib/contracts/study';
@@ -15,11 +15,14 @@ export function safeWebUrl(value:string):string|undefined{try{const u=new URL(va
 export function trialUrl(value:string):string|undefined{const url=safeWebUrl(value);return url&&isSupportedSite(url)?url:undefined}
 export function parsePageSource(value:unknown):PageSource{
  if(!record(value))throw new Error('Page could not be read.');exactKeys(value,['url','title','text','nctId','kind']);
- const rawUrl=boundedText(value.url,'Page address',2048,{empty:false}),url=safeWebUrl(rawUrl);if(!url||!isSupportedSite(url))throw new Error('Open an HTTPS ClinicalTrials.gov page. Other sites are not supported in this release.');
- const title=boundedText(value.title===undefined?'Current page':value.title,'Page title',400);
- if(typeof value.text!=='string'||value.text.length>100000)throw new Error('Page text exceeds its size limit.');
- const text=boundedText(value.text.slice(0,24000),'Page text',24000,{multiline:true,empty:false});const u=new URL(url);const nctId=u.pathname.match(/^\/(?:study|ct2\/show)\/(NCT\d{8})\/?$/i)?.[1]?.toUpperCase();
- if(value.nctId!==undefined&&value.nctId!==nctId||value.kind!==undefined&&value.kind!=='clinicaltrials')throw new Error('Page source information is inconsistent.');const sourceUrl=nctId?`https://clinicaltrials.gov/study/${nctId}`:`https://clinicaltrials.gov${u.pathname}`;return{url:sourceUrl,title,text,nctId,kind:'clinicaltrials'};
+ // Read each field exactly once (a getter cannot change type between check and use), then type-check before any sanitizing.
+ const{url:rawAddress,title:rawTitle,text:rawText,nctId:claimedNct,kind}=value;
+ const rawUrl=boundedText(rawAddress,'Page address',2048,{empty:false}),url=safeWebUrl(rawUrl);if(!url||!isSupportedSite(url))throw new Error('Open an HTTPS ClinicalTrials.gov page. Other sites are not supported in this release.');
+ if(rawTitle!==undefined&&typeof rawTitle!=='string'||typeof rawText!=='string')throw new Error('Page could not be read.');if(rawText.length>100000)throw new Error('Page text exceeds its size limit.');
+ // Harmless page quirks (split emoji, bidi/C1/zero-width characters, long titles) are stripped or truncated, not refused.
+ const title=sanitizePageText(rawTitle===undefined?'Current page':rawTitle,'Page title',400);
+ const text=sanitizePageText(rawText,'Page text',24000,{multiline:true});if(!text)throw new Error('Page text is required.');const u=new URL(url);const nctId=u.pathname.match(/^\/(?:study|ct2\/show)\/(NCT\d{8})\/?$/i)?.[1]?.toUpperCase();
+ if(claimedNct!==undefined&&claimedNct!==nctId||kind!==undefined&&kind!=='clinicaltrials')throw new Error('Page source information is inconsistent.');const sourceUrl=nctId?`https://clinicaltrials.gov/study/${nctId}`:`https://clinicaltrials.gov${u.pathname}`;return{url:sourceUrl,title,text,nctId,kind:'clinicaltrials'};
 }
 export function resolveZip(raw:string,zips:ZipData):{zip:string;city:string;state:string;lat:number;lon:number}{
  const value=boundedText(raw,'ZIP code',10);if(!/^\d{5}(?:-\d{4})?$/.test(value))throw new Error('Enter a five-digit US ZIP code, optionally ZIP+4.');const zip=value.slice(0,5),entry=zips?.zips?.[zip];
