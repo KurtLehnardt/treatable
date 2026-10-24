@@ -4,6 +4,7 @@ import {createRoot} from 'react-dom/client';
 import{OverlayAssistant}from'./overlay-app';
 import './overlay.css';
 import './private-match.css';
+import './apply.css';
 import {captureSiteActivations} from './overlay-port';
 captureSiteActivations(window);
 createRoot(document.getElementById('root')!).render(<OverlayAssistant/>);

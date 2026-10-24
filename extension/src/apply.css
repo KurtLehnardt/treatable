@@ -1,0 +1,29 @@
+/* Help me apply: larger, plainer reading for patients and family helpers. */
+.apply-section{display:grid;gap:16px;margin:0 0 22px;padding:20px 18px;background:var(--surface);border:2px solid var(--accent);border-radius:16px;font-size:16px;line-height:1.5}
+.apply-section h2{font:500 26px/1.2 Georgia,serif}.apply-section h3{font-weight:600;font-size:19px;line-height:1.3;display:flex;align-items:center;gap:10px;flex-wrap:wrap}.apply-section h4{font-size:16px;margin-top:6px}
+.apply-section p,.apply-section li,.apply-section label,.apply-section dd{font-size:16px}.apply-section .fine{font-size:14px;color:var(--muted)}
+.apply-study h3{font:500 19px/1.35 Georgia,serif}.apply-study a{color:var(--accent);font-weight:650}
+.apply-step{display:grid;gap:10px;padding-top:14px;border-top:1px solid var(--line)}
+.apply-num{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:15px;flex:none}
+.apply-section form{display:grid;gap:12px}.apply-section label{display:grid;gap:6px;font-weight:600}.apply-section .check-option{display:flex;gap:10px;align-items:flex-start;font-weight:500}
+.apply-section input:not([type=checkbox]){min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--canvas);color:var(--ink);font-size:16px;width:100%}
+.apply-section input[type=checkbox]{width:22px;height:22px;flex:none;margin-top:2px}
+.apply-section .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.apply-section .required,.apply-section .optional{font-weight:500;font-size:13px;color:var(--muted)}.apply-section .required{color:var(--error-ink)}
+.apply-answers{display:grid;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;margin:0}.apply-answers legend{font-weight:650;padding:0 4px}
+.apply-missing,.apply-missing-inline{margin:0;padding:10px 14px 10px 30px;border-radius:10px;background:var(--error-bg);color:var(--error-ink);border:1px solid var(--error-line)}.apply-missing-inline{padding-left:14px}
+.apply-site,.apply-contact{display:grid;gap:2px;padding:12px 14px;border-radius:12px;background:var(--soft)}.apply-contact strong,.apply-site strong{font-size:17px}
+.apply-backups,.apply-sites,.apply-exact,.apply-script{border:1px solid var(--line);border-radius:12px;padding:10px 14px}.apply-backups>summary,.apply-sites>summary,.apply-exact>summary,.apply-script>summary{font-weight:650;cursor:pointer;min-height:32px}
+.apply-backups .apply-contact{margin-top:8px}.apply-sites ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}.apply-sites li{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.apply-flags{padding:12px 14px;border-radius:12px;background:var(--notice);color:var(--notice-ink)}.apply-flags ul{margin:6px 0 0;padding-left:20px;display:grid;gap:6px}
+.apply-exact pre,.apply-script pre,.apply-email{white-space:pre-wrap;word-break:break-word;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin:8px 0 0;max-height:320px;overflow:auto}
+.apply-email{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--canvas);font-family:inherit;font-size:15px;line-height:1.55;max-height:none}
+.apply-email-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}.apply-email-meta dt{font-weight:650}.apply-email-meta dd{margin:0;word-break:break-word}
+.apply-trace{margin:0;padding-left:22px;display:grid;gap:6px}.apply-trace .done::marker{color:var(--accent)}.apply-trace .warn{color:var(--error-ink)}.apply-trace .working{color:var(--muted)}
+.apply-questions,.apply-checklist{margin:0;padding-left:22px;display:grid;gap:8px}.apply-checklist{list-style:none;padding-left:0}
+.apply-actions{display:flex;flex-wrap:wrap;gap:10px}
+.apply-big{min-height:52px;font-size:16px;padding:12px 18px}
+a.button{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-weight:650;text-decoration:none}a.button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.apply-failure code,.apply-section code{font-size:13px}
+.apply-end{justify-self:start}
+@media (prefers-reduced-motion:reduce){.apply-section *{transition:none!important}}
