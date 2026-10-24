@@ -38,3 +38,10 @@ test('key and attestation persist together: session by default, local only on Re
   await clearApiKey(session, local);
   assert.deepEqual(await loadApiKey(session, local), {key: '', baaAttested: false});
 });
+
+test('Phase 1 (no policy gate): attestation can never soften the Not PHI-ready alert', () => {
+  const html = renderToStaticMarkup(<PhiNotice openaiActive={true} baaAttested={true} attestationEnabled={false}/>);
+  assert.ok(html.includes(NOT_PHI_READY));
+  assert.match(html, /role="alert"/);
+  assert.ok(!html.includes(BAA_ATTESTED_NOTE));
+});

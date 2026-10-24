@@ -8,9 +8,10 @@ export const BAA_ATTESTATION_LABEL = 'My organization has an executed OpenAI BAA
  * Persistent PHI notice for OpenAI mode. Without the user's attestation it is a warning banner;
  * with it, a softer reminder. Neither makes a compliance claim for the extension.
  */
-export function PhiNotice({openaiActive, baaAttested}: {openaiActive: boolean; baaAttested: boolean}) {
+export function PhiNotice({openaiActive, baaAttested, attestationEnabled = true}: {openaiActive: boolean; baaAttested: boolean; attestationEnabled?: boolean}) {
   if (!openaiActive) return null;
-  return baaAttested
+  // Without the organization policy gate (Phase 1) the attestation is never offered and never softens the warning.
+  return baaAttested && attestationEnabled
     ? <div className="message phi-note" role="note">{BAA_ATTESTED_NOTE}</div>
     : <div className="message error phi-banner" role="alert"><strong>{NOT_PHI_READY}</strong></div>;
 }
