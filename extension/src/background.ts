@@ -2,17 +2,38 @@ import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-bac
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
 import {parsePageSource} from './core';
-import {parseDemoRequest,parseDemoReply,type DemoRequest} from '../shared/demo-contract.mjs';
+import {parseDemoRequest,parseDemoReply,type DemoRequest,type DemoReply} from '../shared/demo-contract.mjs';
+import {FAILURE_CODE,failureCopy,nativeDisconnectCode} from './failures';
 const panels=new Map<any,()=>void>();
 function allowedPanel(sender:any){return isProtectedPanelSender(chrome,sender)}
+/** Failure replies carry a validated code and fixed text, never transported error content. */
+function failure(id:string,code:string){const safe=FAILURE_CODE.test(code)?code:'UNEXPECTED_FAILURE';return{id,type:'result',ok:false,code:safe,error:failureCopy(safe)}}
 function attachPanel(panel:any){
  if(panel.name!=='treatable-panel-v2'||!allowedPanel(panel.sender)){panel.disconnect();return}
  let native:any,closed=false;const pending=new Map<string,{request:Pick<DemoRequest,'id'|'type'>,timer:ReturnType<typeof setTimeout>}>();
  const post=(message:unknown)=>{if(!closed)try{panel.postMessage(message)}catch{end()}};
- const failure=(id:string)=>({id,type:'result',ok:false,error:'The fixed API operation was unavailable. Local results are preserved.',code:'OPERATION_FAILED'});
+ const settle=(id:string,reply:unknown)=>{const item=pending.get(id);if(!item)return;clearTimeout(item.timer);pending.delete(id);post({reply})};
  function end(){if(closed)return;closed=true;panels.delete(panel);for(const item of pending.values())clearTimeout(item.timer);pending.clear();try{native?.disconnect()}catch{}native=undefined;try{panel.disconnect()}catch{}}
- function connection(){if(native)return native;const connection=chrome.runtime.connectNative('com.treatable.local');native=connection;connection.onMessage.addListener((value:unknown)=>{if(native!==connection||!value||typeof value!=='object'||typeof(value as any).id!=='string')return;const id=(value as any).id,item=pending.get(id);if(!item)return;try{const reply=parseDemoReply(value,id);if(reply.type==='trace'){post({reply});return}if(item.request.type==='status'&&reply.type!=='status'||item.request.type!=='status'&&reply.type!=='result')throw new Error('Response mismatch');clearTimeout(item.timer);pending.delete(id);post({reply:!reply.ok?failure(id):reply.type==='status'?{id,type:'status',ok:true,provider:'openai',configured:reply.configured,message:reply.configured?'Dedicated credential configured.':'Dedicated credential setup required.'}:reply})}catch{clearTimeout(item.timer);pending.delete(id);post({reply:failure(id)})}});connection.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(native===connection){native=undefined;for(const[id,item]of pending){clearTimeout(item.timer);post({reply:failure(id)})}pending.clear()}});return connection}
- panel.onMessage.addListener((message:any)=>{if(closed)return;if(message?.kind!=='native')return;let request:DemoRequest;try{request=parseDemoRequest(message.request);if(pending.has(request.id)||pending.size>=4)throw new Error('Busy')}catch{end();return}const timer=setTimeout(()=>{pending.delete(request.id);post({reply:failure(request.id)});end()},150000);pending.set(request.id,{request:{id:request.id,type:request.type},timer});try{connection().postMessage(request)}catch{clearTimeout(timer);pending.delete(request.id);post({reply:failure(request.id)})}});
+ function connection(){if(native)return native;const connection=chrome.runtime.connectNative('com.treatable.local');native=connection;
+  connection.onMessage.addListener((value:unknown)=>{
+   // Unsolicited or unknown IDs are dropped without a reply.
+   if(native!==connection||!value||typeof value!=='object'||typeof(value as any).id!=='string')return;const id=(value as any).id,item=pending.get(id);if(!item)return;
+   let reply:DemoReply;try{reply=parseDemoReply(value,id)}catch{settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}
+   if(reply.type==='trace'){post({reply});return}
+   if(reply.type==='result'&&!reply.ok){settle(id,failure(id,reply.code!));return}
+   if(item.request.type==='status'){if(reply.type!=='status'){settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}settle(id,{id,type:'status',ok:true,provider:'openai',configured:reply.configured,message:reply.configured?'Dedicated credential configured.':'Dedicated credential setup required.'});return}
+   if(reply.type!=='result'){settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}
+   settle(id,reply.result===undefined?{id,type:'result',ok:true}:{id,type:'result',ok:true,result:reply.result});
+  });
+  connection.onDisconnect.addListener(()=>{
+   // Always read lastError: it is the only signal for a missing or forbidden host, and reading it avoids unchecked-error noise.
+   const code=nativeDisconnectCode(chrome.runtime.lastError?.message);
+   if(native!==connection)return;native=undefined;for(const id of [...pending.keys()])settle(id,failure(id,code));
+  });
+  return connection}
+ panel.onMessage.addListener((message:any)=>{if(closed)return;if(message?.kind!=='native')return;let request:DemoRequest;try{request=parseDemoRequest(message.request);if(pending.has(request.id)||pending.size>=4)throw new Error('Busy')}catch{end();return}
+  const timer=setTimeout(()=>{settle(request.id,failure(request.id,'NATIVE_TIMEOUT'));end()},150000);pending.set(request.id,{request:{id:request.id,type:request.type},timer});
+  let port:any;try{port=connection();port.postMessage(request)}catch(error){if(port&&native===port){native=undefined;try{port.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}});
  panel.onDisconnect.addListener(end);panels.set(panel,end);post({kind:'panelReady'});
 }
 chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name))attachPanel(port)});

@@ -19,6 +19,9 @@ const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8')
 manifest.name=variant==='b'?'Treatable · Version B':'Treatable · Version A reference';
 manifest.host_permissions=sites.origins.map(origin=>`${origin}/*`);
 manifest.web_accessible_resources=[{resources:['overlay.html','score-badge.html'],matches:manifest.host_permissions}];
+// Fail closed if the extension-page CSP drifts toward remote, inline, eval, data: or blob: sources.
+const csp=manifest.content_security_policy?.extension_pages??'';
+if(!/(^|; )default-src 'none'(;|$)/.test(csp)||!/(^|; )script-src 'self'(;|$)/.test(csp)||/https?:|\*|data:|blob:|'unsafe-/.test(csp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 for(const name of ['panel','overlay','score-badge'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
 for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,output,'data',name));

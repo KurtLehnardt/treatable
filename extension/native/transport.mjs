@@ -10,7 +10,7 @@ export class OpenAITransport{
   const encoded=body===undefined?undefined:Buffer.from(JSON.stringify(body));if(encoded?.length>96*1024)throw new ApiError('INPUT_TOO_LARGE');
   const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout);
   const response=await new Promise((resolve,reject)=>{
-   const request=https.request({hostname:'api.openai.com',port:443,path,method,agent:false,rejectUnauthorized:true,signal:combined,headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json',...(path.includes('/agents/')?{'OpenAI-Beta':'agents=v1'}:{}),...(encoded?{'Content-Length':encoded.length}:{}),Accept:stream?'text/event-stream':'application/json'}},resolve);
+   const request=https.request({hostname:'api.openai.com',servername:'api.openai.com',port:443,path,method,agent:false,rejectUnauthorized:true,minVersion:'TLSv1.2',signal:combined,headers:{Authorization:`Bearer ${this.key}`,'Content-Type':'application/json',...(path.includes('/agents/')?{'OpenAI-Beta':'agents=v1'}:{}),...(encoded?{'Content-Length':encoded.length}:{}),Accept:stream?'text/event-stream':'application/json'}},resolve);
    request.on('error',()=>reject(new ApiError(combined.aborted?'CANCELLED':'NETWORK_ERROR')));if(encoded)request.write(encoded);request.end();
   });
   if(response.statusCode<200||response.statusCode>=300){response.resume();throw new ApiError(response.statusCode===401?'KEY_REJECTED':response.statusCode===403?'API_PERMISSION':response.statusCode===429?'RATE_LIMITED':'API_ERROR',response.statusCode);}

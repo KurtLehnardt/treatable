@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseFormInput,parseLocalRequest,parseNativeReply,parseStatus,parsePageReply,withinMessageBudget} from '../src/validation';
-import {profileFromForm,parsePageSource,parseExplanation,resolveZip} from '../src/core';
+import {parseFormInput,parsePageReply,withinMessageBudget} from '../src/validation';
+import {profileFromForm,parsePageSource,resolveZip} from '../src/core';
+import {parseDemoRequest,parseDemoReply} from '../shared/demo-contract.mjs';
 import {DemoClient} from '../src/native';
 import {FakeRuntime} from './fake-panel-runtime';
 const form={condition:"Sjo\u0308gren’s syndrome; ألم مزمن",notes:'Symptoms on multiple days.',age:'0.5',sex:'prefer_not_to_say',zip:'01001-1234',radius:'100'};
 const zips={zips:{'01001':{city:'Agawam',state:'MA',lat:42.06,lon:-72.61}}};
-const statusRequest={id:'request_1',type:'status',payload:{}} as const;
+const statusRequest={id:'request_1',type:'status',payload:{}};
 
 test('profile validation preserves genuine Unicode, fractional ages and ZIP leading zeros',()=>{
  const input=parseFormInput(form);assert.match(input.condition,/Sjögren/);assert.match(input.condition,/ألم مزمن/);
@@ -33,24 +34,23 @@ test('patient text is bounded, rejects dangerous controls, and never appears in 
  assert.throws(()=>parseFormInput({...form,hiddenHealthField:'not accepted'}));
 });
 
-test('cross-context requests require exact schemas, real string IDs, model names and UTF-8 bounds',()=>{
- assert.deepEqual(parseLocalRequest(statusRequest),statusRequest);assert.throws(()=>parseLocalRequest(Object.create(statusRequest)));
- for(const id of ['',123,'a'.repeat(81),'space id','../path'])assert.throws(()=>parseLocalRequest({...statusRequest,id}));
- for(const payload of [[],new Date(),{unexpected:'value'}])assert.throws(()=>parseLocalRequest({...statusRequest,payload}));
- assert.throws(()=>parseLocalRequest({...statusRequest,extra:'not accepted'}));
- assert.throws(()=>parseLocalRequest({id:'cancel',type:'cancel',payload:{requestId:123}}));
- for(const model of ['remote:cloud','../model','https://provider.example/model'])assert.throws(()=>parseLocalRequest({id:'generate',type:'generate',payload:{model,prompt:'Question'}}));
- assert.throws(()=>parseLocalRequest({id:'generate',type:'generate',payload:{model:'installed:local',prompt:'x'.repeat(24001)}}));
+test('cross-context demo requests require exact schemas, real string IDs and UTF-8 bounds',()=>{
+ assert.deepEqual(parseDemoRequest(statusRequest),statusRequest);assert.throws(()=>parseDemoRequest(Object.create(statusRequest)));
+ for(const id of ['',123,'a'.repeat(81),'space id','../path'])assert.throws(()=>parseDemoRequest({...statusRequest,id}));
+ for(const payload of [[],new Date(),{unexpected:'value'}])assert.throws(()=>parseDemoRequest({...statusRequest,payload}));
+ assert.throws(()=>parseDemoRequest({...statusRequest,extra:'not accepted'}));
+ assert.throws(()=>parseDemoRequest({id:'cancel',type:'cancel',payload:{requestId:123}}));
+ for(const type of ['generate','prompt','fetch'])assert.throws(()=>parseDemoRequest({id:'x',type,payload:{model:'installed:local',prompt:'Question'}}));
+ assert.throws(()=>parseDemoRequest({id:'big',type:'scoreDemo',payload:{fixtureId:'fibromyalgia',consent:true,studyIds:['NCT12345678'],pad:'\uffff'.repeat(40000)}}));
  assert.throws(()=>withinMessageBudget({text:'\uffff'.repeat(40000)}),/size limit/);
- assert.doesNotThrow(()=>parseLocalRequest({id:'generate',type:'generate',payload:{model:'installed:local',prompt:'é'.repeat(20000)}}));
 });
 
-test('native replies are correlated, bounded and sanitized before the panel sees them',()=>{
- const reply={id:'request_1',type:'status',ok:true,models:[{name:'installed:local',size:123}]};assert.equal(parseNativeReply(reply,statusRequest).ok,true);
- for(const bad of [{...reply,id:'other'},{...reply,models:[{name:'model:cloud'}]},{...reply,models:[{name:'installed:local',size:Infinity}]},{...reply,models:[{name:'installed:local'},{name:'installed:local'}]}])assert.throws(()=>parseNativeReply(bad,statusRequest));
- const failure=parseNativeReply({id:'request_1',type:'status',ok:false,models:[],message:'SyntheticPrivateName'},statusRequest);assert.doesNotMatch(JSON.stringify(failure),/SyntheticPrivateName/);
- assert.throws(()=>parseStatus({ok:true,models:Array(101).fill({name:'installed:local'})}));
- assert.throws(()=>parseNativeReply({id:'request_1',type:'result',ok:true,text:'x'.repeat(100000)}, {id:'request_1',type:'generate'}));
+test('native replies are correlated, bounded and exact-keyed before the panel sees them',()=>{
+ const reply={id:'request_1',type:'status',ok:true,provider:'openai',configured:true,message:'ready'};assert.equal(parseDemoReply(reply,'request_1').ok,true);
+ for(const bad of [{...reply,id:'other'},{...reply,provider:'evil'},{...reply,configured:'yes'},{...reply,message:'x'.repeat(301)},{...reply,extra:'SyntheticPrivateName'}])assert.throws(()=>parseDemoReply(bad,'request_1'));
+ const failure={id:'request_1',type:'result',ok:false,code:'API_ERROR',error:'Fixed text.'};assert.equal(parseDemoReply(failure,'request_1').code,'API_ERROR');
+ for(const bad of [{...failure,error:'x'.repeat(301)},{...failure,code:'lower'},{...failure,code:'A'.repeat(41)},{...failure,code:undefined},{...failure,detail:'SyntheticPrivateName'}])assert.throws(()=>parseDemoReply(bad,'request_1'));
+ assert.throws(()=>parseDemoReply({id:'request_1',type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'fibromyalgia',mode:'test',scores:[{nctId:'NCT12345678',index:50,confidence:.5,note:'free text'}]}},'request_1'));
 });
 
 test('page source is revalidated and canonicalized without private query/hash data',()=>{
@@ -59,12 +59,6 @@ test('page source is revalidated and canonicalized without private query/hash da
  assert.equal(parsePageSource({url:'https://clinicaltrials.gov/search?cond=condition',title:'Search',text:'Public study listings'}).url,'https://clinicaltrials.gov/search');
  assert.throws(()=>parsePageReply({ok:true,source:[]}));assert.throws(()=>parsePageSource({...source,nctId:'NCT87654321'}));
  assert.throws(()=>parsePageSource({...source,text:'SyntheticPrivateName\u0000'}));
-});
-
-test('model JSON is bounded before parsing and does not silently truncate unsafe output',()=>{
- const valid={summary:'Ask the study team.',questions:['What criteria need confirmation?'],cautions:['Eligibility remains unknown.']};assert.deepEqual(parseExplanation(JSON.stringify(valid)),valid);
- for(const value of [{...valid,summary:'x'.repeat(1801)},{...valid,questions:Array(9).fill('Question?')},{...valid,cautions:Array(7).fill('Unknown')},{...valid,tools:[{url:'https://example.org'}]},{...valid,summary:'SyntheticPrivateName\u202e'}])assert.throws(()=>parseExplanation(JSON.stringify(value)));
- assert.throws(()=>parseExplanation(' '.repeat(16001)));assert.throws(()=>parseExplanation('{SyntheticPrivateName'),error=>error instanceof Error&&!error.message.includes('SyntheticPrivateName'));
 });
 
 test('current demo client validates correlated status through the per-panel message boundary',async()=>{const runtime=new FakeRuntime(),client=new DemoClient(runtime);await client.open(()=>{});assert.equal((await client.status()).configured,true);const task=client.run('scoreDemo','fibromyalgia',true,()=>{},new AbortController().signal);const operation=runtime.operations[0];operation.port.reply({id:operation.request.id,type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'pancreatic',mode:'test',scores:[{nctId:'NCT12345678',index:50,confidence:.5}]}});await assert.rejects(task,/Mismatched/);client.disconnect()});

@@ -1,0 +1,196 @@
+name: extension-security
+
+# Release gate for the Treatable Chrome extension (extension/**).
+# See SECURITY.md ("Release gate") and docs/security/THREAT_MODEL.md.
+#
+# Hermetic: no secrets, no API keys, no network calls to OpenAI, no macOS.
+# The native tests use stub transports and a fake Keychain helper, and the
+# installer test writes into an isolated temporary HOME, so ubuntu-latest is
+# enough. Actions are pinned to commit SHAs; the gitleaks binary is pinned by
+# version and SHA-256; Semgrep is pinned by version.
+
+on:
+  push:
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-security.yml"
+  pull_request:
+    paths:
+      - "extension/**"
+      - ".github/workflows/extension-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-audit:
+    name: Typecheck, build A/B, tests, npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      # Full checkout: the extension imports scaffold/lib and copies scaffold/data at build time.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      # Lockfile only, and no dependency install scripts (esbuild works without its postinstall).
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build variant A (dist/)
+        run: npm run build
+
+      - name: Build variant B (dist-b/)
+        run: npm run build:b
+
+      # Called directly rather than via `npm test`, whose pretest would rebuild both variants.
+      - name: Extension tests
+        run: npx tsx --test tests/*.test.ts
+
+      - name: Native host tests
+        run: node --test native/test/*.test.mjs
+
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit (all dependencies)
+        run: npm audit --audit-level=high
+
+  secret-scan:
+    name: Secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      # From gitleaks_8.30.1_checksums.txt on the v8.30.1 release.
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned gitleaks
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $dir/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf "$dir/gitleaks.tar.gz" -C "$dir" gitleaks
+          "$dir/gitleaks" version
+          echo "$dir" >> "$GITHUB_PATH"
+
+      # Default rules plus one narrow allowlist, and a fingerprint baseline of
+      # findings triaged as false positives on 2026-10-24 (docs/security/THREAT_MODEL.md §10).
+      # A new finding, or a known file changed in a new commit, still fails the job.
+      - name: Write gitleaks config and triaged baseline
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/gitleaks.toml" <<'TOML'
+          title = "Treatable extension security gate"
+
+          [extend]
+          useDefault = true
+
+          # The manifest "key" is the extension's PUBLIC RSA key (it only pins the extension ID).
+          [[allowlists]]
+          description = "Public RSA SubjectPublicKeyInfo in extension/manifest.json"
+          condition = "AND"
+          targetRules = ["generic-api-key"]
+          paths = ['''^extension/manifest\.json$''']
+          regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA[A-Za-z0-9+/]+={0,2}$''']
+          TOML
+          # Synthetic test placeholders (sk-test-..., sk-abc..., gsk_Echo..., AbCd... patterns), not real keys.
+          cat > "$RUNNER_TEMP/baseline.gitleaksignore" <<'IGNORE'
+          050a29391bdc017429437ba5b72287bf5eb503a8:extension/tests/gate.test.ts:generic-api-key:138
+          5167bdb4566d5738f8ed47cda3ede06703cc7b7e:extension/tests/gate.test.ts:generic-api-key:17
+          561c2446454bbfdb381e2fdf93d73ebc38cf727f:extension/tests/scoring.test.ts:generic-api-key:14
+          5bf8e908d53d17f2bdf5b54cab8694f1de247cad:extension/tests/notices.test.tsx:generic-api-key:33
+          5bf8e908d53d17f2bdf5b54cab8694f1de247cad:extension/tests/notices.test.tsx:generic-api-key:37
+          5f12a0925b19850db8696aacbd67a86caf157ce1:installer/src/main/__tests__/reportProblem.integration.test.ts:generic-api-key:48
+          5f12a0925b19850db8696aacbd67a86caf157ce1:installer/src/main/__tests__/reportProblem.integration.test.ts:generic-api-key:51
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/app/api/llm/models/__tests__/handler.test.ts:generic-api-key:49
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/app/api/llm/models/__tests__/handler.test.ts:generic-api-key:55
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/competitors/__tests__/tuning.test.ts:generic-api-key:71
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/issueUrl.test.ts:generic-api-key:136
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:10
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:11
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:12
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:87
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:88
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:94
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/cloudClient.test.ts:generic-api-key:152
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/cloudModels.test.ts:generic-api-key:183
+          5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/keySource.test.ts:generic-api-key:36
+          IGNORE
+
+      # Every commit reachable from the checked-out ref (on a pull request, the merge commit).
+      - name: Scan full git history
+        run: |
+          gitleaks git --redact --no-banner --exit-code 1 \
+            --config "$RUNNER_TEMP/gitleaks.toml" \
+            --gitleaks-ignore-path "$RUNNER_TEMP/baseline.gitleaksignore" \
+            --log-opts="--full-history HEAD" \
+            .
+
+  semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SEMGREP_VERSION: "1.180.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Semgrep
+        run: |
+          set -euo pipefail
+          pipx install "semgrep==${SEMGREP_VERSION}"
+          semgrep --version
+
+      # The excluded rules are non-security portability/i18n checks triaged as false
+      # positives in docs/security/THREAT_MODEL.md §10. Each is listed in its registry
+      # form (path.file.id) and its local-checkout form (path.id); an ID that is not in
+      # the selected packs is ignored. Every other finding fails the job (--error).
+      - name: Semgrep scan
+        run: |
+          set -euo pipefail
+          excludes=()
+          for rule in \
+            javascript.lang.correctness.no-replaceall \
+            javascript.lang.correctness.no-stringify-keys \
+            javascript.lang.correctness.missing-template-string-indicator \
+            typescript.react.portability.i18next.jsx-not-internationalized
+          do
+            excludes+=(--exclude-rule "$rule" --exclude-rule "$rule.${rule##*.}")
+          done
+          semgrep scan --metrics=off --disable-version-check --error \
+            --config p/javascript --config p/typescript --config p/secrets \
+            --exclude node_modules --exclude dist --exclude dist-b --exclude artifacts \
+            "${excludes[@]}" \
+            extension
