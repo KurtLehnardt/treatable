@@ -1,6 +1,6 @@
 {
   "name": "treatable-extension",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -13,7 +13,9 @@
     "pretest": "npm run build:all",
     "build:b": "node scripts/build.mjs --variant=b",
     "build:all": "npm run build:a && npm run build:b && npm run build",
-    "build:a": "node scripts/build.mjs --variant=a"
+    "build:a": "node scripts/build.mjs --variant=a",
+    "version:patch": "node scripts/bump-version.mjs patch",
+    "version:set": "node scripts/bump-version.mjs set"
   },
   "dependencies": {
     "react": "18.3.1",
