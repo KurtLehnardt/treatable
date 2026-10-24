@@ -1,0 +1,22 @@
+import type{AgeBand}from'../shared/real-contract.mjs';
+import{boundedText,exactKeys,record}from'./validation';
+import{keywordTerms}from'./core';
+import{structuredChecks,type StructuredCheck,type GuardBucket}from'./structured-checks';
+export const BASIC_RANKING_VERSION='basic-keyword-v1';
+export interface BasicProfile{conditionText:string;ageBand?:AgeBand;sex?:'female'|'male'|'other'|'prefer_not_to_say'}
+export interface BasicStudyInput{id:string;title?:string;status?:string;conditions?:string[];summary?:string;criteria?:string;interventions?:string[];minimumAge?:string|null;maximumAge?:string|null;sex?:string|null;fetchedAt?:string|number;lastUpdatePostDate?:string|null;unavailable?:boolean}
+export interface BasicFactor{term:string;field:'conditions'|'title'|'summary'|'criteria';match:'exact'|'typo';weight:number}
+export interface BasicMatch{nctId:string;title:string;resultState:'scored'|'unavailable';index?:number;guardTier:0|1|2|3;bucket:GuardBucket|'unavailable';checks:StructuredCheck[];factors:BasicFactor[];missingFields:string[];fetchedAt:number|null;lastUpdatePostDate:string|null;stale:boolean;rankingVersion:string}
+const ages=['under_18','18_29','30_44','45_59','60_74','75_89','90_plus'];
+export function parseBasicProfile(value:unknown):BasicProfile{if(!record(value))throw Error('Choose valid local matching details.');exactKeys(value,['conditionText','ageBand','sex']);const conditionText=boundedText(value.conditionText,'Condition or symptom terms',500,{empty:false});if(!keywordTerms(conditionText).length)throw Error('Enter at least one condition or symptom keyword.');if(value.ageBand!==undefined&&(!ages.includes(String(value.ageBand))||typeof value.ageBand!=='string'))throw Error('Choose a valid age band.');if(value.sex!==undefined&&!['female','male','other','prefer_not_to_say'].includes(String(value.sex)))throw Error('Choose a valid sex option.');return{conditionText,...(value.ageBand?{ageBand:value.ageBand as AgeBand}:{}),...(value.sex?{sex:value.sex as BasicProfile['sex']}:{})}}
+function typo(a:string,b:string){if(a.length<5||Math.abs(a.length-b.length)>1)return false;let i=0,j=0,edits=0;while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++;continue}if(++edits>1)return false;if(a.length>=b.length)i++;if(b.length>=a.length)j++}return edits+(i<a.length||j<b.length?1:0)<=1}
+export function rankBasicStudies(records:readonly BasicStudyInput[],input:BasicProfile,options:{now?:number}={}):BasicMatch[]{
+ const profile=parseBasicProfile(input),query=keywordTerms(profile.conditionText).slice(0,24),now=options.now??Date.now();
+ if(records.length>100||new Set(records.map(s=>s.id)).size!==records.length||records.some(s=>!/^NCT[0-9]{8}$/.test(s.id)))throw Error('Invalid current-page study set.');
+ const rows=records.map((s):BasicMatch=>{const guard=structuredChecks(s,profile),stamp=typeof s.fetchedAt==='number'?s.fetchedAt:typeof s.fetchedAt==='string'?Date.parse(s.fetchedAt):NaN,fetchedAt=Number.isFinite(stamp)?stamp:null,fields=[['conditions',(s.conditions??[]).join(' '),8],['title',s.title??'',4],['summary',[s.summary??'',...(s.interventions??[])].join(' '),2],['criteria',s.criteria??'',1]]as const,missingFields=fields.filter(([,value])=>!value.trim()).map(([key])=>key),base={nctId:s.id,title:s.title||'Public study title unavailable',checks:guard.checks,missingFields,fetchedAt,lastUpdatePostDate:s.lastUpdatePostDate??null,stale:fetchedAt===null||now-fetchedAt>60000,rankingVersion:BASIC_RANKING_VERSION};
+  if(s.unavailable||fields.every(([,value])=>!value.trim()))return{...base,resultState:'unavailable',guardTier:3,bucket:'unavailable',factors:[]};
+  const tokens=fields.map(([field,value,weight])=>({field,weight,tokens:keywordTerms(value.slice(0,16000))})),factors:BasicFactor[]=[];
+  for(const term of query){let selected:BasicFactor|undefined;for(const f of tokens){if(f.tokens.includes(term)){selected={term,field:f.field,match:'exact',weight:f.weight};break}}if(!selected)for(const f of tokens){if(f.tokens.some(token=>typo(term,token))){selected={term,field:f.field,match:'typo',weight:f.weight*.75};break}}if(selected)factors.push(selected)}
+  return{...base,resultState:'scored',guardTier:guard.guardTier,bucket:guard.bucket,factors,index:Math.round(100*factors.reduce((total,f)=>total+f.weight,0)/(8*query.length))};
+ });return rows.map((row,index)=>({row,index})).sort((a,b)=>a.row.guardTier-b.row.guardTier-(0)||((b.row.index??-1)-(a.row.index??-1))||a.index-b.index).map(v=>v.row);
+}
