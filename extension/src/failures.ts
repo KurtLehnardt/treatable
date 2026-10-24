@@ -6,7 +6,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  NATIVE_HOST_MISSING:'Install the Treatable helper, then reload the extension. Nothing was sent to OpenAI. Local search still works.',
  NATIVE_HOST_FORBIDDEN:'Chrome blocked this extension from using the Treatable helper. Reinstall the helper for this extension, then reload it. Nothing was sent to OpenAI. Local search still works.',
  NATIVE_HOST_DISCONNECTED:'The Treatable helper stopped or could not start. Reinstall or restart it, then retry. Local search still works.',
- NATIVE_TIMEOUT:'The helper did not answer within 150 seconds, so Treatable closed the connection and ended this session. Click the Treatable button in the toolbar to start again; local search works again.',
+ NATIVE_TIMEOUT:'The helper did not answer within 150 seconds (270 for a local model), so Treatable closed the connection and ended this session. Click the Treatable button in the toolbar to start again; local search works again.',
  INVALID_NATIVE_REPLY:'The helper reply failed validation and was discarded, so no result is shown. Local search still works.',
  RESULT_MISMATCH:'Mismatched result rejected: it did not match the studies you selected, so it is not shown. Local search still works.',
  SESSION_ENDED:'The session ended before the operation finished. Click the Treatable button in the toolbar to start again; local search works again.',
@@ -48,10 +48,17 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  OUTPUT_TOO_LARGE:'The response was larger than allowed, so it was discarded and no result is shown. Local features still work.',
  INVALID_STREAM:'The OpenAI response stream was malformed, so it was discarded and no result is shown. Local features still work.',
  INCOMPLETE_STREAM:'The OpenAI response stream ended early, so no result is shown. Check the cleanup status, then retry.',
+ // Local model (Ollama on this device). None of these sends anything to OpenAI; the official record excerpts stay available.
+ LOCAL_NOT_INSTALLED:'Ollama is not installed on this device, so the local model could not run. Install it from ollama.com/download, or switch Settings → Model provider back to OpenAI. Nothing was sent to OpenAI.',
+ LOCAL_RUNTIME_FAILED:'Treatable could not start its own private Ollama runtime on this device. Restart the computer or reinstall Ollama, then retry, or switch to OpenAI in Settings. Nothing was sent to OpenAI.',
+ LOCAL_MODEL_UNAVAILABLE:'The chosen local model is not installed or cannot write text. Choose another one in Settings → Model provider, where the recommendation shows the exact ollama pull command. Nothing was sent to OpenAI.',
+ LOCAL_MODEL_NOT_CHOSEN:'Choose a local model in Settings → Model provider first, or switch back to OpenAI. Nothing was sent.',
+ LOCAL_TIMEOUT:'The local model took too long on this device and was stopped. Try a smaller model, select one study instead of two, or use OpenAI. Nothing was sent to OpenAI; the official excerpts are still shown.',
+ LOCAL_INVALID_OUTPUT:'The local model returned output that failed validation, so it was discarded. The official record excerpts and standard questions are shown instead. Nothing was sent to OpenAI.',
  CLEANUP_ERROR:'The provider session could not be confirmed as deleted. The result, if shown, is still valid; deletion may need a retry later.',
 });
 /** Failures known to happen before any request body reaches the provider. */
-export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['CONFIRMATION_CANCELLED','NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','HELPER_VERSION_MISMATCH','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','INVALID_FIXTURE_STUDIES','APPLY_EXPIRED','INVALID_APPLY_RECEIPT','NOT_STUDY_PAGE','USER_ACTIVATION_REQUIRED','RECORD_UNAVAILABLE','RECORD_MISMATCH','GOV_NETWORK_ERROR','GOV_HTTP_ERROR','GOV_INVALID_RECORD','GOV_ID_MISMATCH','GOV_RECORD_TOO_LARGE']);
+export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_NOT_CHOSEN','LOCAL_TIMEOUT','LOCAL_INVALID_OUTPUT','CONFIRMATION_CANCELLED','NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','HELPER_VERSION_MISMATCH','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','INVALID_FIXTURE_STUDIES','APPLY_EXPIRED','INVALID_APPLY_RECEIPT','NOT_STUDY_PAGE','USER_ACTIVATION_REQUIRED','RECORD_UNAVAILABLE','RECORD_MISMATCH','GOV_NETWORK_ERROR','GOV_HTTP_ERROR','GOV_INVALID_RECORD','GOV_ID_MISMATCH','GOV_RECORD_TOO_LARGE']);
 export function failureCopy(code:unknown):string{return typeof code==='string'&&Object.hasOwn(FAILURE_COPY,code)?FAILURE_COPY[code]:GENERIC_FAILURE_COPY}
 /** Chrome reports native-host launch failures only as runtime.lastError text on the native port's disconnect. */
 export function nativeDisconnectCode(message:unknown):'NATIVE_HOST_MISSING'|'NATIVE_HOST_FORBIDDEN'|'NATIVE_HOST_DISCONNECTED'{

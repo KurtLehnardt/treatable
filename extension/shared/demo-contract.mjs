@@ -8,7 +8,7 @@ export const CAUTION_TEMPLATES = Object.freeze({team_confirms:'Only the study te
 export const CLEANUP_FAILURE_CODES=Object.freeze(['KEY_MISSING','KEY_REJECTED','API_PERMISSION','RATE_LIMITED','API_ERROR','NETWORK_ERROR','CANCELLED','INVALID_API_RESPONSE','OUTPUT_TOO_LARGE','INVALID_DELETE_ACK','MISSING_SESSION_ID','CLEANUP_ERROR']);
 // Help me apply tool sections (same values as APPLY_TOOL_SECTIONS); an agent.tool.* trace may name the section it read.
 export const TRACE_TOOL_SECTIONS=Object.freeze(['overview','eligibility','design','locations_contacts']);
-export const TRACE_STAGES = Object.freeze(['decisions.request','decisions.complete','agent.request','agent.session.created','agent.tool.request','agent.tool.result','agent.complete','agent.cleanup.deleted','agent.cleanup.failed','cancelled','failed']);
+export const TRACE_STAGES = Object.freeze(['decisions.request','decisions.complete','agent.request','agent.session.created','agent.tool.request','agent.tool.result','agent.complete','agent.cleanup.deleted','agent.cleanup.failed','local.runtime.start','local.runtime.ready','local.brief.request','local.brief.complete','local.routing.request','local.routing.complete','cancelled','failed']);
 export function isRecord(v){return !!v&&typeof v==='object'&&!Array.isArray(v)&&Object.getPrototypeOf(v)===Object.prototype;}
 export function exactKeys(v,keys){return isRecord(v)&&Object.keys(v).every(k=>keys.includes(k));}
 export function validId(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(v);}

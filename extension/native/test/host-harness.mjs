@@ -5,9 +5,9 @@ export const origin='chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/';
 const installer=new URL('../install.mjs',import.meta.url).pathname,fake=new URL('./fake-openai.mjs',import.meta.url).href;
 export const nativeDir=home=>path.join(home,'Library','Application Support','Treatable','native-host','native');
 // The fake helper appends one line per key read to <home>/key-reads, so tests can count Keychain reads.
-export async function installHost(prefix){const home=await mkdtemp(path.join(os.tmpdir(),prefix)),helper=path.join(home,'keychain'),reads=path.join(home,'key-reads');
+export async function installHost(prefix,extraArgs=[]){const home=await mkdtemp(path.join(os.tmpdir(),prefix)),helper=path.join(home,'keychain'),reads=path.join(home,'key-reads');
  await writeFile(helper,`#!${process.execPath}\nif(process.argv[2]==='status')process.stdout.write('{"configured":true}');else{require('fs').appendFileSync(${JSON.stringify(reads)},'read\\n');process.stdout.write('sk-test-not-a-real-credential');}`,{mode:0o700});
- const r=spawnSync(process.execPath,[installer,'--home',home,'--credential-helper',helper],{encoding:'utf8'});if(r.status!==0)throw new Error(r.stderr);
+ const r=spawnSync(process.execPath,[installer,'--home',home,'--credential-helper',helper,...extraArgs],{encoding:'utf8'});if(r.status!==0)throw new Error(r.stderr);
  return{home,dir:nativeDir(home),reads,log:path.join(home,'requests.log')};}
 export async function writeHook(home,config){const file=path.join(home,`hook-${Math.random().toString(36).slice(2)}.mjs`);await writeFile(file,`import ${JSON.stringify(fake)};globalThis.__FAKE_OPENAI=${JSON.stringify(config)};\n`);return file;}
 export async function readLines(file){try{return(await readFile(file,'utf8')).trim().split('\n').filter(Boolean).map(x=>JSON.parse(x));}catch{return[];}}

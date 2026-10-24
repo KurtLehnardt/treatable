@@ -5,19 +5,22 @@ import {PrivateMatchingView} from './private-match-view';
 import {usePrivateMatching} from './use-private-matching';
 import type {OverlayRestoreState} from './overlay-types';
 import {ApplyView} from './apply-view';
-import {useApply} from './use-apply';
+import {useApply,type BriefEngineChoice} from './use-apply';
+import {LocalModelsContext,LocalModelsStore} from './local-models';
+import {ModelProviderSettings} from './model-settings';
 import {DetailsContext,hasDetails,sessionDetailsStore} from './your-details';
 import {YourDetailsSettings} from './your-details-view';
 import type {UiPrefs} from './ui-prefs';
 import {useGuide} from './use-guide';
 /** Reports whether this study section holds typed work to the frame, which asks before closing over it. */
-function ApplySection({nctId,dirtyRef}:{nctId?:string;dirtyRef:MutableRefObject<boolean>}){const vm=useApply(nctId);useEffect(()=>{dirtyRef.current=vm.dirty},[vm.dirty]);useEffect(()=>()=>{dirtyRef.current=false},[]);return <ApplyView vm={vm}/>}
+function ApplySection({nctId,dirtyRef,engine}:{nctId?:string;dirtyRef:MutableRefObject<boolean>;engine:BriefEngineChoice}){const vm=useApply(nctId,undefined,undefined,engine);useEffect(()=>{dirtyRef.current=vm.dirty},[vm.dirty]);useEffect(()=>()=>{dirtyRef.current=false},[]);return <ApplyView vm={vm}/>}
 function InlineMatching({close,restored}:{close:()=>void;restored?:OverlayRestoreState}){const vm=usePrivateMatching(undefined,close,restored);return <PrivateMatchingView vm={vm} inline/>}
 /** Reference entry retains the original private-matching security regression coverage. */
 export function LegacyOverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){const vm=useSiteController(initialPrefs);return <OverlayView vm={vm} inlineMatching={vm.matchingOpen?<InlineMatching close={()=>vm.closePrivate?.()} restored={vm.restoreState}/>:undefined}/>}
 /** The primary flow is public-study analysis plus local drafting. It never mounts the legacy health-sharing flow.
  * "Your details" live in a session-only store owned by this frame; ending the session or closing the frame clears them. */
-export function OverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){const vm=useSiteController(initialPrefs);const guide=useGuide(vm.guideHost);const[details]=useState(sessionDetailsStore);const dirty=useRef(false);
- useEffect(()=>{if(vm.ended)details.clear()},[vm.ended,details]);useEffect(()=>()=>details.clear(),[details]);
- const identity=vm.study?.nctId??vm.snapshot?.generation??'empty';
- return <DetailsContext.Provider value={details}><OverlayView vm={{...vm,guide,hasUnsavedWork:()=>dirty.current||hasDetails(details.get())}} settings={<YourDetailsSettings ended={vm.ended}/>} apply={vm.connected?<ApplySection key={identity} nctId={vm.study?.nctId} dirtyRef={dirty}/>:undefined}/></DetailsContext.Provider>}
+export function OverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){const vm=useSiteController(initialPrefs);const guide=useGuide(vm.guideHost);const[details]=useState(sessionDetailsStore);const dirty=useRef(false);const[localModels]=useState(()=>new LocalModelsStore());
+ useEffect(()=>{if(vm.ended){details.clear();localModels.clear()}},[vm.ended,details,localModels]);useEffect(()=>()=>details.clear(),[details]);
+ const identity=vm.study?.nctId??vm.snapshot?.generation??'empty',provider=vm.provider??'openai',localModel=vm.localModel??null;
+ const settings=<><ModelProviderSettings provider={provider} localModel={localModel} setProvider={value=>vm.setProvider?.(value)} setLocalModel={value=>vm.setLocalModel?.(value)} ended={vm.ended}/><YourDetailsSettings ended={vm.ended}/></>;
+ return <DetailsContext.Provider value={details}><LocalModelsContext.Provider value={localModels}><OverlayView vm={{...vm,guide,hasUnsavedWork:()=>dirty.current||hasDetails(details.get())}} settings={settings} apply={vm.connected?<ApplySection key={identity} nctId={vm.study?.nctId} dirtyRef={dirty} engine={{provider,localModel}}/>:undefined}/></LocalModelsContext.Provider></DetailsContext.Provider>}

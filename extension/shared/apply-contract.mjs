@@ -1,7 +1,8 @@
 // "Help me apply" protocol. Only a public NCT ID crosses to the native helper; no patient data is accepted or sent to a model.
 // The native helper fetches the official record, pins the exact Agents request, and returns fixed-catalog IDs only.
 import {exactKeys,isRecord,validId,utf8Bytes,templateIdList,MAX_MESSAGE_BYTES} from './demo-contract.mjs';
-export const APPLY_REQUEST_TYPES=Object.freeze(['prepareApply','executeApply','revokeApply','prepareStudyBrief','executeStudyBrief','revokeStudyBrief']);
+import {isLocalModelName} from './local-model.mjs';
+export const APPLY_REQUEST_TYPES=Object.freeze(['prepareApply','executeApply','revokeApply','prepareStudyBrief','executeStudyBrief','revokeStudyBrief','localModels']);
 export const APPLY_TOKEN_TTL_MS=5*60*1000;
 export const APPLY_MAX_SITES=150;
 export const APPLY_MAX_SITE_CONTACTS=4;
@@ -74,6 +75,8 @@ export function parseApplyRecord(v){
 export function parseApplyRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid apply operation');const p=v.payload;
  if(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief'].includes(v.type))return parseStudyBriefRequest(v);
+ // Local model detection takes no input at all: no study ID, path, model name or patient field.
+ if(v.type==='localModels'){if(Object.keys(p).length)throw Error('Invalid local model check');return v;}
  if(v.type==='prepareApply'){if(!exactKeys(p,['nctId']))throw Error('Invalid apply preparation');applyNctId(p.nctId);}
  else if(v.type==='executeApply'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid prepared apply receipt');}
  else if(v.type==='revokeApply'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid apply revocation');}
@@ -98,7 +101,7 @@ export function parseApplyResult(v){
 export function parseApplyReply(v,expectedId){
  if(!isRecord(v)||v.id!==expectedId||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||v.type!=='result'||typeof v.ok!=='boolean'||!exactKeys(v,['id','type','ok','result','code','error']))throw Error('Invalid apply reply');
  if(!v.ok){if(typeof v.code!=='string'||!/^[A-Z_]{1,40}$/.test(v.code)||typeof v.error!=='string'||v.error.length>300)throw Error('Invalid apply error');}
- else if(v.result!==undefined){if(v.result?.kind==='preparedApply')parsePreparedApply(v.result);else if(v.result?.kind==='preparedStudyBrief')parsePreparedStudyBrief(v.result);else if(v.result?.kind==='studyBrief')parseStudyBriefResult(v.result);else parseApplyResult(v.result);}return v;
+ else if(v.result!==undefined){if(v.result?.kind==='preparedApply')parsePreparedApply(v.result);else if(v.result?.kind==='preparedStudyBrief')parsePreparedStudyBrief(v.result);else if(v.result?.kind==='studyBrief')parseStudyBriefResult(v.result);else if(v.result?.kind==='localModels')parseLocalModelsResult(v.result);else parseApplyResult(v.result);}return v;
 }
 
 // Source-only study brief: this authority accepts public NCT IDs and receipts, never a patient profile.
@@ -112,10 +115,16 @@ export const PURPOSE_DISPLAY_MAX_CHARS=60000;
 export function briefNctIds(v){if(!Array.isArray(v)||v.length<1||v.length>2||new Set(v).size!==v.length)throw Error('Choose one or two current public studies');v.forEach(applyNctId);return v;}
 export function parseStudyBriefRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid study brief operation');const p=v.payload;
- if(v.type==='prepareStudyBrief'){if(!exactKeys(p,['nctIds']))throw Error('Invalid public study selection');briefNctIds(p.nctIds);}
+ if(v.type==='prepareStudyBrief'){if(!exactKeys(p,['nctIds','provider','model']))throw Error('Invalid public study selection');briefNctIds(p.nctIds);studyBriefEngine(p);}
  else if(v.type==='executeStudyBrief'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid study brief receipt');}
  else if(v.type==='revokeStudyBrief'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid study brief revocation');}
  else throw Error('Unsupported study brief operation');return v;
+}
+// Which model runs the brief. OpenAI is the default (no provider key, or provider 'openai' without a model); 'local' needs an installed model name.
+export const STUDY_BRIEF_PROVIDERS=Object.freeze(['openai','local']);
+export function studyBriefEngine(p){
+ if(p.provider===undefined||p.provider==='openai'){if(p.model!==undefined)throw Error('A model is chosen only for the local provider');return undefined;}
+ if(p.provider!=='local'||!isLocalModelName(p.model))throw Error('Choose OpenAI or an installed local model');return{provider:'local',model:p.model};
 }
 export function parsePublicStudyBrief(v){
  if(!exactKeys(v,['nctId','sourceUrl','fetchedAt','items','unknowns','claims']))throw Error('Invalid study brief');applyNctId(v.nctId);
@@ -125,17 +134,17 @@ export function parsePublicStudyBrief(v){
  if(new Set(v.items.map(i=>i.id)).size!==v.items.length||utf8Bytes(v)>STUDY_BRIEF_MAX_BYTES)throw Error('Invalid study brief bounds');return v;
 }
 export function parsePreparedStudyBrief(v){
- if(!exactKeys(v,['kind','token','digest','expiresAt','records','briefs'])||v.kind!=='preparedStudyBrief'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Number.isSafeInteger(v.expiresAt)||!Array.isArray(v.records)||!Array.isArray(v.briefs))throw Error('Invalid prepared study brief');
+ if(!exactKeys(v,['kind','token','digest','expiresAt','records','briefs','engine'])||v.engine!==undefined&&(!exactKeys(v.engine,['provider','model'])||v.engine.provider!=='local'||!isLocalModelName(v.engine.model))||v.kind!=='preparedStudyBrief'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Number.isSafeInteger(v.expiresAt)||!Array.isArray(v.records)||!Array.isArray(v.briefs))throw Error('Invalid prepared study brief');
  briefNctIds(v.records.map(r=>parseApplyRecord(r).nctId));if(v.briefs.length!==v.records.length||v.briefs.some((b,i)=>parsePublicStudyBrief(b).nctId!==v.records[i].nctId)||utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Mismatched study briefs');return v;
 }
 export function parseStudyBriefResult(v){
- if(!exactKeys(v,['kind','mode','digest','briefs','studyPlans','agentStatus','decisionStatus','failureCodes','cleanup','toolCalls','apiTrace'])||v.kind!=='studyBrief'||!['live','test'].includes(v.mode)||typeof v.digest!=='string'||!HASH.test(v.digest)||!['complete','failed'].includes(v.agentStatus)||!['complete','failed'].includes(v.decisionStatus)||!['deleted','failed','not_started'].includes(v.cleanup)||!Number.isInteger(v.toolCalls)||v.toolCalls<0||v.toolCalls>6||!Array.isArray(v.failureCodes)||v.failureCodes.length>2||v.failureCodes.some(c=>typeof c!=='string'||! /^[A-Z_]{1,40}$/.test(c))||!Array.isArray(v.briefs)||!Array.isArray(v.studyPlans))throw Error('Invalid study brief result');
+ if(!exactKeys(v,['kind','mode','digest','briefs','studyPlans','agentStatus','decisionStatus','failureCodes','cleanup','toolCalls','apiTrace','local'])||v.kind!=='studyBrief'||!['live','test','local'].includes(v.mode)||(v.mode==='local')!==(v.local!==undefined)||v.mode==='local'&&(v.cleanup!=='not_started'||v.toolCalls!==0||v.apiTrace!==undefined)||typeof v.digest!=='string'||!HASH.test(v.digest)||!['complete','failed'].includes(v.agentStatus)||!['complete','failed'].includes(v.decisionStatus)||!['deleted','failed','not_started'].includes(v.cleanup)||!Number.isInteger(v.toolCalls)||v.toolCalls<0||v.toolCalls>6||!Array.isArray(v.failureCodes)||v.failureCodes.length>2||v.failureCodes.some(c=>typeof c!=='string'||! /^[A-Z_]{1,40}$/.test(c))||!Array.isArray(v.briefs)||!Array.isArray(v.studyPlans))throw Error('Invalid study brief result');
  briefNctIds(v.briefs.map(b=>parsePublicStudyBrief(b).nctId));if(v.studyPlans.length!==v.briefs.length)throw Error('Invalid study plans');
  for(const [i,p] of v.studyPlans.entries()){
   const b=v.briefs[i],ids=new Set(b.items.map(x=>x.id));if(!exactKeys(p,['nctId','briefItemIds','questionIds','prescreenIds','flagIds','routes','prioritizedQuestionIds'])||p.nctId!==b.nctId||!Array.isArray(p.briefItemIds)||p.briefItemIds.length>12||new Set(p.briefItemIds).size!==p.briefItemIds.length||p.briefItemIds.some(id=>!ids.has(id))||!templateIdList(p.questionIds,APPLY_QUESTION_TEMPLATES,1,8)||!templateIdList(p.prescreenIds,APPLY_PRESCREEN_TEMPLATES,0,8)||!templateIdList(p.flagIds,APPLY_FLAG_TEMPLATES,0,4)||!Array.isArray(p.routes)||p.routes.length!==p.questionIds.length)throw Error('Invalid source-linked plan');
   const seen=new Set();for(const r of p.routes){if(!exactKeys(r,['questionId','route','evidenceIds'])||!p.questionIds.includes(r.questionId)||seen.has(r.questionId)||!STUDY_BRIEF_ROUTES.includes(r.route)||!Array.isArray(r.evidenceIds)||r.evidenceIds.length>3||new Set(r.evidenceIds).size!==r.evidenceIds.length||r.evidenceIds.some(id=>!ids.has(id))||r.route==='answered_by_record'&&!r.evidenceIds.length)throw Error('Invalid question route');seen.add(r.questionId);}
   if(!Array.isArray(p.prioritizedQuestionIds)||p.prioritizedQuestionIds.length>3||new Set(p.prioritizedQuestionIds).size!==p.prioritizedQuestionIds.length||p.prioritizedQuestionIds.some(id=>!p.routes.some(r=>r.questionId===id&&r.route==='ask_coordinator')))throw Error('Invalid question priority');
- }if(v.apiTrace!==undefined)parseStudyBriefTrace(v.apiTrace,v);
+ }if(v.apiTrace!==undefined)parseStudyBriefTrace(v.apiTrace,v);if(v.local!==undefined)parseLocalStudyBriefTrace(v.local,v);
  if(utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Study brief too large');return v;
 }
 
@@ -152,8 +161,9 @@ const jsonCost=text=>utf8Bytes(JSON.stringify(text))-2;
 export function traceBodyCost(body){return jsonCost(JSON.stringify(body,null,2));}
 /** Pretty-prints one request body for display. A body whose reply cost exceeds maxCost is cut at a line (or character) boundary and flagged truncated;
  * `bytes` is always the full pretty-printed size. This only shortens the display copy; the API request itself is never changed. */
-export function traceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){
- const full=JSON.stringify(body,null,2),bytes=utf8Bytes(full),cap=Math.max(0,Math.min(Math.floor(maxCost),STUDY_BRIEF_TRACE_BODY_MAX_BYTES));
+export function traceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){return displayCopy(JSON.stringify(body,null,2),maxCost,STUDY_BRIEF_TRACE_BODY_MAX_BYTES);}
+function displayCopy(full,maxCost,ceiling){
+ const bytes=utf8Bytes(full),cap=Math.max(0,Math.min(Math.floor(maxCost),ceiling));
  if(jsonCost(full)<=cap)return{text:full,bytes,truncated:false};
  let text='',cost=0;
  for(const [i,line] of full.split('\n').entries()){
@@ -165,6 +175,10 @@ export function traceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){
  }
  return{text,bytes,truncated:true};
 }
+// Display copy of one local request body or model output for "How this was generated": pretty-printed JSON (or the raw output text), cut
+// the same way as the API trace. Only the display copy is ever shortened.
+export const LOCAL_TRACE_BODY_MAX_BYTES=40*1024;
+export function localTraceBody(value,maxCost=LOCAL_TRACE_BODY_MAX_BYTES){return displayCopy(typeof value==='string'?value:JSON.stringify(value,null,2),maxCost,LOCAL_TRACE_BODY_MAX_BYTES);}
 function traceBodyOk(b){
  if(!exactKeys(b,['text','bytes','truncated'])||typeof b.text!=='string'||!Number.isSafeInteger(b.bytes)||typeof b.truncated!=='boolean')return false;
  const shown=utf8Bytes(b.text);if(shown>STUDY_BRIEF_TRACE_BODY_MAX_BYTES||KEY_LIKE.test(b.text))return false;
@@ -191,4 +205,46 @@ export function parseStudyBriefTrace(t,result){
  if(result.decisionStatus==='failed'?t.decisions.length!==0:t.decisions.length!==routes.length||t.decisions.some((d,i)=>d.nctId!==routes[i].nctId||d.questionId!==routes[i].questionId||d.route!==routes[i].route))throw Error('Mismatched Decisions trace');
  const ids=result.briefs.map(b=>b.nctId);if(t.toolCalls.some(c=>c.arguments&&!ids.includes(c.arguments.nctId)))throw Error('Mismatched tool call trace');
  return t;
+}
+
+const PRINTABLE=/^[^\u0000-\u001f\u007f-\u009f]*$/;
+function localBodyOk(b){
+ if(!exactKeys(b,['text','bytes','truncated'])||typeof b.text!=='string'||!Number.isSafeInteger(b.bytes)||typeof b.truncated!=='boolean')return false;
+ const shown=utf8Bytes(b.text);if(shown>LOCAL_TRACE_BODY_MAX_BYTES||KEY_LIKE.test(b.text))return false;
+ return b.truncated?b.bytes>shown:b.bytes===shown;
+}
+export const LOCAL_TRACE_STEPS=Object.freeze(['brief','routing']);
+// Display-only record of a local run: the model, the runtime version, each local request body and model output, and any confidence the
+// model reported for a route (model-reported, not calibrated). Steps are a prefix of brief → routing and must agree with the result's statuses.
+export function parseLocalStudyBriefTrace(t,result){
+ if(!exactKeys(t,['model','runtime','version','steps','confidences'])||!isLocalModelName(t.model)||t.runtime!=='ollama'||t.version!==null&&(typeof t.version!=='string'||!/^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(t.version))||!Array.isArray(t.steps)||t.steps.length>LOCAL_TRACE_STEPS.length||!Array.isArray(t.confidences)||t.confidences.length>16)throw Error('Invalid local trace');
+ for(const [i,s] of t.steps.entries())if(!exactKeys(s,['step','status','durationMs','request','output'])||s.step!==LOCAL_TRACE_STEPS[i]||!['complete','failed'].includes(s.status)||!Number.isSafeInteger(s.durationMs)||s.durationMs<0||s.durationMs>600000||!localBodyOk(s.request)||(s.output===null?s.status==='complete':!localBodyOk(s.output)))throw Error('Invalid local step');
+ const status=step=>t.steps.find(s=>s.step===step)?.status;
+ if((result.agentStatus==='complete')!==(status('brief')==='complete')||(result.decisionStatus==='complete')!==(status('routing')==='complete'))throw Error('Local trace does not match the result');
+ const routes=result.studyPlans.flatMap(p=>p.routes.map(r=>`${p.nctId}_${r.questionId}`)),seen=new Set();
+ for(const c of t.confidences){if(!exactKeys(c,['nctId','questionId','confidence'])||typeof c.nctId!=='string'||!NCT.test(c.nctId)||typeof c.questionId!=='string'||!Object.hasOwn(APPLY_QUESTION_TEMPLATES,c.questionId)||typeof c.confidence!=='number'||!Number.isFinite(c.confidence)||c.confidence<0||c.confidence>1)throw Error('Invalid model-reported confidence');const key=`${c.nctId}_${c.questionId}`;if(!routes.includes(key)||seen.has(key))throw Error('Mismatched model-reported confidence');seen.add(key);}
+ if(result.decisionStatus!=='complete'&&t.confidences.length)throw Error('Confidence without a routing result');
+ return t;
+}
+
+// Local model check: whether Ollama is installed, this machine's profile, the installed generation-capable models and one recommendation.
+// Produced only by the native helper; every string is bounded and printable, and nothing here is health data.
+export const LOCAL_FITS=Object.freeze(['comfortable','tight','too_large']);
+export const LOCAL_STRUCTURED=Object.freeze(['strong','good','basic']);
+const reasonOk=v=>typeof v==='string'&&v.length>0&&v.length<=240&&PRINTABLE.test(v);
+const bytesOk=v=>Number.isSafeInteger(v)&&v>=0;
+export function parseLocalModelsResult(v){
+ if(!exactKeys(v,['kind','ollama','machine','models','recommendation'])||v.kind!=='localModels')throw Error('Invalid local model check');
+ const o=v.ollama,m=v.machine,r=v.recommendation;
+ if(!exactKeys(o,['status','version'])||!['ready','not_installed','runtime_failed'].includes(o.status)||(o.version===null?o.status==='ready':typeof o.version!=='string'||!/^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(o.version)))throw Error('Invalid Ollama status');
+ if(!exactKeys(m,['platform','arch','cpu','memoryBytes','appleSilicon','unifiedMemory','freeDiskBytes'])||!['macos','linux','windows','other'].includes(m.platform)||!['arm64','x64','other'].includes(m.arch)||m.cpu!==null&&(typeof m.cpu!=='string'||!m.cpu||m.cpu.length>120||!PRINTABLE.test(m.cpu))||!Number.isSafeInteger(m.memoryBytes)||m.memoryBytes<=0||typeof m.appleSilicon!=='boolean'||typeof m.unifiedMemory!=='boolean'||m.freeDiskBytes!==null&&!bytesOk(m.freeDiskBytes))throw Error('Invalid machine profile');
+ if(!Array.isArray(v.models)||v.models.length>32||o.status!=='ready'&&v.models.length)throw Error('Invalid local models');
+ for(const x of v.models)if(!exactKeys(x,['name','sizeBytes','family','parameterSize','quantization','estimatedMemoryBytes','fit','structured','recommended'])||!isLocalModelName(x.name)||!Number.isSafeInteger(x.sizeBytes)||x.sizeBytes<=0||x.family!==null&&(typeof x.family!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(x.family))||x.parameterSize!==null&&(typeof x.parameterSize!=='string'||!/^[0-9]{1,4}(?:\.[0-9]{1,3})?[KMBT]$/.test(x.parameterSize))||x.quantization!==null&&(typeof x.quantization!=='string'||!/^[A-Za-z0-9_]{1,20}$/.test(x.quantization))||!Number.isSafeInteger(x.estimatedMemoryBytes)||x.estimatedMemoryBytes<x.sizeBytes||!LOCAL_FITS.includes(x.fit)||!LOCAL_STRUCTURED.includes(x.structured)||typeof x.recommended!=='boolean')throw Error('Invalid local model');
+ if(new Set(v.models.map(x=>x.name)).size!==v.models.length)throw Error('Duplicate local models');
+ const recommended=v.models.filter(x=>x.recommended);
+ if(r?.kind==='installed'){if(!exactKeys(r,['kind','model','reason'])||!reasonOk(r.reason)||recommended.length!==1||recommended[0].name!==r.model||recommended[0].fit==='too_large')throw Error('Invalid local recommendation');}
+ else if(r?.kind==='pull'){if(!exactKeys(r,['kind','model','command','downloadBytes','reason'])||!isLocalModelName(r.model)||r.command!==`ollama pull ${r.model}`||!bytesOk(r.downloadBytes)||!reasonOk(r.reason)||recommended.length)throw Error('Invalid pull recommendation');}
+ else if(r?.kind==='none'){if(!exactKeys(r,['kind','reason'])||!reasonOk(r.reason)||recommended.length)throw Error('Invalid local recommendation');}
+ else throw Error('Invalid local recommendation');
+ if(utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Local model check too large');return v;
 }

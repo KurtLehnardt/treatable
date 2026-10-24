@@ -16,10 +16,12 @@ test('ui-prefs.ts is the only chrome.storage writer: one key, get and set only, 
  assert.deepEqual([...new Set([...prefs.matchAll(/\.storage\??\.(\w+)/g)].map(m=>m[1]))].sort(),['local','onChanged'],'only the local area and its change events');
  assert.doesNotMatch(prefs,/\.(clear|remove|getKeys|getBytesInUse|setAccessLevel)\b/,'no bulk, delete or access-level calls');
  assert.deepEqual(prefs.match(/\.get\([^)]*\)/g),['.get(UI_PREFS_KEY)'],'reads only the preferences key');
- assert.deepEqual(prefs.match(/\.set\([^)]*\)/g),['.set({[UI_PREFS_KEY]: {displayMode: valid.displayMode, theme: valid.theme}})'],'writes only the two validated fields under the key');
+ assert.deepEqual(prefs.match(/\.set\([^)]*\)/g),['.set({[UI_PREFS_KEY]: {displayMode: valid.displayMode, theme: valid.theme, provider: valid.provider, localModel: valid.localModel}})'],'writes only the four validated fields under the key');
+ assert.match(prefs,/export const MODEL_PROVIDERS = \['openai', 'local'\] as const;/,'the provider is a closed enum');
+ assert.match(prefs,/isLocalModelPref = \(value: unknown\): value is string \| null => value === null \|\| isLocalModelName\(value\)/,'the model name is null or passes the strict shared pattern');
  for(const {name,text} of sources)if(name!=='ui-prefs.ts'){assert.doesNotMatch(text,/treatable\.uiPrefs/,`${name}: names the preferences key directly`);if(!['use-site-controller.ts'].includes(name))assert.doesNotMatch(text,/\bsaveUiPrefs\s*\(/,`${name}: only the overlay controller saves display preferences`)}
  const controller=sources.find(s=>s.name==='use-site-controller.ts')!.text;
- assert.deepEqual(controller.match(/saveUiPrefs\(uiPrefsArea\(\),[^)]*\)/g),['saveUiPrefs(uiPrefsArea(),prefs.current)','saveUiPrefs(uiPrefsArea(),prefs.current)'],'display mode and theme setters are the only saves');
+ assert.deepEqual(controller.match(/saveUiPrefs\(uiPrefsArea\(\),[^)]*\)/g),Array(4).fill('saveUiPrefs(uiPrefsArea(),prefs.current)'),'the display mode, theme, provider and local model setters are the only saves');
  const storage=sources.find(s=>s.name==='storage.ts')!.text;
  assert.doesNotMatch(storage,/uiPrefs|UI_PREFS/i,'legacy cleanup never names the preferences key');
 });
