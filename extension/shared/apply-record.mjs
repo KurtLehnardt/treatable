@@ -1,7 +1,7 @@
 // Normalizes an official ClinicalTrials.gov API v2 study into the public ApplyRecord used for the local contact plan.
 // Pure and shared: the native helper and the browser fallback produce identical records from the same raw JSON.
 import {sanitizeUntrustedText} from './untrusted-text.mjs';
-import {parseApplyRecord,parsePublicStudyBrief,applyNctId,APPLY_MAX_SITES,APPLY_MAX_SITE_CONTACTS,APPLY_MAX_CENTRAL_CONTACTS,APPLY_MAX_OFFICIALS,APPLY_RECORD_MAX_BYTES} from './apply-contract.mjs';
+import {parseApplyRecord,parsePublicStudyBrief,applyNctId,PURPOSE_DISPLAY_MAX_CHARS,APPLY_MAX_SITES,APPLY_MAX_SITE_CONTACTS,APPLY_MAX_CENTRAL_CONTACTS,APPLY_MAX_OFFICIALS,APPLY_RECORD_MAX_BYTES} from './apply-contract.mjs';
 import {utf8Bytes} from './demo-contract.mjs';
 const DATE=/^\d{4}-\d{2}(-\d{2})?$/;
 function obj(v){return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}
@@ -38,12 +38,39 @@ function criterionHeading(line){
  const bare=/^(?:\s+criteri(?:a|on)\b)?\s*$/i.test(m[2]),colon=bare?undefined:/^(?:\s+criteri(?:a|on)\b[^:]{0,40})?\s*:\s*(.*)$/i.exec(m[2]);if(!bare&&!colon)return;
  const inline=colon&&/[A-Za-z0-9]/.test(colon[1])?colon[1]:'';if(inline&&/^\s*(?:[-*\u2022+]|\d+[.)])\s/.test(line))return;return{context:m[1].toLowerCase()==='inclusion'?'inclusion':'exclusion',heading:line.slice(0,line.length-inline.length).trim(),inline};
 }
+// Limits for one source excerpt and for a whole brief. They are unchanged: each excerpt holds at most 1800 characters and 2100 UTF-8 bytes,
+// and a brief is trimmed from its last item until it is within 20 KiB.
+const EXCERPT_MAX_CHARS=1800,EXCERPT_MAX_BYTES=2100,BRIEF_MAX_BYTES=20*1024;
+// A long study purpose is sent as up to this many consecutive excerpts (at most 4 x 2100 bytes), so the rest of the brief keeps most of its budget.
+export const PURPOSE_MAX_EXCERPTS=4;
+const utf8Size=cp=>cp<0x80?1:cp<0x800?2:cp<0x10000?3:4;
+// Length in UTF-16 units of the longest prefix within both limits that never ends inside a surrogate pair.
+function fitPrefix(value,maxChars,maxBytes){let units=0,bytes=0;for(const ch of value){const size=utf8Size(ch.codePointAt(0));if(units+ch.length>maxChars||bytes+size>maxBytes)break;units+=ch.length;bytes+=size}return units}
+// Splits long text into consecutive excerpts without changing or dropping any word. Every part is a trimmed exact substring of the input within
+// both limits. A part ends at the last sentence end or line break of its window, or at the last space when the window holds no sentence end
+// in its final 70 percent, and is cut inside a word only when the window has no whitespace at all.
+export function splitExcerpt(value,maxChars=EXCERPT_MAX_CHARS,maxBytes=EXCERPT_MAX_BYTES){
+ const parts=[];let rest=typeof value==='string'?value.trim():'';
+ while(rest){
+  const size=Math.max(1,fitPrefix(rest,maxChars,maxBytes));
+  if(size>=rest.length){parts.push(rest);break;}
+  let sentence=0,word=0;
+  for(let at=size;at>0&&!sentence;at--){if(!/\s/.test(rest[at]))continue;word||=at;if(rest[at]==='\n'||/[.!?]["'\u201d\u2019)\]]*$/.test(rest.slice(Math.max(0,at-8),at)))sentence=at;}
+  const cut=sentence>=size*0.3?sentence:word||size;
+  parts.push(rest.slice(0,cut).trimEnd());rest=rest.slice(cut).trimStart();
+ }
+ return parts;
+}
+// Complete sanitized brief summary of the official record. It is only for display on this device and is never part of a model request.
+export function studyPurposeText(raw){return text(obj(obj(obj(raw).protocolSection).descriptionModule).briefSummary,PURPOSE_DISPLAY_MAX_CHARS)??'';}
 // Source excerpts are quotations of sanitized official fields, not generated medical claims.
 export function normalizeStudyBrief(raw,fetchedAt){
  const p=obj(obj(raw).protocolSection),nctId=applyNctId(obj(p.identificationModule).nctId),sourceUrl=`https://clinicaltrials.gov/study/${nctId}`,items=[],unknowns=[];
- const add=(category,label,field,value,max=900,metadata={})=>{let valueText=text(value,max);if(valueText){let bounded='',bytes=0;for(const char of valueText){const size=new TextEncoder().encode(char).length;if(bytes+size>2100)break;bounded+=char;bytes+=size}valueText=bounded.trim()}if(valueText&&items.length<36)items.push({id:`e${items.length+1}`,category,label,field:`protocolSection.${field}`,text:valueText,sourceUrl,...metadata});};
+ const add=(category,label,field,value,max=900,metadata={})=>{let valueText=text(value,max);if(valueText){let bounded='',bytes=0;for(const char of valueText){const size=new TextEncoder().encode(char).length;if(bytes+size>EXCERPT_MAX_BYTES)break;bounded+=char;bytes+=size}valueText=bounded.trim()}if(valueText&&items.length<36)items.push({id:`e${items.length+1}`,category,label,field:`protocolSection.${field}`,text:valueText,sourceUrl,...metadata});};
  const d=obj(p.descriptionModule),ds=obj(p.designModule),di=obj(ds.designInfo),st=obj(p.statusModule),el=obj(p.eligibilityModule),ai=obj(p.armsInterventionsModule);
- add('overview','Study purpose','descriptionModule.briefSummary',d.briefSummary,1800);
+ // The whole summary is quoted as consecutive excerpts cut at sentence or word boundaries, never shortened with an ellipsis.
+ const purpose=text(d.briefSummary,PURPOSE_DISPLAY_MAX_CHARS);
+ if(purpose)for(const part of splitExcerpt(purpose).slice(0,PURPOSE_MAX_EXCERPTS))add('overview','Study purpose','descriptionModule.briefSummary',part,EXCERPT_MAX_CHARS);
  // Split on paragraph/sentence boundaries so timeline and sham/crossover evidence remain exact source excerpts.
  const sentences=typeof d.detailedDescription==='string'?sanitizeUntrustedText(d.detailedDescription).split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map(x=>x.trim()).filter(Boolean):[];
  for(const t of sentences.slice(0,10)){const schedule=/visit|follow.up|(?:treatments?|injections?).{0,60}(?:spaced|apart|every|at \d)|(?:spaced|apart|every).{0,60}(?:treatments?|injections?)/i.test(t)&&!/^(?:the )?(?:primary|secondary) (?:objective|outcome|endpoint)/i.test(t);add(schedule?'timeline':'design',schedule?'Participant schedule (source wording)':'Study description','descriptionModule.detailedDescription',t,1400,schedule?{context:'participant_schedule'}:{});}
@@ -62,5 +89,5 @@ export function normalizeStudyBrief(raw,fetchedAt){
  if(!items.some(x=>/sham|placebo/i.test(x.text)))unknowns.push('A sham or placebo group is not described in the available excerpts.');
  if(!items.some(x=>/cross.?over/i.test(x.text)))unknowns.push('Access to treatment after a control group is not stated in the available excerpts.');
  if(!arr(obj(p.contactsLocationsModule).centralContacts).length&&!arr(obj(p.contactsLocationsModule).locations).some(l=>arr(obj(l).contacts).length))unknowns.push('No study contact is listed in the available record.');
- if(!obj(raw).resultsSection)unknowns.push('Published results are not included in the available source excerpts.');while(items.length&&utf8Bytes({nctId,sourceUrl,fetchedAt,items,unknowns})>20*1024)items.pop();const brief={nctId,sourceUrl,fetchedAt,items,unknowns,claims:[]};return parsePublicStudyBrief(brief);
+ if(!obj(raw).resultsSection)unknowns.push('Published results are not included in the available source excerpts.');while(items.length&&utf8Bytes({nctId,sourceUrl,fetchedAt,items,unknowns})>BRIEF_MAX_BYTES)items.pop();const brief={nctId,sourceUrl,fetchedAt,items,unknowns,claims:[]};return parsePublicStudyBrief(brief);
 }

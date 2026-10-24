@@ -1,12 +1,13 @@
 /** Validated extension-frame client. Patient fields and email drafts are never accepted by this protocol. */
-import {parseApplyReply,parsePreparedApply,parseApplyResult,parseApplyRecord,parseApplyRequest,parsePublicStudyBrief,parsePreparedStudyBrief,parseStudyBriefResult,briefNctIds,type PreparedApply,type ApplyResult,type ApplyRecord,type PublicStudyBrief,type PreparedStudyBrief,type StudyBriefResult} from '../shared/apply-contract.mjs';
+import {parseApplyReply,parsePreparedApply,parseApplyResult,parseApplyRecord,parseApplyRequest,parsePublicStudyBrief,parsePreparedStudyBrief,parseStudyBriefResult,briefNctIds,PURPOSE_DISPLAY_MAX_CHARS,type PreparedApply,type ApplyResult,type ApplyRecord,type PublicStudyBrief,type PreparedStudyBrief,type StudyBriefResult} from '../shared/apply-contract.mjs';
 import {NativeOperationError,FAILURE_CODE} from './failures';
 import {parseDemoReply,type DemoTrace} from '../shared/demo-contract.mjs';
 export const APPLY_CLIENT_PORT='treatable-apply-v1';
 export interface ApplyPort{postMessage:(v:unknown)=>void;disconnect:()=>void;onMessage:{addListener:(f:(v:any)=>void)=>void};onDisconnect:{addListener:(f:()=>void)=>void}}
 export interface ApplyRuntime{connect:(options:{name:string})=>ApplyPort}
 export interface StudyCandidate{nctId:string;title?:string}
-export interface BriefRecords{records:ApplyRecord[];briefs:PublicStudyBrief[]}
+/** purposes[i] is the complete official brief summary of records[i], kept for display only and never sent to a model. */
+export interface BriefRecords{records:ApplyRecord[];briefs:PublicStudyBrief[];purposes?:string[]}
 type Pending={resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;kind:'native'|'record'|'briefRecords';allowTrace?:boolean;trace?:(value:DemoTrace)=>void};
 const NCT=/^NCT[0-9]{8}$/;
 export class ApplyClient{
@@ -32,7 +33,8 @@ export class ApplyClient{
     if(item.kind==='briefRecords'){
      if(reply.ok===false&&typeof reply.code==='string'&&FAILURE_CODE.test(reply.code)){item.reject(new NativeOperationError(reply.code));return}
      if(reply.type!=='briefRecords'||reply.ok!==true||!Array.isArray(reply.records)||!Array.isArray(reply.briefs))throw Error();
-     item.resolve({records:reply.records.map(parseApplyRecord),briefs:reply.briefs.map(parsePublicStudyBrief)});return;
+     if(reply.purposes!==undefined&&(!Array.isArray(reply.purposes)||reply.purposes.length!==reply.records.length||reply.purposes.some((v:unknown)=>typeof v!=='string'||v.length>PURPOSE_DISPLAY_MAX_CHARS)))throw Error();
+     item.resolve({records:reply.records.map(parseApplyRecord),briefs:reply.briefs.map(parsePublicStudyBrief),...(reply.purposes?{purposes:[...reply.purposes]}:{})});return;
     }
     const parsed=parseApplyReply(reply,id);if(!parsed.ok)item.reject(new NativeOperationError(parsed.code!));else item.resolve(parsed.result);
    }catch{clearTimeout(item.timer);this.pending.delete(id);item.reject(new NativeOperationError('INVALID_NATIVE_REPLY'))}

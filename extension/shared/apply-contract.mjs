@@ -107,6 +107,8 @@ export const STUDY_BRIEF_CATEGORIES=Object.freeze(['overview','timeline','design
 export const STUDY_BRIEF_ROUTES=Object.freeze(['answered_by_record','ask_patient','ask_coordinator']);
 // Upper bound for one public brief including its sourced claims; claims that would exceed it are dropped, never the whole result.
 export const STUDY_BRIEF_MAX_BYTES=24*1024;
+// Ceiling for the complete study purpose kept for display on this device. ClinicalTrials.gov limits a brief summary to 5,000 characters; this is a safety bound only.
+export const PURPOSE_DISPLAY_MAX_CHARS=60000;
 export function briefNctIds(v){if(!Array.isArray(v)||v.length<1||v.length>2||new Set(v).size!==v.length)throw Error('Choose one or two current public studies');v.forEach(applyNctId);return v;}
 export function parseStudyBriefRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid study brief operation');const p=v.payload;
