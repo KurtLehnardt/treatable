@@ -1,60 +1,275 @@
 /**
- * The transport gate (task A1b): the outbound invariants a transport port cannot widen.
+ * The transport gate (task A1b): the outbound rules a request must match before the core hands it
+ * to the injected transport port.
  *
- * Port of the outbound rules in extension/native/transport.mjs at commit 48c569e, where the same
- * checks lived inside the transport's own request() method:
- *   - the endpoint allowlist (paths): /v1/decisions and /v1/agents/sessions.../events only,
- *     with provider identifiers limited to the documented safe characters, and nothing else
- *     possible: no query strings, fragments, or other prefixes;
- *   - the one origin the core ever talks to: https://api.openai.com, exactly (no subdomains,
- *     no ports, no userinfo, no scheme other than https);
- *   - the request body cap: at most MAX_OUTBOUND_BODY_BYTES of serialized JSON, enforced by the
- *     builder and again on the bytes about to leave;
- *   - OpenAI-Beta: agents=v1 is required on every agents path and forbidden elsewhere;
- *   - Content-Type is application/json exactly when a body is sent;
- *   - Authorization may only ever be "Bearer " plus a contract-shaped key, or absent.
- * In the extension a future caller could have bypassed the transport's checks by hand-crafting its
- * own HTTP options. Here every request a pipeline makes still passes GuardValidation: the guard
- * re-validates it and rebuilds a frozen request with only the allowlisted headers and a fresh copy
- * of the capped body, and only that rebuilt request reaches the port. The guard is wired inside
- * createCore (dispatcher.ts), so no host-supplied transport and no hand-crafted caller can widen
- * the invariants: a rejected attempt never reaches the port at all.
+ * Port of the outbound checks in extension/native/transport.mjs at commit 48c569e, where they lived
+ * inside the transport's own request() method. That code checked the path and the method
+ * independently; docs/apps/openai-contracts.md (section 8.2 item 7 and section 10.1) asks the core
+ * to allow exact method-and-path pairs instead, so this module keeps one table of exact rules,
+ * TRANSPORT_RULES, and a request is passed on only when it matches one of them:
  *
- * Everything in this file fails closed with a constant-shape CoreError: INVALID_ENDPOINT for the
- * allowlist and origin pin, INPUT_TOO_LARGE for the body cap, INVALID_REQUEST for header and shape
- * violations, KEY_MISSING for a malformed Authorization value.
+ *   OpenAI, origin https://api.openai.com exactly ({id} is one PROVIDER_ID_PATTERN path segment):
+ *     POST   /v1/decisions                    body required; OpenAI-Beta refused
+ *     POST   /v1/agents/sessions              body required; OpenAI-Beta: agents=v1 required;
+ *                                             Accept may be application/json or text/event-stream
+ *     GET    /v1/agents/sessions/{id}         no body;       OpenAI-Beta: agents=v1 required
+ *     POST   /v1/agents/sessions/{id}/events  body required; OpenAI-Beta: agents=v1 required
+ *     DELETE /v1/agents/sessions/{id}         no body;       OpenAI-Beta: agents=v1 required
+ *   Every OpenAI rule requires Authorization: Bearer plus a contract-shaped key, requires
+ *   Content-Type: application/json exactly when a body is sent, and allows Accept only as
+ *   application/json unless the rule says otherwise. No query string is allowed.
+ *
+ *   ClinicalTrials.gov (task A2's live search):
+ *     GET https://clinicaltrials.gov/api/v2/studies?<query>
+ *   No body. The only header is Accept: application/json, and it is required; Authorization,
+ *   OpenAI-Beta, and Content-Type are refused, so an OpenAI key cannot be attached to this rule. The
+ *   query uses allowlisted parameter names only, each at most once, with values in well-formed
+ *   percent-encoding (the encodeURIComponent alphabet with upper-case hex, valid UTF-8, no control
+ *   characters once decoded), and the whole URL is at most MAX_TRANSPORT_URL_CHARS characters.
+ *
+ * Any other method, origin, path, port, userinfo, query, fragment, header, or body shape is refused,
+ * and the body cap (MAX_OUTBOUND_BODY_BYTES) applies to the bytes about to be handed over.
+ *
+ * What this module does and does not do: createCore (dispatcher.ts) wraps the host's transport port
+ * with guardTransport, so the core does not pass the port a request outside these rules. The guard
+ * reads each field of a request exactly once, validates that snapshot, and hands the port a rebuilt,
+ * frozen request with a fresh copy of the body; a refused request is never handed to the port. What
+ * a port does with a request that matched (certificate validation, not following redirects, not
+ * rewriting the request; see Transport in ports.ts) is the host's responsibility, and this module
+ * cannot check it.
+ *
+ * Errors are constant-shape CoreErrors: INVALID_ENDPOINT when no rule matches the method, origin,
+ * path, and query; INPUT_TOO_LARGE for the body cap; INVALID_REQUEST for header, body, and shape
+ * violations (including a getter or Proxy trap that throws); KEY_MISSING for a missing or malformed
+ * Authorization value on an OpenAI rule.
  */
 import { utf8Encode } from './bytes.ts';
-import { CoreError } from './errors.ts';
-import { API_KEY_PATTERN, MAX_OUTBOUND_BODY_BYTES } from './protocol.ts';
-import type { CancelSignal, CorePorts, HttpMethod, Transport, TransportRequest } from './ports.ts';
+import { CoreError, isCoreError } from './errors.ts';
+import { API_KEY_PATTERN, isSafeText, MAX_OUTBOUND_BODY_BYTES, PROVIDER_ID_PATTERN } from './protocol.ts';
+import type {
+  CancelSignal,
+  Clock,
+  CorePorts,
+  HttpMethod,
+  Loader,
+  Sha256,
+  TokenSource,
+  Transport,
+  TransportRequest,
+  TransportResponse,
+} from './ports.ts';
 
-/** The pinned origin (transport.mjs connected to hostname api.openai.com, port 443, https only). */
+/** The pinned OpenAI origin (transport.mjs connected to hostname api.openai.com, port 443, https only). */
 export const OPENAI_ORIGIN = 'https://api.openai.com';
 
-/**
- * The allowlisted endpoint paths, ported verbatim from the guard inside transport.mjs (its
- * request() method). A matching path
- * is only ever used as a suffix of OPENAI_ORIGIN, so rule text that merely "appears somewhere" in
- * the URL cannot pass: the whole URL has to be exactly origin + allowlisted path.
- */
-const PATH_RULE = String.raw`\/v1\/(?:decisions|agents\/sessions(?:\/[A-Za-z0-9_-]{1,160}(?:\/events)?)?)`;
-export const ALLOWED_TRANSPORT_PATHS = new RegExp(`^${PATH_RULE}$`);
-const PINNED_URL = new RegExp(`^https://api\\.openai\\.com(${PATH_RULE})$`);
+/** The ClinicalTrials.gov origin that task A2's live search uses. */
+const CTGOV_ORIGIN = 'https://clinicaltrials.gov';
 
-const TRANSPORT_METHODS: ReadonlySet<string> = new Set(['GET', 'POST', 'DELETE']);
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
-const MAX_HEADER_VALUE_BYTES = 8192;
+/**
+ * Upper bound on the whole request URL. Task A2's ordinary first-page search URL is about 930 to
+ * 1,000 characters. Its builder (buildStudiesUrl on feature/core-a2-fcc) can produce longer URLs
+ * for five long search terms, non-ASCII terms, or a long page token; such a URL is refused here
+ * with INVALID_ENDPOINT, and A2 must bound its inputs to fit (a reconciliation item).
+ */
+export const MAX_TRANSPORT_URL_CHARS = 2048;
+
+/** The OpenAI-Beta value the Agents rules require (A0 record section 3). */
+export const OPENAI_BETA_AGENTS = 'agents=v1';
+
 export const ACCEPT_VALUES = ['application/json', 'text/event-stream'] as const;
 export type AcceptValue = (typeof ACCEPT_VALUES)[number];
 
-function agentsPath(path: string): boolean {
-  return path.startsWith('/v1/agents/');
+export type TransportRuleId =
+  | 'openai.decisions.create'
+  | 'openai.agents.sessions.create'
+  | 'openai.agents.sessions.retrieve'
+  | 'openai.agents.sessions.events.create'
+  | 'openai.agents.sessions.delete'
+  | 'ctgov.studies.search';
+
+/** One allowed request shape. Every field is decided by the rule, not by the caller. */
+export interface TransportRule {
+  readonly id: TransportRuleId;
+  readonly method: HttpMethod;
+  /** Scheme and host, exactly; no port and no userinfo. */
+  readonly origin: string;
+  /** Path template; `{id}` stands for one segment matching PROVIDER_ID_PATTERN. */
+  readonly path: string;
+  /** Allowlisted query parameter names, or null when the rule allows no query string at all. */
+  readonly queryParameters: readonly string[] | null;
+  readonly body: 'required' | 'forbidden';
+  readonly authorization: 'required' | 'forbidden';
+  readonly openaiBeta: 'required' | 'forbidden';
+  /** Accept values the rule allows. */
+  readonly accept: readonly AcceptValue[];
+  /** Whether Accept must be present. */
+  readonly acceptRequired: boolean;
+}
+
+/**
+ * The query parameter names task A2's live search sends, taken read-only from CTGOV_QUERY_PARAMS
+ * in core/src/ctgov/query.ts on feature/core-a2-fcc (commit 1d9b3b6). When the branches are
+ * reconciled, A2's isCtgovStudiesUrl and parseStudiesUrl must be reconciled with this grammar (one
+ * list of names, the URL length bound above, and the percent-encoding alphabet below), so that the
+ * two checks describe the same requests.
+ */
+const CTGOV_QUERY_PARAMETERS = [
+  'format',
+  'query.cond',
+  'filter.overallStatus',
+  'filter.advanced',
+  'fields',
+  'sort',
+  'pageSize',
+  'countTotal',
+  'pageToken',
+] as const;
+
+const OPENAI_JSON: readonly AcceptValue[] = Object.freeze(['application/json'] as const);
+
+function openAIRule(
+  id: TransportRuleId,
+  method: HttpMethod,
+  path: string,
+  body: TransportRule['body'],
+  openaiBeta: TransportRule['openaiBeta'],
+  accept: readonly AcceptValue[] = OPENAI_JSON,
+): TransportRule {
+  return Object.freeze({
+    id,
+    method,
+    origin: OPENAI_ORIGIN,
+    path,
+    queryParameters: null,
+    body,
+    authorization: 'required',
+    openaiBeta,
+    accept: Object.freeze([...accept]),
+    acceptRequired: false,
+  });
+}
+
+/** Every request the core may hand to a transport port. Nothing outside this table is passed on. */
+export const TRANSPORT_RULES: readonly TransportRule[] = Object.freeze([
+  openAIRule('openai.decisions.create', 'POST', '/v1/decisions', 'required', 'forbidden'),
+  openAIRule('openai.agents.sessions.create', 'POST', '/v1/agents/sessions', 'required', 'required', ACCEPT_VALUES),
+  openAIRule('openai.agents.sessions.retrieve', 'GET', '/v1/agents/sessions/{id}', 'forbidden', 'required'),
+  openAIRule('openai.agents.sessions.events.create', 'POST', '/v1/agents/sessions/{id}/events', 'required', 'required'),
+  openAIRule('openai.agents.sessions.delete', 'DELETE', '/v1/agents/sessions/{id}', 'forbidden', 'required'),
+  Object.freeze({
+    id: 'ctgov.studies.search',
+    method: 'GET',
+    origin: CTGOV_ORIGIN,
+    path: '/api/v2/studies',
+    queryParameters: Object.freeze([...CTGOV_QUERY_PARAMETERS]),
+    body: 'forbidden',
+    authorization: 'forbidden',
+    openaiBeta: 'forbidden',
+    accept: Object.freeze(['application/json'] as const),
+    acceptRequired: true,
+  } satisfies TransportRule),
+]);
+
+// -------------------------------------------------------------------------------------------
+// Matching a method and URL against the rule table
+// -------------------------------------------------------------------------------------------
+
+/** One path segment for a provider identifier, from the protocol's own pattern (single source). */
+const ID_SEGMENT = PROVIDER_ID_PATTERN.source.replace(/^\^/, '').replace(/\$$/, '');
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+}
+
+interface CompiledRule {
+  readonly rule: TransportRule;
+  readonly pathPattern: RegExp;
+  readonly queryNames: ReadonlySet<string> | null;
+}
+
+const COMPILED_RULES: readonly CompiledRule[] = TRANSPORT_RULES.map(rule => ({
+  rule,
+  pathPattern: new RegExp(`^${rule.path.split('{id}').map(escapeRegExp).join(`(?:${ID_SEGMENT})`)}$`),
+  queryNames: rule.queryParameters === null ? null : new Set(rule.queryParameters),
+}));
+
+const METHODS: ReadonlySet<string> = new Set(TRANSPORT_RULES.map(rule => rule.method));
+
+/** One percent-encoded query component: the encodeURIComponent alphabet, upper-case hex escapes. */
+const QUERY_COMPONENT = /^(?:[A-Za-z0-9\-_.!~*'()]|%[0-9A-F]{2})+$/;
+
+/** True when the query is name=value pairs with allowlisted names (each once) and well-formed values. */
+function queryMatches(query: string, names: ReadonlySet<string>): boolean {
+  if (query.length === 0) return false;
+  const seen = new Set<string>();
+  for (const part of query.split('&')) {
+    const at = part.indexOf('=');
+    if (at <= 0) return false;
+    // Allowlisted names contain only letters and dots, which percent-encoding leaves as they are,
+    // so a name is compared literally and an encoded spelling of a name is refused.
+    const name = part.slice(0, at);
+    const value = part.slice(at + 1);
+    if (!names.has(name) || seen.has(name)) return false;
+    seen.add(name);
+    if (!QUERY_COMPONENT.test(value)) return false;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(value);
+    } catch {
+      return false;
+    }
+    if (!isSafeText(decoded)) return false;
+  }
+  return true;
+}
+
+/** Finds the one rule for this method and URL, or throws INVALID_ENDPOINT. */
+function matchRule(method: unknown, url: unknown): CompiledRule {
+  if (typeof method !== 'string' || !METHODS.has(method)) throw new CoreError('INVALID_ENDPOINT');
+  if (typeof url !== 'string' || url.length > MAX_TRANSPORT_URL_CHARS) throw new CoreError('INVALID_ENDPOINT');
+  for (const compiled of COMPILED_RULES) {
+    const { rule } = compiled;
+    if (rule.method !== method || !url.startsWith(`${rule.origin}/`)) continue;
+    // The remainder starts with "/", so anything else after the host (a port, userinfo trick, or a
+    // longer host name) cannot match a path pattern.
+    const rest = url.slice(rule.origin.length);
+    if (compiled.queryNames === null) {
+      if (compiled.pathPattern.test(rest)) return compiled;
+      continue;
+    }
+    const question = rest.indexOf('?');
+    if (question < 0) continue;
+    if (compiled.pathPattern.test(rest.slice(0, question)) && queryMatches(rest.slice(question + 1), compiled.queryNames)) {
+      return compiled;
+    }
+  }
+  throw new CoreError('INVALID_ENDPOINT');
+}
+
+// -------------------------------------------------------------------------------------------
+// Snapshot helpers: each reads caller-controlled data once and returns plain values
+// -------------------------------------------------------------------------------------------
+
+const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+const MAX_HEADER_VALUE_BYTES = 8192;
+
+/** The only header names that can leave the core, by lower-case name, with their canonical spelling. */
+const CANONICAL_HEADER_NAMES = Object.freeze({
+  authorization: 'Authorization',
+  'content-type': 'Content-Type',
+  'openai-beta': 'OpenAI-Beta',
+  accept: 'Accept',
+} as const);
+type HeaderKey = keyof typeof CANONICAL_HEADER_NAMES;
+const HEADER_KEYS = Object.keys(CANONICAL_HEADER_NAMES) as HeaderKey[];
+
+function isHeaderKey(name: string): name is HeaderKey {
+  return (HEADER_KEYS as string[]).includes(name);
 }
 
 /** Header values are one line of printable ASCII (so no CRLF injection can smuggle a new header). */
 function headerValueOk(value: string): boolean {
-  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_HEADER_VALUE_BYTES) return false;
+  if (value.length === 0 || value.length > MAX_HEADER_VALUE_BYTES) return false;
   for (let i = 0; i < value.length; i += 1) {
     const c = value.charCodeAt(i);
     if (c < 0x20 || c > 0x7e) return false;
@@ -62,213 +277,236 @@ function headerValueOk(value: string): boolean {
   return true;
 }
 
+/**
+ * Reads the header names once and each value once. Unknown names are rejected, not dropped, so no
+ * caller can add headers the rules never mention; a name repeated in another letter case is
+ * rejected too.
+ */
+function snapshotHeaders(raw: unknown): Partial<Record<HeaderKey, string>> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new CoreError('INVALID_REQUEST');
+  const names = Object.keys(raw);
+  const headers: Partial<Record<HeaderKey, string>> = {};
+  for (const name of names) {
+    if (!HEADER_NAME_PATTERN.test(name)) throw new CoreError('INVALID_REQUEST');
+    const key = name.toLowerCase();
+    if (!isHeaderKey(key) || headers[key] !== undefined) throw new CoreError('INVALID_REQUEST');
+    const value: unknown = (raw as Record<string, unknown>)[name];
+    if (typeof value !== 'string' || !headerValueOk(value)) throw new CoreError('INVALID_REQUEST');
+    headers[key] = value;
+  }
+  return headers;
+}
+
+// The intrinsic %TypedArray% accessors read internal slots, so neither a Uint8Array subclass that
+// overrides `length` nor a Proxy or look-alike object can make them report something else.
+const TYPED_ARRAY_PROTOTYPE: object = Object.getPrototypeOf(Uint8Array.prototype) as object;
+const typedArrayNameOf = Object.getOwnPropertyDescriptor(TYPED_ARRAY_PROTOTYPE, Symbol.toStringTag)?.get;
+const typedArrayLengthOf = Object.getOwnPropertyDescriptor(TYPED_ARRAY_PROTOTYPE, 'length')?.get;
+
+/**
+ * Copies a caller's body once, after checking that it is a genuine Uint8Array within the cap. Only
+ * the copy is validated and handed on, so later changes to the caller's bytes cannot change it.
+ */
+function copyBody(value: unknown): Uint8Array {
+  if (typedArrayNameOf === undefined || typedArrayLengthOf === undefined) throw new CoreError('INTERNAL_ERROR');
+  if (typedArrayNameOf.call(value) !== 'Uint8Array') throw new CoreError('INVALID_REQUEST');
+  const length: unknown = typedArrayLengthOf.call(value);
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) throw new CoreError('INVALID_REQUEST');
+  if (length > MAX_OUTBOUND_BODY_BYTES) throw new CoreError('INPUT_TOO_LARGE');
+  const copy = new Uint8Array(length);
+  // With a typed-array source, set() copies from internal slots and runs no caller code.
+  copy.set(value as Uint8Array);
+  return copy;
+}
+
+function checkSignal(signal: unknown): CancelSignal | undefined {
+  if (signal === undefined) return undefined;
+  if (typeof signal !== 'object' || signal === null) throw new CoreError('INVALID_REQUEST');
+  const s = signal as Record<string, unknown>;
+  if (typeof s.aborted !== 'boolean' || typeof s.addEventListener !== 'function' || typeof s.removeEventListener !== 'function') {
+    throw new CoreError('INVALID_REQUEST');
+  }
+  return signal as CancelSignal;
+}
+
 // -------------------------------------------------------------------------------------------
-// Building requests (the only constructor core callers should use)
+// The guard: snapshot, validate against one rule, rebuild
 // -------------------------------------------------------------------------------------------
 
-/** Everything an outbound request may vary in; every other part is pinned by this module. */
-export interface OpenAIRequestOptions {
-  /** GET, POST, or DELETE. */
+/** Everything the guard checked, in the shape it will rebuild from. */
+interface CheckedRequest {
+  readonly rule: TransportRule;
   readonly method: HttpMethod;
-  /** An allowlisted endpoint path, for example "/v1/decisions" or "/v1/agents/sessions". */
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array | undefined;
+  readonly signal: CancelSignal | undefined;
+}
+
+function checkSnapshot(request: unknown): CheckedRequest {
+  if (typeof request !== 'object' || request === null) throw new CoreError('INVALID_REQUEST');
+  // Each field is read exactly once, here. Everything below validates and rebuilds from these
+  // values only, so a getter or Proxy cannot show one value to the checks and another to the port.
+  const { method, url, headers: rawHeaders, body: rawBody, signal: rawSignal } = request as Record<string, unknown>;
+
+  const { rule } = matchRule(method, url);
+
+  const body = rawBody === undefined ? undefined : copyBody(rawBody);
+  if (rule.body === 'required' ? body === undefined : body !== undefined) throw new CoreError('INVALID_REQUEST');
+
+  const headers = snapshotHeaders(rawHeaders);
+  const contentType = headers['content-type'];
+  if (body !== undefined ? contentType !== 'application/json' : contentType !== undefined) throw new CoreError('INVALID_REQUEST');
+  const beta = headers['openai-beta'];
+  if (rule.openaiBeta === 'required' ? beta !== OPENAI_BETA_AGENTS : beta !== undefined) throw new CoreError('INVALID_REQUEST');
+  const accept = headers.accept;
+  if (accept === undefined ? rule.acceptRequired : !(rule.accept as readonly string[]).includes(accept)) {
+    throw new CoreError('INVALID_REQUEST');
+  }
+  const authorization = headers.authorization;
+  if (rule.authorization === 'forbidden') {
+    if (authorization !== undefined) throw new CoreError('INVALID_REQUEST');
+  } else if (authorization === undefined || !authorization.startsWith('Bearer ') || !API_KEY_PATTERN.test(authorization.slice(7))) {
+    throw new CoreError('KEY_MISSING');
+  }
+
+  const signal = checkSignal(rawSignal);
+
+  const canonical: Record<string, string> = {};
+  for (const key of HEADER_KEYS) {
+    const value = headers[key];
+    if (value !== undefined) canonical[CANONICAL_HEADER_NAMES[key]] = value;
+  }
+  return { rule, method: rule.method, url: url as string, headers: canonical, body, signal };
+}
+
+/**
+ * Validates a claimed request independently of how it was built. Throws INVALID_ENDPOINT,
+ * INVALID_REQUEST, INPUT_TOO_LARGE, or KEY_MISSING; never throws anything that names request
+ * content. A getter, Proxy trap, or detached buffer that throws becomes INVALID_REQUEST.
+ */
+function checkTransportRequest(request: unknown): CheckedRequest {
+  try {
+    return checkSnapshot(request);
+  } catch (error) {
+    if (isCoreError(error)) throw error;
+    throw new CoreError('INVALID_REQUEST');
+  }
+}
+
+/** Rebuilds a frozen request from the checked parts; the body is already the guard's own copy. */
+function rebuildChecked(checked: CheckedRequest): TransportRequest {
+  return Object.freeze({
+    method: checked.method,
+    url: checked.url,
+    headers: Object.freeze({ ...checked.headers }),
+    ...(checked.body !== undefined ? { body: checked.body } : {}),
+    ...(checked.signal !== undefined ? { signal: checked.signal } : {}),
+  });
+}
+
+// -------------------------------------------------------------------------------------------
+// Building OpenAI requests (the only constructor core callers should use for OpenAI)
+// -------------------------------------------------------------------------------------------
+
+/** Everything an outbound OpenAI request may vary in; every other part is decided by the rule table. */
+export interface OpenAIRequestOptions {
+  /** GET, POST, or DELETE; together with the path it must name one OpenAI rule. */
+  readonly method: HttpMethod;
+  /** The endpoint path, for example "/v1/decisions" or "/v1/agents/sessions/{id}/events" with a real id. */
   readonly path: string;
-  /** A JSON-serializable body. Undefined means no body (and then GET must not carry one). */
+  /** A JSON-serializable body. Undefined means no body; rules that require one refuse its absence. */
   readonly body?: unknown;
-  /** The user's key, when this request authenticates. */
-  readonly apiKey?: string;
-  /** Accept header value; streaming agents reads use "text/event-stream". */
+  /** The user's key. Every OpenAI rule requires Authorization. */
+  readonly apiKey: string;
+  /** Accept header value; only the create-session rule allows "text/event-stream". */
   readonly accept?: AcceptValue;
   readonly signal?: CancelSignal;
 }
 
 /**
- * The single request constructor: tries to produce a request that would survive the guard. The
- * serialization, the byte cap, the origin pin, Content-Type, and OpenAI-Beta are decided here and
- * re-decided by the guard, so a caller that ignores this helper still cannot slip past the gate.
+ * The single OpenAI request constructor. It serializes the body (and applies the byte cap), sets
+ * Authorization, Content-Type, and OpenAI-Beta from the matched rule, and then runs the result
+ * through the same checks as the guard, so the builder and the guard cannot disagree about what a
+ * rule allows. ClinicalTrials.gov requests are built by task A2's client and pass the same guard.
  */
 export function toTransportRequest(options: OpenAIRequestOptions): TransportRequest {
-  const method: unknown = options?.method;
-  const path: unknown = options?.path;
-  if (typeof method !== 'string' || !TRANSPORT_METHODS.has(method) || typeof path !== 'string' || !ALLOWED_TRANSPORT_PATHS.test(path)) {
-    throw new CoreError('INVALID_ENDPOINT');
-  }
-  let body: Uint8Array | undefined = undefined;
-  if (options.body !== undefined) {
-    if (method === 'GET') throw new CoreError('INVALID_REQUEST');
+  if (typeof options !== 'object' || options === null) throw new CoreError('INVALID_REQUEST');
+  const { method, path, body, apiKey, accept, signal } = options;
+  if (typeof path !== 'string' || !path.startsWith('/')) throw new CoreError('INVALID_ENDPOINT');
+  const url = `${OPENAI_ORIGIN}${path}`;
+  const { rule } = matchRule(method, url);
+  let bytes: Uint8Array | undefined;
+  if (body !== undefined) {
+    if (rule.body === 'forbidden') throw new CoreError('INVALID_REQUEST');
     let text: string | undefined;
     try {
-      text = JSON.stringify(options.body);
+      text = JSON.stringify(body);
     } catch {
       text = undefined;
     }
     if (typeof text !== 'string') throw new CoreError('INVALID_REQUEST');
-    body = utf8Encode(text);
-    if (body.length > MAX_OUTBOUND_BODY_BYTES) throw new CoreError('INPUT_TOO_LARGE');
+    bytes = utf8Encode(text);
+    if (bytes.length > MAX_OUTBOUND_BODY_BYTES) throw new CoreError('INPUT_TOO_LARGE');
   }
-  const headers: Record<string, string> = {};
-  if (options?.apiKey !== undefined) {
-    if (typeof options.apiKey !== 'string' || !API_KEY_PATTERN.test(options.apiKey)) throw new CoreError('KEY_MISSING');
-    headers.Authorization = `Bearer ${options.apiKey}`;
-  }
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (agentsPath(path)) headers['OpenAI-Beta'] = 'agents=v1';
-  if (options?.accept !== undefined) {
-    if (!ACCEPT_VALUES.includes(options.accept)) throw new CoreError('INVALID_REQUEST');
-    headers.Accept = options.accept;
-  }
-  return Object.freeze({
-    method: method as HttpMethod,
-    url: `${OPENAI_ORIGIN}${path}`,
-    headers: Object.freeze(headers),
-    ...(body !== undefined ? { body } : {}),
-    ...(options?.signal !== undefined ? { signal: options.signal } : {}),
-  });
+  if (typeof apiKey !== 'string' || !API_KEY_PATTERN.test(apiKey)) throw new CoreError('KEY_MISSING');
+  const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` };
+  if (bytes !== undefined) headers['Content-Type'] = 'application/json';
+  if (rule.openaiBeta === 'required') headers['OpenAI-Beta'] = OPENAI_BETA_AGENTS;
+  if (accept !== undefined) headers.Accept = accept;
+  return rebuildChecked(
+    checkTransportRequest({
+      method,
+      url,
+      headers,
+      ...(bytes !== undefined ? { body: bytes } : {}),
+      ...(signal !== undefined ? { signal } : {}),
+    }),
+  );
 }
 
 // -------------------------------------------------------------------------------------------
-// The guard: re-validate and rebuild before the port sees anything
+// Wrapping ports
 // -------------------------------------------------------------------------------------------
 
-/** Everything the guard checked, in the shape it will rebuild from. */
-interface CheckedRequest {
-  readonly method: HttpMethod;
-  readonly url: string;
-  readonly path: string;
-  readonly body: Uint8Array | undefined;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly signal: CancelSignal | undefined;
-}
-
 /**
- * Validates a claimed request independently of how it was built (the builder above never sees
- * this code path as an excuse). Throws INVALID_ENDPOINT, INVALID_REQUEST, INPUT_TOO_LARGE, or
- * KEY_MISSING; never throws anything that names request content.
- */
-function checkTransportRequest(request: unknown): CheckedRequest {
-  if (typeof request !== 'object' || request === null) throw new CoreError('INVALID_REQUEST');
-  const r = request as Record<string, unknown>;
-  const method: unknown = r.method;
-  if (typeof method !== 'string' || !TRANSPORT_METHODS.has(method)) throw new CoreError('INVALID_ENDPOINT');
-  const url: unknown = r.url;
-  if (typeof url !== 'string' || url.length > 512) throw new CoreError('INVALID_ENDPOINT');
-  const match = url.match(PINNED_URL);
-  if (match === null) throw new CoreError('INVALID_ENDPOINT');
-  const path = match[1] as string;
-
-  let body: Uint8Array | undefined = undefined;
-  if (r.body !== undefined && !(r.body instanceof Uint8Array)) throw new CoreError('INVALID_REQUEST');
-  if (r.body instanceof Uint8Array) {
-    if (method === 'GET') throw new CoreError('INVALID_REQUEST');
-    if (r.body.length > MAX_OUTBOUND_BODY_BYTES) throw new CoreError('INPUT_TOO_LARGE');
-    body = r.body;
-  }
-
-  if (r.headers === undefined || typeof r.headers !== 'object' || Array.isArray(r.headers)) {
-    throw new CoreError('INVALID_REQUEST');
-  }
-  const raw = r.headers as Record<string, unknown>;
-  const headers: Record<string, string> = {};
-  let hasAuthorization = false;
-  let hasContentType = false;
-  let hasBeta = false;
-  let hasAccept = false;
-  for (const name of Object.keys(raw)) {
-    const lower = name.toLowerCase();
-    if (!HEADER_NAME_PATTERN.test(name)) throw new CoreError('INVALID_REQUEST');
-    if (lower === 'authorization') {
-      if (hasAuthorization) throw new CoreError('INVALID_REQUEST');
-      hasAuthorization = true;
-    } else if (lower === 'content-type') {
-      if (hasContentType) throw new CoreError('INVALID_REQUEST');
-      hasContentType = true;
-    } else if (lower === 'openai-beta') {
-      if (hasBeta) throw new CoreError('INVALID_REQUEST');
-      hasBeta = true;
-    } else if (lower === 'accept') {
-      if (hasAccept) throw new CoreError('INVALID_REQUEST');
-      hasAccept = true;
-    } else {
-      // No other header name ever leaves the core; unknown headers are rejected, not dropped,
-      // so no caller can smuggle headers the contract never promised.
-      throw new CoreError('INVALID_REQUEST');
-    }
-    const value = raw[name];
-    if (typeof value !== 'string' || !headerValueOk(value)) throw new CoreError('INVALID_REQUEST');
-    headers[lower] = value;
-  }
-  const contentType = headers['content-type'];
-  if (body !== undefined && contentType !== 'application/json') throw new CoreError('INVALID_REQUEST');
-  if (body === undefined && contentType !== undefined) throw new CoreError('INVALID_REQUEST');
-  const beta = headers['openai-beta'];
-  if (agentsPath(path)) {
-    if (beta !== 'agents=v1') throw new CoreError('INVALID_REQUEST');
-  } else if (beta !== undefined) {
-    throw new CoreError('INVALID_REQUEST');
-  }
-  const authorization = headers.authorization;
-  if (authorization !== undefined && (!authorization.startsWith('Bearer ') || !API_KEY_PATTERN.test(authorization.slice(7)))) {
-    throw new CoreError('KEY_MISSING');
-  }
-  const accept = headers.accept;
-  if (accept !== undefined && !(ACCEPT_VALUES as readonly string[]).includes(accept)) {
-    throw new CoreError('INVALID_REQUEST');
-  }
-
-  let signal: CancelSignal | undefined = undefined;
-  if (r.signal !== undefined) {
-    const s = r.signal as Partial<CancelSignal>;
-    if (
-      typeof r.signal !== 'object' ||
-      r.signal === null ||
-      typeof s.aborted !== 'boolean' ||
-      typeof s.addEventListener !== 'function' ||
-      typeof s.removeEventListener !== 'function'
-    ) {
-      throw new CoreError('INVALID_REQUEST');
-    }
-    signal = r.signal as CancelSignal;
-  }
-  return { method: method as HttpMethod, url, path, body, headers, signal };
-}
-
-/** Rebuilds a frozen request from the checked parts; the body is copied, so later core-side edits to the source bytes cannot change what was checked. */
-function rebuildChecked(checked: CheckedRequest): TransportRequest {
-  const headers: Record<string, string> = {};
-  if (checked.headers.authorization !== undefined) headers.Authorization = checked.headers.authorization;
-  if (checked.headers['content-type'] !== undefined) headers['Content-Type'] = checked.headers['content-type'];
-  if (checked.headers['openai-beta'] !== undefined) headers['OpenAI-Beta'] = checked.headers['openai-beta'];
-  if (checked.headers.accept !== undefined) headers.Accept = checked.headers.accept;
-  return Object.freeze({
-    method: checked.method,
-    url: checked.url,
-    headers: Object.freeze(headers),
-    ...(checked.body !== undefined ? { body: new Uint8Array(checked.body) } : {}),
-    ...(checked.signal !== undefined ? { signal: checked.signal } : {}),
-  });
-}
-
-/**
- * Wraps a transport port so no request reaches it unless every invariant holds. A rejected request
- * throws before the port is called, so a hostile or compromised port cannot observe the attempt,
- * let alone widen where requests go or how large they are. What the port does with a valid request,
- * and what it returns, stay its own concern (the core validates responses elsewhere).
+ * Wraps a transport port so that a request is handed to it only when it matches a rule. A refused
+ * request throws before the port is called. The port receives a rebuilt, frozen request with its
+ * own copy of the body. What the port does with that request, and what it returns, are outside this
+ * function (the core validates responses elsewhere). The returned object is frozen.
  */
 export function guardTransport(port: Transport): Transport {
-  const guarded: Transport = {
-    async request(request) {
+  return Object.freeze({
+    async request(request: TransportRequest): Promise<TransportResponse> {
       return port.request(rebuildChecked(checkTransportRequest(request)));
     },
-  };
-  return guarded;
+  });
 }
 
-/** Guards the transport of an already-asserted ports bundle; the other ports pass through unchanged. */
+/**
+ * Returns the ports bundle the core hands to pipelines and to the session: the transport wrapped by
+ * guardTransport, and the other ports behind frozen facades that call the host's port at call time.
+ * The bundle and every facade are frozen, so code that holds the bundle cannot replace a port or a
+ * port method for later callers, and cannot reach the host's own port objects through it.
+ */
 export function guardCorePorts(ports: CorePorts): CorePorts {
-  return {
-    transport: guardTransport(ports.transport),
-    sha256: ports.sha256,
-    tokens: ports.tokens,
-    clock: ports.clock,
-    loader: ports.loader,
-  };
+  const { transport, sha256, tokens, clock, loader } = ports;
+  const sha256Facade: Sha256 = Object.freeze({ digestHex: (bytes: Uint8Array) => sha256.digestHex(bytes) });
+  const tokensFacade: TokenSource = Object.freeze({ randomBytes: (length: number) => tokens.randomBytes(length) });
+  const clockFacade: Clock = Object.freeze({
+    now: () => clock.now(),
+    monotonic: () => clock.monotonic(),
+    schedule: (delayMs: number, callback: () => void) => clock.schedule(delayMs, callback),
+  });
+  const loaderFacade: Loader = Object.freeze({
+    load: (resourceId: string, maxBytes: number, signal?: CancelSignal) =>
+      signal === undefined ? loader.load(resourceId, maxBytes) : loader.load(resourceId, maxBytes, signal),
+  });
+  return Object.freeze({
+    transport: guardTransport(transport),
+    sha256: sha256Facade,
+    tokens: tokensFacade,
+    clock: clockFacade,
+    loader: loaderFacade,
+  });
 }

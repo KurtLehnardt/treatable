@@ -63,11 +63,15 @@ export {
 export { loadZipTable, resolveZip, ZIP_RESOURCE, ZipTableSchema, type ResolvedZip, type ZipTable } from './zip.ts';
 export {
   ACCEPT_VALUES,
-  ALLOWED_TRANSPORT_PATHS,
   guardCorePorts,
   guardTransport,
+  MAX_TRANSPORT_URL_CHARS,
+  OPENAI_BETA_AGENTS,
   OPENAI_ORIGIN,
   toTransportRequest,
+  TRANSPORT_RULES,
   type AcceptValue,
   type OpenAIRequestOptions,
+  type TransportRule,
+  type TransportRuleId,
 } from './transport-gate.ts';
