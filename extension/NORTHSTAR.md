@@ -2,7 +2,7 @@
 
 ## Objective
 
-A patient can understand which public clinical studies are worth asking about, see source evidence and unknowns, and watch real OpenAI Decisions and Agents API work on an explicitly fictional example. Real patient details remain in panel memory and local deterministic screening.
+A patient can understand which public clinical studies are worth asking about, see source evidence and unknowns, and watch real OpenAI Decisions and Agents API work on an explicitly fictional example. Private free-text profiles remain local; optional real analysis requires a scroll-gated notice and separate exact-payload confirmation for explicitly selected minimized health fields.
 
 Deadline: **October 24, 2026, 3:00 PM Mountain Time (America/Boise)**. Presentation: **3 minutes**.
 
@@ -20,12 +20,14 @@ Deadline: **October 24, 2026, 3:00 PM Mountain Time (America/Boise)**. Presentat
 
 - Exact named ClinicalTrials.gov hosts only; no generic prompt/URL proxy.
 - No browser patient-profile persistence. Delete legacy own-extension keys without reading them before entry is enabled.
-- No real patient content in API payloads, API previews, trace metadata, provider labels, logs or caches.
-- Only compiled fictional fixture IDs enter API operations. Public study IDs must belong to the selected fixture; they cannot be taken from a real-profile search.
+- No raw private profile, notes, exact age/ZIP/coordinates, DOB, names or contact details in API payloads. Optional minimized real data needs current policy acceptance and a pinned exact preview; sensitive previews/traces exist only in panel memory, never logs or caches.
+- Fictional fixtures remain default. Optional real operations use explicit public condition IDs, age band/optional state/sex and up to two native public-corpus NCTs; execute accepts only a one-use token/digest/operation/current receipt. No replacement packet is accepted.
 - Credentials exist only in the dedicated native Keychain item and transient native memory. No secret in browser/manifest/configuration/arguments, no inherited API-key/proxy routing.
 - LLM outputs cannot alter deterministic clinical facts. Render allowlisted evidence/template IDs and relevance indices, not model medical advice.
 - API errors, permission denial, missing tool calls, incomplete streams, cancellation and deletion failures remain honest failures. No fabricated live mode or API-name substitution.
 - This is not an absolute prompt-injection, OS malware, browser-memory or forensic-erasure guarantee.
+
+Operator: **Kurt Lehnardt - Developer of Treatable**. Privacy contact: **privacy.6vpc5@mailer.me**. These are notice-only, never model input. Minimized health information is not anonymous.
 
 ## Worker responsibilities
 
@@ -54,4 +56,6 @@ Verified in automated tests: typed framing and bounds; fixed fictional/API paylo
 
 Not verified here: actual account/API access, live provider execution, Chrome installation/rendered/native handshake, real Chrome hidden/close timing and autofill behavior, or forensic removal from OS/browser memory. Tests use explicit test-mode transports, never fake live completion.
 
-Decisions and Agents are independent operations over the same compiled fictional case. The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
+Decisions and Agents are independent operations over the same selected case; the timed demo uses the fictional fixture. The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
+
+Optional real walkthrough (outside the three-minute fictional demo): scroll through the health-data notice, acknowledge and accept in memory, select public terms/studies and minimized fields, prepare without a provider call, inspect both exact request bodies, confirm each selected operation, inspect result/cleanup and End session. Declining leaves local search and fictional demo available.

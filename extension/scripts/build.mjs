@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {PUBLIC_CATALOG_METADATA} from '../shared/public-catalog.mjs';
 import {build} from 'esbuild';
 import {mkdir,cp,readFile,writeFile,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -16,7 +18,9 @@ manifest.host_permissions=sites.origins.map(origin=>`${origin}/*`);
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 await cp(path.join(root,'public/panel.html'),path.join(root,output,'panel.html'));
 for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,output,'data',name));
-const studies=JSON.parse(await readFile(path.join(root,output,'data/studies.json'),'utf8'));
+const studyBytes=await readFile(path.join(root,output,'data/studies.json'));
+if(createHash('sha256').update(studyBytes).digest('hex')!==PUBLIC_CATALOG_METADATA.corpusSha256)throw Error('UI/native public corpus hash mismatch');
+const studies=JSON.parse(studyBytes.toString('utf8'));
 if(studies.length!==2000)throw new Error(`Expected 2,000 shipped studies, got ${studies.length}`);
 await writeFile(path.join(root,output,'data/provenance.json'),JSON.stringify({count:studies.length,fetchedAt:studies[0]?.fetchedAt,source:'ClinicalTrials.gov API v2',search:'Local keyword retrieval; snapshot is incomplete and recruitment may change',zipAttribution:'GeoNames, CC BY 4.0; approximate postal-area centers'},null,2));
 console.log(`Built private Chrome extension with ${studies.length} studies`);

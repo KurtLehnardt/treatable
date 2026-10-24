@@ -1,6 +1,6 @@
 # Treatable extension MVP
 
-ClinicalTrials.gov study exploration for patients, with a panel-memory local workflow and a separate **fictional-only OpenAI Decisions/Agents demo**. Version B applies [make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better). The standalone web prototype on localhost:5556 is separate and unchanged.
+ClinicalTrials.gov study exploration for patients, with a panel-memory local workflow and a default **fictional OpenAI Decisions/Agents demo** and optional explicitly consented real-data analysis. Version B applies [make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better). The standalone web prototype on localhost:5556 is separate and unchanged.
 
 ## Current build and setup
 
@@ -45,7 +45,19 @@ Chrome → Extensions → Developer mode → Load unpacked → choose `extension
 4. Run the **Agents task**. It must call the allowlisted `get_public_trial_evidence` tool and return only known study/question/caution IDs. The UI renders trusted templates rather than arbitrary model advice.
 5. Inspect the actual in-memory request stages, tool calls, result mode and cleanup status. Stubbed test results say `test`; a live success requires validated provider responses.
 
-The native helper accepts only fixture IDs and fixture-allowlisted public NCT IDs, never a browser-supplied real profile, page text, arbitrary prompt, endpoint, credentials or tools. Real profile searches do not choose the demo studies. The stdio helper has no HTTP listener or Ollama daemon. Fixed TLS provider requests occur only after explicit demo consent.
+Fictional operations accept only fixture IDs and fixture-allowlisted public NCT IDs. Real operations accept a separate strict minimized packet; arbitrary free text, page content, prompts, endpoints, credentials and tools are rejected. Real profile searches do not choose the demo studies. The stdio helper has no HTTP listener or Ollama daemon. Fixed TLS provider requests occur only after the applicable explicit consent. Real-data preparation itself makes no provider call.
+
+## Optional real-data analysis
+
+1. Open **Optional real analysis**. Read the embedded Privacy + Health Data Notice to its bottom, check the acknowledgment, then accept for this panel session. Local search and the fictional demo work without acceptance.
+2. Explicitly choose a broad age band (including 90+), optional state and sex, 1–6 public condition/symptom labels and 1–2 public studies. The 3,514 labels come from ClinicalTrials.gov's snapshot, not a medical diagnosis ontology. Unknown terms can stay private in local search.
+3. **Prepare exact request preview** sends only that minimized packet to the native helper; it does not call OpenAI. The helper pins both API bodies and public tool outputs to a digest and opaque five-minute token.
+4. Review the sensitive exact preview and separately confirm the operation to send. Execution contains only the pinned token, digest, operation and current policy receipt; it cannot replace the packet. Every operation consumes its own confirmation and can run only once per prepared token. Any form or selection change discards the preview and confirmation.
+5. End/hide/close clears packet, acknowledgment, tokens, previews, results and traces in panel memory. A fresh session needs fresh policy acceptance. Already sent data cannot be retracted by clearing this panel.
+
+Exact age, ZIP, coordinates, notes, DOB, names and patient contact details are excluded. Explicit health labels, state and age bands are still sensitive and potentially identifying: **minimized is not anonymous**. No HIPAA compliance or legal sufficiency is claimed; see [HHS de-identification guidance](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html). UI/native public corpus hashes must match at build time.
+
+Operator: **Kurt Lehnardt - Developer of Treatable**. Privacy contact: **privacy.6vpc5@mailer.me**. This notice information is local product text, never model input. Contact details have not been independently verified. No patient request/identity history is retained to locate prior provider records.
 
 ## Session end and limits
 
@@ -53,12 +65,12 @@ The native helper accepts only fixture IDs and fixture-allowlisted public NCT ID
 
 These are application lifecycle controls, **not forensic memory erasure**. Same-user malware, an administrator, a compromised browser/OS, swap/crash data, website cookies/history, and arbitrary debugging are outside this guarantee. Actual Chrome close/hide and keyboard behavior have not been integration-tested here because the browser-control connection was unavailable.
 
-Agents keeps provider state until deletion and is not a zero-data-retention endpoint. The helper attempts bounded deletion after completion/cancellation. Deletion may fail; physical cleanup may be asynchronous; creation loss before receiving a session ID may leave unconfirmed state. Only fictional/public data is sent in this MVP. [Provider details](native/API_SETUP.md).
+Agents keeps provider state until deletion and is not a zero-data-retention endpoint. The helper attempts bounded deletion after completion/cancellation. Deletion may fail; physical cleanup may be asynchronous; creation loss before receiving a session ID may leave unconfirmed state. Default abuse-monitoring retention may include content for up to 30 days, subject to legal exceptions. API data is not used for training by default. Explicitly confirmed minimized real health information may be sent through the optional real path. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data). [Provider details](native/API_SETUP.md).
 
 ## Verification
 
-The combined checkpoint passed 42 extension tests, 10 native protocol/security tests, typecheck and both builds. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
+The previous combined checkpoint passed 43 extension and 14 native tests. The real-consent UI adds scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions; final combined verification is required after native integration. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
 
 [North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
 
-Decisions and Agents are independent operations over the same compiled fictional case. The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
+Decisions and Agents are independent operations over the same selected case (fictional by default, explicitly consented real packet optionally). The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
