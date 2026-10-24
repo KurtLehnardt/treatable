@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Treatable \u2014 private study finder",
   "version": "0.1.0",
-  "description": "Private, local-first ClinicalTrials.gov study matching for patients. No patient data sent to cloud services.",
+  "description": "ClinicalTrials.gov study matching for patients. Local by default; optional OpenAI scoring only after explicit consent.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvcOJ8uGg9hCXEaYn7urct1IO5H7i9VU+UVHNfdcuKfTcutfAzbPYAp3IGFezl8Jt2tPYBEyimBVDycEapCPKNJseuU/XmpX/uBV/SBixqfMJYjjoSIrXTDIl0GKMcTOTj/ZxhCrs95yK+so0x78IDdlqfMJK1CrSMMUTZ+LAVQWdGxDEi2T1qyrnO92PugAEMxVmh4ZtDxzd82QlMehsI6JmS60rJ1NrUJMfXrinLKRtw54vwamf6FH7vLT+yBfUOjRn4ON3HZmtF/0mA9eG3nG77Kb3vbL/QBI3U0qnTMC/HZIGPOSaUYixBRUqMVmKA/Ila0SRPzhmJ5xqaTqeCwIDAQAB",
   "permissions": [
@@ -22,6 +22,6 @@
     "default_path": "panel.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self'; base-uri 'none'; frame-src 'none'"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://api.openai.com; base-uri 'none'; frame-src 'none'"
   }
 }
