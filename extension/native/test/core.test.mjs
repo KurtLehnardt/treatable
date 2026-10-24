@@ -1,156 +1,74 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, access, stat } from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
-import { spawn, spawnSync } from 'node:child_process';
-import { EXTENSION_ID, MAX_MESSAGE_BYTES, MessageDecoder, encodeMessage, validateOrigin, validateRequest, hasLocalWeights, localModels } from '../core.mjs';
-
-const origin = `chrome-extension://${EXTENSION_ID}/`;
-test('only the exact pinned extension origin is allowed', () => {
-  assert.equal(validateOrigin(origin), true);
-  for (const invalid of ['https://clinicaltrials.gov', `${origin}extra`, origin.slice(0,-1), 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/', undefined]) assert.equal(validateOrigin(invalid), false);
-});
-test('framing handles fragmentation and multiple messages without losing identities', () => {
-  const received = []; const errors = [];
-  const decoder = new MessageDecoder(value => received.push(value), error => errors.push(error));
-  const frames = Buffer.concat([encodeMessage({ id: 'a', type: 'status', payload: {} }), encodeMessage({ id: 'b', type: 'cancel', payload: { requestId: 'a' } })]);
-  for (let index = 0; index < frames.length; index += 3) decoder.push(frames.subarray(index, index + 3));
-  decoder.end(); assert.deepEqual(received.map(value => value.id), ['a','b']); assert.equal(errors.length, 0);
-});
-test('oversized/zero/malformed/incomplete frames fail without echoing content', () => {
-  for (const length of [0, MAX_MESSAGE_BYTES + 1]) {
-    const errors = []; const decoder = new MessageDecoder(() => assert.fail(), error => errors.push(error));
-    const header = Buffer.alloc(4); header.writeUInt32LE(length); decoder.push(header);
-    assert.equal(errors.length, 1); assert.equal(errors[0].message, 'Invalid native message');
-  }
-  const errors=[]; const decoder = new MessageDecoder(() => assert.fail(), error => errors.push(error));
-  decoder.push(Buffer.from([10,0,0,0,123])); decoder.end(); assert.equal(errors[0].message,'Incomplete native message');
-});
-test('typed operations reject arbitrary URLs, commands, cloud names and excess prompts', () => {
-  assert.equal(validateRequest({id:'ok',type:'generate',payload:{model:'qwen2.5:0.5b',prompt:'fictional'}}).id,'ok');
-  const invalid = [
-    {id:'x',type:'fetch',payload:{url:'https://example.org'}},
-    {id:'x',type:'status',payload:{url:'https://example.org'}},
-    {id:'x',type:'generate',payload:{model:'../model',prompt:'fictional'}},
-    {id:'x',type:'generate',payload:{model:'remote:cloud',prompt:'fictional'}},
-    {id:'x',type:'generate',payload:{model:'qwen2.5:0.5b',prompt:'x'.repeat(24001)}},
-    {id:'x',type:'generate',payload:{model:'qwen2.5:0.5b',prompt:'fictional',tools:[]}},
-    {id:'x',type:'cancel',payload:{requestId:'../x'}},
-    {id:'x',type:'status',payload:{},command:'sh'}
-  ];
-  for (const request of invalid) assert.throws(() => validateRequest(request));
-});
-async function modelFixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(),'treatable-native-model-'));
-  const digest = `sha256:${'a'.repeat(64)}`;
-  await mkdir(path.join(root,'manifests','registry.ollama.ai','library','sample'),{recursive:true});
-  await mkdir(path.join(root,'blobs'));
-  await writeFile(path.join(root,'blobs',digest.replace(':','-')),'weights');
-  const manifestPath=path.join(root,'manifests','registry.ollama.ai','library','sample','latest');
-  await writeFile(manifestPath,JSON.stringify({layers:[{mediaType:'application/vnd.ollama.image.model',digest,size:7}]}));
-  return {root,manifestPath};
+import test from 'node:test';import assert from 'node:assert/strict';
+import {mkdtemp,readFile,writeFile,rm,stat,access} from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {spawn,spawnSync} from 'node:child_process';
+import {validateOrigin,validateRequest,encodeMessage,MessageDecoder,MAX_MESSAGE_BYTES} from '../core.mjs';
+import {getDemoFixture,getDemoPreview,SCORING_LEVELS} from '../../shared/demo-fixtures.mjs';
+import {parseDemoReply} from '../../shared/demo-contract.mjs';
+import {runScore,runAgent,fixtureFor,parseScores,agentPayload} from '../provider.mjs';
+const origin='chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/';
+const payload={fixtureId:'fibromyalgia',consent:true};
+function scoreAnswer(id){return{type:'score',name:id,score:2,confidence:.8,probabilities:SCORING_LEVELS.map((x,i)=>({value:i,label:x.label,probability:i===2?1:0}))};}
+class FakeAPI{
+ constructor({noTool=false,noTerminal=false,badTool=false,deleteFails=false,abort=false}={}){Object.assign(this,{noTool,noTerminal,badTool,deleteFails,abort});this.mode='test';this.calls=[];this.fixture=getDemoFixture('fibromyalgia');}
+ async request(method,url,body,options={}){this.calls.push({method,url,body});if(method==='DELETE'){if(this.deleteFails)throw Error('unavailable');return{deleted:true};}
+  if(url==='/v1/decisions')return{answers:this.fixture.studies.map(x=>scoreAnswer(x.id))};
+  if(method==='GET')return{id:'sess_test',required_actions:this.fixture.studies.map((s,i)=>({type:'function_call',turn_id:'turn_test',call_id:`call_${i}`,name:this.badTool?'run_shell':'get_public_trial_evidence',arguments:{nctId:s.id}}))};
+  if(url.endsWith('/events'))return{};
+  const self=this;return(async function*(){yield{type:'agent.session.created',session:{id:'sess_test'}};if(self.abort){await new Promise((resolve,reject)=>{options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});});return;}
+   if(!self.noTool)yield{type:'agent.session.requires_action',session:{id:'sess_test'}};
+   yield{type:'agent.session.turn.output_text.done',text:JSON.stringify({comparisons:self.fixture.studies.map(x=>({nctId:x.id,questionIds:['eligibility','visits']})),cautionIds:['team_confirms','snapshot','no_benefit_promise']})};
+   if(!self.noTerminal)yield{type:'agent.session.turn.completed',turn:{subagent_id:null}};
+  })();
+ }
 }
-test('a local manifest needs actual complete local weight blobs',async()=>{
-  const {root,manifestPath}=await modelFixture();
-  try {
-    assert.equal(await hasLocalWeights(root,'sample:latest'),true);
-    assert.equal(await hasLocalWeights(root,'../sample:latest'),false);
-    assert.equal(await hasLocalWeights(root,'missing:latest'),false);
-    await writeFile(path.join(root,'blobs',`sha256-${'a'.repeat(64)}`),'partial');
-    // Same byte count but later missing blob is rejected; manifest metadata cannot enable cloud.
-    await rm(path.join(root,'blobs',`sha256-${'a'.repeat(64)}`));
-    assert.equal(await hasLocalWeights(root,'sample:latest'),false);
-    await writeFile(manifestPath,JSON.stringify({remote_host:'https://cloud.invalid',layers:[]}));
-    assert.equal(await hasLocalWeights(root,'sample:latest'),false);
-  } finally {await rm(root,{recursive:true,force:true});}
+test('exact caller and typed fictional operations reject PHI, numeric IDs, arbitrary endpoints and byte overflow',()=>{
+ assert.equal(validateOrigin(origin),true);for(const x of [origin+'x',origin.slice(0,-1),'https://clinicaltrials.gov',undefined])assert.equal(validateOrigin(x),false);
+ assert.equal(validateRequest({id:'x',type:'scoreDemo',payload}).payload.fixtureId,'fibromyalgia');
+ for(const request of [{id:5,type:'status',payload:{}},{id:'x',type:'generate',payload:{prompt:'SENSITIVE_SENTINEL'}},{id:'x',type:'scoreDemo',payload:{...payload,profile:{notes:'SENSITIVE_SENTINEL'}}},{id:'x',type:'agentDemo',payload:{...payload,endpoint:'https://evil.invalid'}},{id:'x',type:'agentDemo',payload:{...payload,consent:false}},{id:'x',type:'cancel',payload:{requestId:1}},{id:'x',type:'status',payload:{x:'🔐'.repeat(30000)}}])assert.throws(()=>validateRequest(request));
+ assert.throws(()=>fixtureFor({...payload,studyIds:['NCT00000000']}));
 });
-test('remote aliases without cloud in the name are rejected by positive local and capability checks',async()=>{
-  const {root}=await modelFixture();
-  try {
-    const tags={models:[{name:'sample:latest',size:7}]};
-    assert.equal((await localModels(tags,async()=>({capabilities:['completion']}),root)).length,1);
-    assert.equal((await localModels(tags,async()=>({capabilities:['completion'],remote_host:'https://remote.invalid'}),root)).length,0);
-    assert.equal((await localModels(tags,async()=>({capabilities:['completion'],remote_model:'alias'}),root)).length,0);
-    assert.equal((await localModels(tags,async()=>({capabilities:['embedding']}),root)).length,0);
-    assert.equal((await localModels({models:[{name:'unknown:latest',size:999}]},async()=>({capabilities:['completion']}),root)).length,0);
-  } finally {await rm(root,{recursive:true,force:true});}
+test('framing fragments, batches and rejects malformed/oversized/incomplete UTF8 frames without echo',()=>{
+ const received=[],errors=[];const d=new MessageDecoder(x=>received.push(x),e=>errors.push(e));const frames=Buffer.concat([encodeMessage({id:'a',type:'status',payload:{}}),encodeMessage({id:'b',type:'cancel',payload:{requestId:'a'}})]);for(let n=0;n<frames.length;n+=3)d.push(frames.subarray(n,n+3));d.end();assert.deepEqual(received.map(x=>x.id),['a','b']);assert.equal(errors.length,0);
+ for(const length of [0,MAX_MESSAGE_BYTES+1]){const errors=[];const d=new MessageDecoder(()=>assert.fail(),e=>errors.push(e));const h=Buffer.alloc(4);h.writeUInt32LE(length);d.push(h);assert.equal(errors[0].message,'Invalid native message');}
+ const errors2=[];const bad=new MessageDecoder(()=>assert.fail(),e=>errors2.push(e));bad.push(Buffer.from([2,0,0,0,0xff,0xff]));assert.equal(errors2.length,1);
 });
-test('isolated-home install is durable, exact-origin, idempotent and uninstall retains models',async()=>{
-  const home=await mkdtemp(path.join(os.tmpdir(),'treatable-native-home-'));
-  try {
-    const installer=new URL('../install.mjs',import.meta.url).pathname;
-    const command=['--home',home,'--ollama',process.execPath];
-    for(let count=0;count<2;count++) {const run=spawnSync(process.execPath,[installer,...command],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);}
-    const host=JSON.parse(await readFile(path.join(home,'Library','Application Support','Google','Chrome','NativeMessagingHosts','com.treatable.local.json'),'utf8'));
-    assert.deepEqual(host.allowed_origins,[origin]);
-    assert.ok(host.path.startsWith(home)); assert.ok(!host.path.includes('.Codex'));
-    const launch=await readFile(host.path,'utf8');assert.ok(launch.includes(process.execPath));
-    assert.equal((await stat(path.dirname(host.path))).mode&0o777,0o700);
-    const wrong=spawnSync(process.execPath,[path.join(path.dirname(host.path),'host.mjs'),'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'],{encoding:'utf8'});
-    assert.equal(wrong.status,1); assert.equal(wrong.stdout,'');assert.ok(!wrong.stderr.includes('fictional'));
-    await mkdir(path.join(home,'.ollama','models'),{recursive:true});
-    const uninstall=spawnSync(process.execPath,[installer,'--home',home,'--uninstall'],{encoding:'utf8'});assert.equal(uninstall.status,0,uninstall.stderr);
-    await access(path.join(home,'.ollama','models'));
-    await assert.rejects(access(host.path));
-  } finally {await rm(home,{recursive:true,force:true});}
+test('exact preview equals actual request bodies and uses only native-owned fictional/public fixture evidence',async()=>{
+ const f=getDemoFixture('fibromyalgia'),preview=getDemoPreview('fibromyalgia'),api=new FakeAPI();const score=await runScore(api,payload);assert.equal(score.mode,'test');assert.equal(score.scores[0].index,67);assert.deepEqual(api.calls[0].body,preview.decisionsRequest);assert.deepEqual(agentPayload(f),preview.agentsRequest);assert.deepEqual(preview.toolResults.map(x=>x.study.id),f.studies.map(x=>x.id));assert.ok(!JSON.stringify(preview).includes('SENSITIVE_SENTINEL'));
+ assert.throws(()=>getDemoPreview('fibromyalgia',['NCT00000000']));assert.throws(()=>parseScores({answers:[scoreAnswer(f.studies[0].id),scoreAnswer(f.studies[0].id)]},f,'test'));
 });
-test('real native transport keeps proxies/credentials out and cancellation preserves protocol',async()=>{
-  const {root}=await modelFixture();
-  const home=await mkdtemp(path.join(os.tmpdir(),'treatable-native-rpc-'));
-  const fake=path.join(home,'ollama');
-  const code=`#!${process.execPath}
-import http from 'node:http';
-if(process.env.OLLAMA_NO_CLOUD!=='1'||process.env.OLLAMA_DEBUG!=='0'||process.env.OPENAI_API_KEY||process.env.HTTP_PROXY)process.exit(19);
-const server=http.createServer((request,response)=>{
-let body='';request.on('data',chunk=>body+=chunk);request.on('end',()=>{
-const payload=body?JSON.parse(body):{};response.setHeader('Content-Type','application/json');
-if(request.url==='/api/version')response.end(JSON.stringify({version:'test'}));
-else if(request.url==='/api/tags')response.end(JSON.stringify({models:[{name:'sample:latest',size:7}]}));
-else if(request.url==='/api/show')response.end(JSON.stringify({capabilities:['completion']}));
-else if(request.url==='/api/generate')setTimeout(()=>response.end(JSON.stringify({response:'Local only'})),payload.prompt==='SLOW'?2000:0);
-else {response.statusCode=404;response.end('{}');}
-});});
-const [host,port]=process.env.OLLAMA_HOST.split(':');server.listen(Number(port),host);
-process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
-`;
-  await writeFile(fake,code,{mode:0o700});
-  let native;
-  try {
-    const installer=new URL('../install.mjs',import.meta.url).pathname;
-    const install=spawnSync(process.execPath,[installer,'--home',home,'--ollama',fake,'--models-dir',root],{encoding:'utf8'});assert.equal(install.status,0,install.stderr);
-    const host=path.join(home,'Library','Application Support','Treatable','native-host','host.mjs');
-    native=spawn(process.execPath,[host,origin],{env:{...process.env,HTTP_PROXY:'http://127.0.0.1:1',HTTPS_PROXY:'http://127.0.0.1:1',NODE_USE_ENV_PROXY:'1',OPENAI_API_KEY:'must-not-reach-runtime'},stdio:['pipe','pipe','pipe']});
-    let stderr='';native.stderr.on('data',chunk=>stderr+=chunk.toString());
-    const pending=new Map();
-    const decoder=new MessageDecoder(message=>pending.get(message.id)?.(message),error=>assert.fail(error.message));
-    native.stdout.on('data',chunk=>decoder.push(chunk));
-    const rpc=message=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('RPC timeout')),10000);pending.set(message.id,result=>{clearTimeout(timer);pending.delete(message.id);resolve(result);});native.stdin.write(encodeMessage(message));});
-    const status=await rpc({id:'status',type:'status',payload:{}});assert.equal(status.ok,true);assert.equal(status.models[0].name,'sample:latest');
-    const result=await rpc({id:'generate',type:'generate',payload:{model:'sample:latest',prompt:'fictional private test'}});assert.equal(result.ok,true);assert.equal(result.text,'Local only');
-    const long=rpc({id:'long',type:'generate',payload:{model:'sample:latest',prompt:'SLOW'}});
-    await new Promise(resolve=>setTimeout(resolve,60));
-    const cancel=await rpc({id:'cancel',type:'cancel',payload:{requestId:'long'}});assert.equal(cancel.ok,true);
-    const stopped=await long;assert.equal(stopped.ok,false);assert.match(stopped.error,/stopped or timed out/);
-    const unknown=await rpc({id:'unknown',type:'generate',payload:{model:'unverified:latest',prompt:'fictional'}});assert.equal(unknown.ok,false);assert.ok(!unknown.error.includes('fictional'));
-    assert.equal(stderr,'');
-    native.stdin.end();await new Promise(resolve=>native.once('exit',resolve));native=undefined;
-  } finally {native?.kill('SIGTERM');await rm(root,{recursive:true,force:true});await rm(home,{recursive:true,force:true});}
+test('real Agents protocol requires valid pending tool actions, posts matching results, validates completion and deletes state',async()=>{
+ const api=new FakeAPI(),trace=[];const result=await runAgent(api,payload,{onTrace:x=>trace.push(x)});assert.equal(result.mode,'test');assert.equal(result.toolCalls,2);assert.equal(result.cleanup,'deleted');assert.equal(api.calls.filter(x=>x.url.endsWith('/events')).length,2);const event=api.calls.find(x=>x.url.endsWith('/events')).body.events[0];assert.deepEqual([event.type,event.turn_id,event.call_id,event.success],['agent.session.input.tool_result','turn_test','call_0',true]);assert.equal(JSON.parse(event.output).public,true);assert.equal(api.calls.at(-1).method,'DELETE');assert.ok(trace.some(x=>x.stage==='agent.tool.result'));assert.ok(trace.some(x=>x.stage==='agent.cleanup.deleted'));
 });
-test('an unrelated listener is never trusted as the helper-owned daemon',async()=>{
-  const home=await mkdtemp(path.join(os.tmpdir(),'treatable-native-foreign-'));
-  const fake=path.join(home,'ollama');const pidFile=path.join(home,'foreign-pid');const requestFile=path.join(home,'foreign-request');
-  let native;
-  try {
-    const foreign=`const http=require('http'),fs=require('fs');const[host,port]=process.env.OLLAMA_HOST.split(':');http.createServer((req,res)=>{fs.writeFileSync(${JSON.stringify(requestFile)},'unexpected');res.end(JSON.stringify({version:'foreign'}));}).listen(Number(port),host);`;
-    const code=`#!${process.execPath}\nimport{spawn}from'node:child_process';import{writeFileSync}from'node:fs';const child=spawn(process.execPath,['-e',${JSON.stringify(foreign)}],{env:process.env,stdio:'ignore',detached:true});writeFileSync(${JSON.stringify(pidFile)},String(child.pid));child.unref();setTimeout(()=>process.exit(0),500);\n`;
-    await writeFile(fake,code,{mode:0o700});
-    const installer=new URL('../install.mjs',import.meta.url).pathname;
-    const install=spawnSync(process.execPath,[installer,'--home',home,'--ollama',fake],{encoding:'utf8'});assert.equal(install.status,0,install.stderr);
-    const host=path.join(home,'Library','Application Support','Treatable','native-host','host.mjs');
-    native=spawn(process.execPath,[host,origin],{stdio:['pipe','pipe','pipe']});
-    const status=await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('status timeout')),10000);const decoder=new MessageDecoder(message=>{clearTimeout(timeout);resolve(message);},reject);native.stdout.on('data',chunk=>decoder.push(chunk));native.stdin.write(encodeMessage({id:'foreign',type:'status',payload:{}}));});
-    assert.equal(status.ok,false);assert.deepEqual(status.models,[]);await assert.rejects(access(requestFile));
-    native.stdin.end();await new Promise(resolve=>native.once('exit',resolve));native=undefined;
-  } finally {native?.kill('SIGTERM');try {const pid=Number(await readFile(pidFile,'utf8'));if(pid>0)process.kill(pid,'SIGTERM');}catch{}await rm(home,{recursive:true,force:true});}
+test('EOF, missing tool use, arbitrary tools and deletion failure never masquerade as verified success',async()=>{
+ for(const opts of [{noTerminal:true},{noTool:true},{badTool:true}]){const api=new FakeAPI(opts);await assert.rejects(runAgent(api,payload));assert.ok(api.calls.some(x=>x.method==='DELETE'));}
+ const api=new FakeAPI({deleteFails:true}),trace=[];const result=await runAgent(api,payload,{onTrace:x=>trace.push(x)});assert.equal(result.cleanup,'failed');assert.equal(api.calls.filter(x=>x.method==='DELETE').length,2);assert.ok(trace.some(x=>x.stage==='agent.cleanup.failed'));
+});
+test('cancellation still attempts provider-state deletion before original operation rejects',async()=>{
+ const api=new FakeAPI({abort:true}),controller=new AbortController(),run=runAgent(api,payload,{signal:controller.signal});setTimeout(()=>controller.abort(),10);await assert.rejects(run);assert.ok(api.calls.some(x=>x.method==='DELETE'));
+});
+test('reply schemas reject invented template IDs, arbitrary score fields and mismatched reply IDs',()=>{
+ assert.throws(()=>parseDemoReply({id:'other',type:'status',ok:true,provider:'openai',configured:true,message:'ready'},'x'));
+ assert.throws(()=>parseDemoReply({id:'x',type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'fibromyalgia',mode:'live',scores:[{nctId:'NCT06567886',index:50,confidence:.5,url:'https://evil.invalid'}]}},'x'));
+ assert.throws(()=>parseDemoReply({id:'x',type:'result',ok:true,result:{kind:'agentDemo',fixtureId:'fibromyalgia',mode:'live',comparisons:[{nctId:'NCT06567886',questionIds:['send_secrets']}],cautionIds:['team_confirms'],toolCalls:1,cleanup:'deleted'}},'x'));
+});
+test('isolated-home installer is durable, strips inherited networking flags, and never requires or accesses a user key',async()=>{
+ const home=await mkdtemp(path.join(os.tmpdir(),'treatable-api-install-')),fake=path.join(home,'fake-keychain');try{
+  await writeFile(fake,`#!${process.execPath}\nif(process.argv[2]==='status')process.stdout.write('{"configured":false}');else process.exit(2);`,{mode:0o700});const installer=new URL('../install.mjs',import.meta.url).pathname;
+  for(let n=0;n<2;n++){const r=spawnSync(process.execPath,[installer,'--home',home,'--credential-helper',fake],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);}
+  const manifest=JSON.parse(await readFile(path.join(home,'Library','Application Support','Google','Chrome','NativeMessagingHosts','com.treatable.local.json'),'utf8'));assert.deepEqual(manifest.allowed_origins,[origin]);assert.ok(!manifest.path.includes('.Codex'));
+  assert.equal((await stat(path.dirname(manifest.path))).mode&0o777,0o700);const launch=await readFile(manifest.path,'utf8');assert.ok(launch.includes('/usr/bin/env -i'));assert.ok(!launch.includes('OPENAI_API_KEY'));
+  const wrong=spawnSync(process.execPath,[path.join(path.dirname(manifest.path),'native','host.mjs'),'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'],{encoding:'utf8'});assert.equal(wrong.status,1);assert.equal(wrong.stdout,'');
+  const uninstall=spawnSync(process.execPath,[installer,'--home',home,'--uninstall'],{encoding:'utf8'});assert.equal(uninstall.status,0);await assert.rejects(access(manifest.path));
+ }finally{await rm(home,{recursive:true,force:true});}
+});
+test('actual framed helper rejects PHI and duplicate IDs before any credential read; status never exposes secrets',async()=>{
+ const home=await mkdtemp(path.join(os.tmpdir(),'treatable-api-stdio-')),fake=path.join(home,'keychain'),readMarker=path.join(home,'credential-read');let child;
+ try{await writeFile(fake,`#!${process.execPath}\nimport fs from 'node:fs';if(process.argv[2]==='status')process.stdout.write('{"configured":false}');else{fs.writeFileSync(${JSON.stringify(readMarker)},'read');process.stdout.write('sk-test-not-a-real-key');}`,{mode:0o700});
+  const r=spawnSync(process.execPath,[new URL('../install.mjs',import.meta.url).pathname,'--home',home,'--credential-helper',fake],{encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+  const host=path.join(home,'Library','Application Support','Treatable','native-host','native','host.mjs');child=spawn(process.execPath,[host,origin],{stdio:['pipe','pipe','pipe']});const pending=new Map();let stderr='';child.stderr.on('data',x=>stderr+=x);const decoder=new MessageDecoder(x=>pending.get(x.id)?.(x),assert.fail);child.stdout.on('data',x=>decoder.push(x));
+  const rpc=m=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('timeout, child='+child.exitCode+', stderr='+stderr)),7000);pending.set(m.id,x=>{clearTimeout(timer);pending.delete(m.id);resolve(x)});child.stdin.write(encodeMessage(m));});
+  const status=await rpc({id:'status',type:'status',payload:{}});assert.equal(status.configured,false);assert.equal(status.provider,'openai');
+  const bad=await rpc({id:'bad',type:'scoreDemo',payload:{...payload,notes:'SENSITIVE_SENTINEL'}});assert.equal(bad.ok,false);assert.ok(!JSON.stringify(bad).includes('SENSITIVE_SENTINEL'));
+  const duplicate=await rpc({id:'status',type:'status',payload:{}});assert.equal(duplicate.code,'INVALID_REQUEST');await assert.rejects(access(readMarker));assert.equal(stderr,'');
+  child.stdin.end();await new Promise(r=>child.once('exit',r));child=undefined;
+ }finally{child?.kill();await rm(home,{recursive:true,force:true});}
 });
