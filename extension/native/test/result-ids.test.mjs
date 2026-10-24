@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import{parseDemoResult,parseDemoReply,templateIdList,QUESTION_TEMPLATES}from'../../shared/demo-contract.mjs';
 import{parseRealResult}from'../../shared/real-contract.mjs';
+import{parseLiveResult,parseLiveReply}from'../../shared/live-analysis-contract.mjs';
 import{PUBLIC_STUDY_IDS}from'../../shared/public-catalog.mjs';
 const cautions=['team_confirms','snapshot','no_benefit_promise'];
 const demo=(comparisons,cautionIds=cautions)=>({kind:'agentDemo',fixtureId:'fibromyalgia',mode:'live',comparisons,cautionIds,toolCalls:2,cleanup:'deleted'});
@@ -28,4 +29,16 @@ test('real agent and score results reject type-confused and duplicate IDs',()=>{
  const score=nctId=>({nctId,index:50,confidence:.5});
  assert.equal(parseRealResult({kind:'scoreReal',mode:'live',consentDigest:'a'.repeat(64),scores:[score(r1),score(r2)]}).kind,'scoreReal');
  for(const scores of [[score(r1),score(r1)],[score([r1])]])assert.throws(()=>parseRealResult({kind:'scoreReal',mode:'live',consentDigest:'a'.repeat(64),scores}));
+});
+test('live agent and score results reject type-confused, inherited and duplicate question/caution/NCT IDs',()=>{
+ const [l1,l2]=['NCT99999920','NCT99999921'],bound={mode:'live',analysisId:'0b6f1c2e-6a1d-4c3b-9d2e-1f2a3b4c5d6e',snapshotId:'a'.repeat(64),source:{generation:'generation_ids',queryKey:'b'.repeat(64)},profileKey:'c'.repeat(64),consentDigest:'d'.repeat(64)};
+ const live=(comparisons,cautionIds=cautions)=>({kind:'agentLive',...bound,comparisons,cautionIds,toolCalls:2,cleanup:'deleted'});
+ assert.equal(parseLiveResult(live([{nctId:l1,questionIds:['eligibility','costs']},{nctId:l2,questionIds:['visits']}])).kind,'agentLive');
+ for(const questionIds of confused)assert.throws(()=>parseLiveResult(live([{nctId:l1,questionIds}])),JSON.stringify(questionIds));
+ for(const cautionIds of [[['team_confirms'],'snapshot','no_benefit_promise'],['team_confirms','snapshot','snapshot'],['team_confirms','snapshot',['no_benefit_promise']],['team_confirms','snapshot','toString'],['team_confirms','snapshot']])assert.throws(()=>parseLiveResult(live([{nctId:l1,questionIds:['eligibility']}],cautionIds)),JSON.stringify(cautionIds));
+ for(const comparisons of [[{nctId:l1,questionIds:['eligibility']},{nctId:l1,questionIds:['visits']}],[{nctId:[l1],questionIds:['eligibility']}],[{nctId:{toString:()=>l1},questionIds:['eligibility']}]])assert.throws(()=>parseLiveResult(live(comparisons)));
+ assert.throws(()=>parseLiveReply({id:'x',type:'result',ok:true,result:live([{nctId:l1,questionIds:[['eligibility'],'eligibility','eligibility']}])},'x'));
+ const score=nctId=>({nctId,index:50,confidence:.5}),scored=scores=>({kind:'scoreLive',...bound,scores});
+ assert.equal(parseLiveResult(scored([score(l1),score(l2)])).kind,'scoreLive');
+ for(const scores of [[score(l1),score(l1)],[score([l1])],[score({toString:()=>l1})]])assert.throws(()=>parseLiveResult(scored(scores)));
 });
