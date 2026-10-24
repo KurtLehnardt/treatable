@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import net from 'node:net';
+import { request as directHttpRequest } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { MessageDecoder, encodeMessage, validateOrigin, validateRequest, localModels, MAX_RESPONSE_CHARS } from './core.mjs';
 
@@ -38,13 +39,26 @@ async function ownsListener() {
   } catch { return false; }
 }
 
+function localJson(route, body, signal, maxBytes = 1024 * 1024) {
+  // node:http connects directly to loopback. It never honors proxy environment variables.
+  return new Promise((resolve, reject) => {
+    const port = Number(new URL(endpoint).port);
+    const encoded = body ? Buffer.from(JSON.stringify(body), 'utf8') : undefined;
+    const request = directHttpRequest({ hostname: '127.0.0.1', port, path: route, method: body ? 'POST' : 'GET', agent: false, signal, headers: encoded ? { 'Content-Type': 'application/json', 'Content-Length': encoded.length } : undefined }, response => {
+      if (response.statusCode < 200 || response.statusCode >= 300) { response.resume(); reject(new Error('Local runtime unavailable')); return; }
+      const chunks = []; let bytes = 0;
+      response.on('data', chunk => { bytes += chunk.length; if (bytes > maxBytes) { response.destroy(); reject(new Error('Local response exceeded limit')); } else chunks.push(chunk); });
+      response.on('error', reject);
+      response.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { reject(new Error('Invalid local response')); } });
+    });
+    request.on('error', reject);
+    if (encoded) request.write(encoded);
+    request.end();
+  });
+}
 async function requestJson(route, body, signal) {
   const timeout = AbortSignal.timeout(5000);
-  const response = await fetch(`${endpoint}${route}`, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined, redirect: 'error', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (!response.ok) throw new Error('Local runtime unavailable');
-  const text = await response.text();
-  if (text.length > 1024 * 1024) throw new Error('Local metadata exceeded limit');
-  return JSON.parse(text);
+  return localJson(route, body, signal ? AbortSignal.any([signal, timeout]) : timeout);
 }
 
 async function startRuntime() {
@@ -100,13 +114,7 @@ async function handle(raw) {
     if (controller.signal.aborted) throw new Error('Cancelled');
     if (!await ownsListener()) throw new Error('Local runtime ownership lost');
     if (!models.some(model => model.name === payload.model)) throw new Error('Unknown local model');
-    const response = await fetch(`${endpoint}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, redirect: 'error', body: JSON.stringify({ model: payload.model, prompt: payload.prompt, stream: false, options: { temperature: 0, num_predict: 512, num_ctx: 4096 }, keep_alive: '1m' }) });
-    if (!response.ok) throw new Error('Local inference failed');
-    const reader = response.body.getReader();
-    let bytes = 0;
-    const chunks = [];
-    while (true) { const { value, done } = await reader.read(); if (done) break; bytes += value.byteLength; if (bytes > 256 * 1024) { await reader.cancel(); throw new Error('Local response too large'); } chunks.push(Buffer.from(value)); }
-    const result = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const result = await localJson('/api/generate', { model: payload.model, prompt: payload.prompt, stream: false, options: { temperature: 0, num_predict: 512, num_ctx: 4096 }, keep_alive: '1m' }, controller.signal, 256 * 1024);
     if (result.remote_host || result.remote_model || typeof result.response !== 'string' || result.response.length > MAX_RESPONSE_CHARS) throw new Error('Invalid local response');
     send({ id, type: 'result', ok: true, text: result.response });
   } catch { send({ id, type: 'result', ok: false, error: controller.signal.aborted ? 'Local analysis stopped or timed out. Your results are preserved.' : 'Local analysis is unavailable. Your results are preserved.' }); }

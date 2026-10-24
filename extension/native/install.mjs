@@ -43,7 +43,7 @@ const config = { extensionId, ollamaPath, modelsDir, lsofPath };
 await writeFile(path.join(directory, 'config.json'), JSON.stringify(config, null, 2), { mode: 0o600 });
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
 const launcher = path.join(directory, 'launch');
-await writeFile(launcher, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(path.join(directory, 'host.mjs'))} "$@"\n`, { mode: 0o700 });
+await writeFile(launcher, `#!/bin/sh\nunset NODE_OPTIONS NODE_USE_ENV_PROXY HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy\nexec ${quote(process.execPath)} ${quote(path.join(directory, 'host.mjs'))} "$@"\n`, { mode: 0o700 });
 await chmod(launcher, 0o700);
 await mkdir(path.dirname(chromeManifest), { recursive: true });
 await writeFile(chromeManifest, JSON.stringify({ name: HOST_NAME, description: 'Treatable private local model helper', path: launcher, type: 'stdio', allowed_origins: [`chrome-extension://${extensionId}/`] }, null, 2), { mode: 0o600 });
