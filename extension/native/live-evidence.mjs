@@ -1,6 +1,7 @@
 import https from 'node:https';
 import {createHash} from 'node:crypto';
 import {ApiError} from './transport.mjs';
+import {sameSecret} from './real.mjs';
 import {sanitizeUntrustedText} from '../shared/untrusted-text.mjs';
 import {liveNctIds,parseLiveSource,parseLiveCatalog,LIVE_SNAPSHOT_TTL_MS,LIVE_CATALOG_MAX_CONDITIONS} from '../shared/live-analysis-contract.mjs';
 export const GOV_RECORD_MAX_BYTES=512*1024,GOV_TIMEOUT_MS=12000,GOV_CONCURRENCY=3,GOV_CACHE_LIMIT=50;
@@ -43,5 +44,6 @@ export class LiveEvidenceStore{
   const labels=new Map();for(const row of rows)for(const label of row.conditions)labels.set(label.toLocaleLowerCase('en-US'),label);const values=[...labels].sort(([a],[b])=>a.localeCompare(b)),conditions=values.slice(0,LIVE_CATALOG_MAX_CONDITIONS).map(([key,label])=>({id:'lc_'+hash(key),label}));
   const fetchedAt=this.wallNow(),data={source:binding,studies:rows,conditions,conditionsTruncated:values.length>conditions.length,fetchedAt,expiresAt:fetchedAt+LIVE_SNAPSHOT_TTL_MS};const result=parseLiveCatalog({kind:'liveCatalog',snapshotId:hash(data),...data});this.snapshot=freezeLive({catalog:result,expires:this.now()+LIVE_SNAPSHOT_TTL_MS});this.timer=setTimeout(()=>this.discard(),LIVE_SNAPSHOT_TTL_MS);this.timer.unref?.();return structuredClone(result);
  }
- get(snapshotId,source){const s=this.snapshot;if(!s||s.expires<=this.now()){this.discard();throw new ApiError('LIVE_SNAPSHOT_EXPIRED');}if(s.catalog.snapshotId!==snapshotId||JSON.stringify(s.catalog.source)!==JSON.stringify(parseLiveSource(source)))throw new ApiError('LIVE_SOURCE_CHANGED');return s.catalog;}
+ get(snapshotId,source){const s=this.snapshot;if(!s||s.expires<=this.now()){this.discard();throw new ApiError('LIVE_SNAPSHOT_EXPIRED');}// Snapshot digests compare in constant time like the live token and consent digest (sameSecret: timingSafeEqual on equal-length buffers).
+  if(!sameSecret(snapshotId,s.catalog.snapshotId)||JSON.stringify(s.catalog.source)!==JSON.stringify(parseLiveSource(source)))throw new ApiError('LIVE_SOURCE_CHANGED');return s.catalog;}
 }
