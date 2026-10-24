@@ -14,21 +14,32 @@ node extension/native/credentials-setup.mjs status
 
 `extension/dist` is the primary Version B build; `dist-b` has the same identity and interface. Install the final helper **before** credential configuration. The installer copies the current bridge code, compiles the Keychain helper, registers `com.treatable.local` and pins `process.execPath` in its launcher. Reinstall after replacing or moving that Node executable or updating native source. It changes only Treatable’s own registration/helper and retains the dedicated Keychain item.
 
-Credential setup prompts in an interactive terminal with echo disabled. It stores only the dedicated macOS Keychain item (`com.treatable.hackathon.openai`, account `api-key`), using the installed helper when present. Never pass a key in an argument, environment variable, browser, chat, configuration file or logs. Installation and configuration do not make provider requests. Keychain may request access; replacing the helper can require access approval again.
+Credential setup prompts in an interactive terminal with echo disabled. It stores only the dedicated macOS Keychain item (service `com.treatable.openai`, account `api-key`, label “Treatable OpenAI API key”, not synchronized to other devices), using the installed helper when present. Never pass a key in an argument, environment variable, browser, chat, configuration file or logs. Installation and configuration do not make provider requests. Keychain may request access; replacing the helper can require access approval again.
 
-`credentials-setup.mjs status` reads metadata only; `configured: true` is not API authentication. `remove` removes only this dedicated item. `build` compiles without reading credentials. Actual account/API/model access needs an explicitly consented live request. The key needs Decisions access plus Agents `api.agents.read`, `api.agents.write` and `api.responses.write` permissions.
+`credentials-setup.mjs status` reads metadata only; `configured: true` is not API authentication. `migrate` moves a key saved by an earlier version (see below). `remove` removes only this dedicated item and any item left by an earlier version. `build` compiles without reading credentials. Actual account/API/model access needs an explicitly consented live request. The key needs Decisions access plus Agents `api.agents.read`, `api.agents.write` and `api.responses.write` permissions.
 
-### This checkout’s runtime prerequisite
+### Upgrading from an earlier version: Keychain item rename
 
-The prior installed Homebrew Node executable could not start because its `libcrypto.4.dylib` dependency was missing. The native installation has been refreshed using the working bundled Node 24.22.1 runtime. Native stdio status is now successful and reports provider `openai`. The user has securely configured the dedicated key; safe metadata reports **`configured: true`**. Configuration does not need to be repeated. The bounded live-check results are recorded below.
+Earlier versions stored the key in a Keychain item under a different service name. The current helper moves it to `com.treatable.openai`; nothing has to be re-entered.
 
-For a future fresh setup or deliberate credential replacement, this checkout’s secure configuration command is independent of the terminal’s working directory:
+1. After updating the source, rebuild the extension and **reinstall the native helper**: `node extension/native/install.mjs --manifest extension/dist/manifest.json`. A helper installed by an earlier version keeps using the earlier item, and `credentials-setup.mjs` refuses to run `configure`, `migrate` or `remove` with it until it is reinstalled.
+2. `node extension/native/credentials-setup.mjs status` reports `configured: true` when either item exists and says whether a migration is pending.
+3. Run `node extension/native/credentials-setup.mjs migrate` once. If you skip this, the helper migrates on its next key read when only the earlier item exists.
+4. macOS may prompt for Keychain access, usually once, asking whether `treatable-keychain` may use the earlier item, because the reinstalled helper is a new binary. Allow it to complete the migration. If you decline, nothing changes. During an analysis request the key read times out after 15 seconds, so an unanswered prompt fails that request with the missing-key message; running `migrate` in Terminal avoids this.
+
+The helper copies the key into the new item with the same attributes `configure` uses (a generic password that is not synchronizable), reads it back to verify it, and only then deletes the earlier item. If the copy or its verification fails, the earlier item stays in place and Treatable keeps using it; run `migrate` again later. If only the deletion of the earlier item fails or is interrupted, Treatable uses the new item, and `status` reports a pending migration until `migrate` or `configure` removes the earlier item. If the earlier item does not hold an accepted key, nothing is moved and `migrate` asks you to run `configure`. The key moves only inside the helper process: it is never printed, logged, written to a file, or passed through arguments or environment variables. `configure` writes only the new item and then removes the earlier one.
+
+### Node runtime prerequisite
+
+The installer pins the Node executable that ran it (`process.execPath`) in its launcher. If that executable later fails to start, for example because a package-manager Node lost a shared library such as `libcrypto`, rerun the installer with a working Node 20+ from your `PATH`.
+
+`credentials-setup.mjs` does not depend on the terminal’s working directory, so it can also be run with an absolute path to your checkout:
 
 ```sh
-/Users/LenovoT440p/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node /Users/LenovoT440p/work/treatable/extension/native/credentials-setup.mjs configure
+node "$HOME/path/to/treatable/extension/native/credentials-setup.mjs" configure
 ```
 
-That path is machine-specific. On another computer, use its working Node runtime. Do not copy a key into this command; the helper requests it privately in the terminal.
+Replace the path with your checkout’s location. Do not copy a key into this command; the helper requests it privately in the terminal.
 
 ## Current-page analysis
 
@@ -70,6 +81,6 @@ Authorized live checks used fictional profile values and public evidence: **one 
 
 A separately authorized Agents-only probe then completed one required evidence call, validated its study/question IDs and received the exact deletion acknowledgment after two attempts. Task request to completion took 10.925 seconds; cleanup took 2.872 seconds; request to result took 13.798 seconds. The later session is acknowledged deleted; this does not establish deletion of the first session or explain its failure. No Decisions request was repeated. No further authenticated calls were made.
 
-Actual Chrome rendering and the Chrome-to-native handshake remain outstanding. Any further live check requires an explicit bounded scope; identify fictional inputs clearly and inspect the exact preview. The current-page transport remains labeled as real analysis even when the presenter enters fictional example values. Show request and cleanup failures honestly.
+Actual Chrome rendering and the Chrome-to-native handshake remain outstanding. Any further live check requires an explicit bounded scope; identify fictional inputs clearly and inspect the exact preview. The current-page transport remains labeled as real analysis even when the operator enters fictional example values. Show request and cleanup failures honestly.
 
 Official contracts: [Decisions](https://developers.openai.com/api/docs/guides/decisions), [create decision](https://developers.openai.com/api/reference/resources/decisions/methods/create), [Agents create](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/methods/create), [functions](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), [events](https://developers.openai.com/api/docs/guides/agents-api/sessions/events), [session deletion](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [data controls](https://developers.openai.com/api/docs/guides/your-data).

@@ -68,8 +68,8 @@ export function escapeRegExp(s: string): string {
 /**
  * A home folder as a pattern: either slash between its parts (and doubled
  * backslashes, as in JSON), case-insensitive, and not matching a longer
- * folder name that merely starts with it (C:\Users\kurt must not eat
- * C:\Users\kurtis).
+ * folder name that merely starts with it (C:\Users\jane must not eat
+ * C:\Users\janet).
  */
 export function homePattern(home: string): string | null {
   const parts = home.replace(/[\\/]+$/, "").split(/[\\/]+/);

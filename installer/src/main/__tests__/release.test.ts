@@ -16,7 +16,7 @@ describe("release tags", () => {
   test("only v<major>.<minor>.<patch> is a release tag", () => {
     assert.deepEqual(parseReleaseTag("v1.2.3"), [1, 2, 3]);
     assert.deepEqual(parseReleaseTag("v10.0.12"), [10, 0, 12]);
-    for (const bad of ["1.2.3", "v1.2", "v1.2.3-beta", "hackathon-deadline", "main", "", null, undefined, "v1.2.3; rm -rf /"]) {
+    for (const bad of ["1.2.3", "v1.2", "v1.2.3-beta", "nightly-build", "main", "", null, undefined, "v1.2.3; rm -rf /"]) {
       assert.equal(parseReleaseTag(bad), null, String(bad));
     }
   });
@@ -27,7 +27,7 @@ describe("release tags", () => {
     assert.equal(isNewerRelease("v0.1.1", "v0.1.0"), true);
     assert.equal(isNewerRelease("v0.1.0", "v0.1.0"), false);
     assert.equal(isNewerRelease("v0.0.9", "v0.1.0"), false);
-    assert.equal(isNewerRelease("hackathon-deadline", "v0.1.0"), false);
+    assert.equal(isNewerRelease("nightly-build", "v0.1.0"), false);
     assert.equal(isNewerRelease(null, "v0.1.0"), false);
   });
 
@@ -35,7 +35,7 @@ describe("release tags", () => {
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0", draft: false, prerelease: false }), "v0.2.0");
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0", prerelease: true }), null);
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0", draft: true }), null);
-    assert.equal(parseLatestRelease({ tag_name: "hackathon-deadline" }), null);
+    assert.equal(parseLatestRelease({ tag_name: "nightly-build" }), null);
     assert.equal(parseLatestRelease({ message: "Not Found" }), null);
     assert.equal(parseLatestRelease(null), null);
     assert.equal(parseLatestRelease("v0.2.0"), null);

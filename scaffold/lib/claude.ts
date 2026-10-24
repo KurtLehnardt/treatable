@@ -31,7 +31,7 @@ export const MODEL ="claude-sonnet-4-6";
  * quality impact. `candidate_analysis` and `weak_field_explanation` stay on the
  * expensive `MODEL` (the routing table keeps those on the expensive model too).
  * The id is a real, currently-available snapshot; override via env if it ever
- * moves. The 4 judged demo cases never reach this — they hit the precomputed
+ * moves. The 4 standard demo cases never reach this — they hit the precomputed
  * cache path in the route — so this only affects novel searches.
  */
 const CHEAP_MODEL = process.env.PROFILE_EXTRACTION_MODEL || "claude-haiku-4-5-20251001";

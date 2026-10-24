@@ -234,13 +234,13 @@
   ✔ nothing without a status (0.114708ms)
 ✔ LocalSearchStatus — renders (2.472375ms)
 Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
-    at ScrollFadeContainer (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/components/ScrollFadeContainer.tsx:28:3)
+    at ScrollFadeContainer (<repo>/scaffold/components/ScrollFadeContainer.tsx:28:3)
 Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
-    at ScrollFadeContainer (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/components/ScrollFadeContainer.tsx:28:3)
+    at ScrollFadeContainer (<repo>/scaffold/components/ScrollFadeContainer.tsx:28:3)
 Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
-    at ScrollFadeContainer (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/components/ScrollFadeContainer.tsx:28:3)
+    at ScrollFadeContainer (<repo>/scaffold/components/ScrollFadeContainer.tsx:28:3)
 Warning: useLayoutEffect does nothing on the server, because its effect cannot be encoded into the server renderer's output format. This will lead to a mismatch between the initial, non-hydrated UI and the intended UI. To avoid this, useLayoutEffect should only be used in components that render exclusively on the client. See https://reactjs.org/link/uselayouteffect-ssr for common fixes.
-    at ScrollFadeContainer (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/components/ScrollFadeContainer.tsx:28:3)
+    at ScrollFadeContainer (<repo>/scaffold/components/ScrollFadeContainer.tsx:28:3)
 ▶ ScrollFadeContainer
   ✔ renders children inside a keyboard-focusable scroll container (4.459083ms)
   ✔ renders neither edge fade before any scroll measurement (SSR / initial paint) (0.280166ms)
@@ -1686,12 +1686,12 @@ Warning: useLayoutEffect does nothing on the server, because its effect cannot b
 ✔ validateCloudConfig: fcc with no base URL saves the default (0.067334ms)
 [metering] no PRICE_TABLE entry for model "unknown" — costUsd defaulting to 0. Add a priced entry to lib/metering/pricing.ts if this model is now in real use. (This warning is logged once per model per process.)
 [metering] logSummary() failed: Error: log sink exploded
-    at console.console.log (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/lib/metering/__tests__/meter.test.ts:378:13)
-    at Object.logSummary (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/lib/metering/meter.ts:247:15)
-    at <anonymous> (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/lib/metering/__tests__/meter.test.ts:381:39)
+    at console.console.log (<repo>/scaffold/lib/metering/__tests__/meter.test.ts:378:13)
+    at Object.logSummary (<repo>/scaffold/lib/metering/meter.ts:247:15)
+    at <anonymous> (<repo>/scaffold/lib/metering/__tests__/meter.test.ts:381:39)
     at getActual (node:assert:580:5)
     at strict.doesNotThrow (node:assert:748:32)
-    at TestContext.<anonymous> (/Users/LenovoT440p/work/treatable/.Codex/worktrees/foundation/scaffold/lib/metering/__tests__/meter.test.ts:381:14)
+    at TestContext.<anonymous> (<repo>/scaffold/lib/metering/__tests__/meter.test.ts:381:14)
     at Test.runInAsyncScope (node:async_hooks:226:14)
     at Test.run (node:internal/test_runner/test:1402:25)
     at Suite.processPendingSubtests (node:internal/test_runner/test:974:18)

@@ -1,6 +1,6 @@
 # Treatable phase-one build report
 
-Validated locally on 2026-10-23 (America/Boise). New project: `/Users/LenovoT440p/work/treatable`. Feature delivery branch: `codex/phase-one`. No remote repository was created, no code was published, and no PR/main merge occurred.
+Validated locally on 2026-10-23 (America/Boise). New project: this repository. Feature delivery branch: `codex/phase-one`. No remote repository was created, no code was published, and no PR/main merge occurred.
 
 ## Delivered scope
 
@@ -15,7 +15,7 @@ US-only clinical-study finder adapted from Granted. OpenAI is the exposed cloud 
 ## Verification evidence
 
 - Source baseline:2,116tests/342suites passed before domain adaptation.
-- Final retained suite after reviewed security fixes and compatible dependency patches: **1,561tests/255suites,1,561pass,0fail,0skip,0cancel**,9.09s. Exact output: `/private/tmp/treatable-final-tests.log`.
+- Final retained suite after reviewed security fixes and compatible dependency patches: **1,561tests/255suites,1,561pass,0fail,0skip,0cancel**,9.09s. Exact output: a local log file.
 - SSE completion regressions passed (manual abort, SSE error then normal EOF, incomplete EOF), preserving IDs/order/scores/buckets and clearing provisional flags. The Stop button settles results synchronously to avoid abort timing races.
 - Both new paid/patient endpoints enforce same-origin loopback checks, JSON content type, body-size bounds, rate limits, and explicit OpenAI consent. Cross-site text/plain JSON cannot invoke a saved-key provider. Focused endpoint/security/stream tests passed; independent reviewer reran20focused checks successfully.
 - `npm run check:prompts`: passed; no inline prompts or definitive eligibility claims.
@@ -24,7 +24,7 @@ US-only clinical-study finder adapted from Granted. OpenAI is the exposed cloud 
 - Pinned real-model integration verifies a known reference query and fresh embeddings for three shipped study records against their committed vectors at cosine>0.999.
 - No-key warm2,000-record deterministic search is asserted<2,000ms. Domain real semantic measurements:990ms cold,54ms/48ms warm; hosted CI latency has not been run.
 - Platform:2isolated-HOME launcher/dry-run tests passed; shellcheck clean; native Swift release menu-bar build passed (11.73s). No launcher/Ollama was installed into the user's actual account by verification.
-- Local chat smoke: isolated Ollama0.32.1 and qwen2.5:0.5b produced a valid two-candidate adapter result in552ms, retained all IDs and contact templates. Tiny-model narrative quality was poor, so fallback templates remained. A larger local model request timed out; default RAM-based setup choice was preserved. Evidence:`/private/tmp/treatable-local-smoke.json`.
+- Local chat smoke: isolated Ollama0.32.1 and qwen2.5:0.5b produced a valid two-candidate adapter result in552ms, retained all IDs and contact templates. Tiny-model narrative quality was poor, so fallback templates remained. A larger local model request timed out; default RAM-based setup choice was preserved. Evidence: a local JSON file.
 - Standalone locked dependencies installed using `npm ci` in canonical `scaffold/node_modules`; runtime no longer depends on fundFinder's node_modules. Downloaded search weights are preserved under ignored `scaffold/models`.
 
 ## Requirement traceability
@@ -77,11 +77,11 @@ PASS means implemented and locally tested; PARTIAL marks a verification/deployme
 
 ## Canonical runtime
 
-- Canonical project: `/Users/LenovoT440p/work/treatable`, feature branch `codex/phase-one`. Production code commit `8965fa8` (subsequent commits only append verification documentation).
+- Canonical project: this repository, feature branch `codex/phase-one`. Production code commit `8965fa8` (subsequent commits only append verification documentation).
 - Own locked dependencies installed with `npm ci`; canonical production `npm run build` passed, including type validation and all11static generation steps. No build skip flags.
-- Local app: `http://127.0.0.1:5556`, bound only to127.0.0.1. Detached npm process PID55118, log `/private/tmp/treatable-server.log`, PID record `/private/tmp/treatable-server.pid`. The process is independent of worker tool sessions.
+- Local app: `http://127.0.0.1:5556`, bound only to127.0.0.1. Detached npm process PID55118, a local log file and a local PID record. The process is independent of worker tool sessions.
 - Homepage HTTP200; `/_next/image?url=%2Ficon.svg&w=64&q=75` returns404; compiled Server Actions manifest has0node/0edgeactions (no encryption key copied into this report).
-- Canonical search status: builtin, ready,2,000/2,000vectors. Verified ignored search assets: `/Users/LenovoT440p/work/treatable/scaffold/models/nomic-ai/nomic-embed-text-v1.5`.
+- Canonical search status: builtin, ready,2,000/2,000vectors. Verified ignored search assets: `scaffold/models/nomic-ai/nomic-embed-text-v1.5`.
 - Independent final HTTP/API smoke: ordinary non-demo ZIP83702 resolves to Boise43.6322,-116.2052;60candidates have known distances,59are outside the selected radius,0remain provisional; SSE provisional→complete; corpus2,000; builtinsemanticmode. Both paid routes reject cross-site requests403, wrong content type415, and missing OpenAI consent403.
 - Final rendered fixed-build browser/screenshot recheck was unavailable because the CUA context failed and one permitted reset did not recover it. No alternate-browser bypass was attempted. Prior rendered review, focused UI regressions and final independent HTTP/API checks provide the recorded evidence; no final screenshot is claimed.
 - Source Granted working tree remains clean. Manual git worktrees `codex/domain` and `codex/foundation` are retained for inspection; they are not Codex-managed attachments. Needed search model assets and standalone dependencies are preserved in canonical paths. No credentials, environment files, private logs or patient state were copied.

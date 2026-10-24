@@ -6,7 +6,7 @@ export const SAMPLE_BLURBS: Record<string, string> = {
   cyber: "Fictional cybersecurity startup building AI-powered threat detection.",
 };
 
-/** The four standard test cases. Every team is judged on these. */
+/** The four standard test cases. These are the cases used for evaluation and the precomputed demos. */
 export const TEST_CASES = [
   {
     id: "ai-healthcare",

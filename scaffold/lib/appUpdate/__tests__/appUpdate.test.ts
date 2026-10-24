@@ -32,7 +32,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 describe("releases", () => {
   test("only vMAJOR.MINOR.PATCH is a release; package versions map to tags", () => {
     assert.deepEqual(parseReleaseTag("v0.10.2"), [0, 10, 2]);
-    assert.equal(parseReleaseTag("hackathon-deadline"), null);
+    assert.equal(parseReleaseTag("nightly-build"), null);
     assert.equal(parseReleaseTag("v1.2.3-beta"), null);
     assert.equal(versionToTag("0.1.1"), "v0.1.1");
     assert.equal(versionToTag("0.3.0-dev"), null);
@@ -49,7 +49,7 @@ describe("releases", () => {
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0" }), "v0.2.0");
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0", prerelease: true }), null);
     assert.equal(parseLatestRelease({ tag_name: "v0.2.0", draft: true }), null);
-    assert.equal(parseLatestRelease({ tag_name: "hackathon-deadline" }), null);
+    assert.equal(parseLatestRelease({ tag_name: "nightly-build" }), null);
   });
 
   test("fetchLatestRelease: tag, no releases (404) isn't a failure, errors are", async () => {
