@@ -1,40 +1,69 @@
 # Consented OpenAI native bridge
 
-This native helper has no HTTP listener and no Ollama daemon. It accepts only the pinned Chrome extension origin over native-messaging stdio. Raw patient form values, notes, page text, arbitrary prompts, URLs, tool definitions and credentials are not accepted operations. The default demo remains fictional. The separately consented real-data path accepts only a coarse age band, optional US state/sex, explicitly selected IDs from the public condition-label catalog, and at most two selected public NCT IDs.
+The Chrome extension’s matching window uses a stdio-only native helper registered for its pinned extension ID. There is no localhost HTTP inference listener or Ollama daemon. The browser cannot provide credentials, prompts, endpoints, model settings or tool definitions.
 
 ## Setup on macOS
 
-Build the extension, then run from the repository root:
+Use a functioning Node 20+ runtime. Build the extension, then run from the repository root:
 
 ```sh
-node extension/native/install.mjs --manifest extension/dist-b/manifest.json
+node extension/native/install.mjs --manifest extension/dist/manifest.json
 node extension/native/credentials-setup.mjs configure
+node extension/native/credentials-setup.mjs status
 ```
 
-The second command uses the final installed helper binary when available, prompts in a terminal with echo disabled, and stores the API key only in the dedicated macOS Keychain item (`com.treatable.hackathon.openai`, account `api-key`). Do not pass a key in an argument, environment variable, browser, chat or configuration file. Neither command makes a provider request. Keychain may prompt for native access; rebuilding/replacing the helper can require access approval again.
+`extension/dist` is the primary Version B build; `dist-b` has the same identity and interface. Install the final helper **before** credential configuration. The installer copies the current bridge code, compiles the Keychain helper, registers `com.treatable.local` and pins `process.execPath` in its launcher. Reinstall after replacing or moving that Node executable or updating native source. It changes only Treatable’s own registration/helper and retains the dedicated Keychain item.
 
-`credentials-setup.mjs status` checks metadata, not API authorization. `credentials-setup.mjs remove` removes only that dedicated item. `credentials-setup.mjs build` compiles without accessing credentials.
+Credential setup prompts in an interactive terminal with echo disabled. It stores only the dedicated macOS Keychain item (`com.treatable.hackathon.openai`, account `api-key`), using the installed helper when present. Never pass a key in an argument, environment variable, browser, chat, configuration file or logs. Installation and configuration do not make provider requests. Keychain may request access; replacing the helper can require access approval again.
 
-The native status response distinguishes helper readiness and credential presence from API authentication/access. Actual API access remains unverified until the user configures a dedicated key and explicitly starts a previewed fictional run. The key needs Decisions access plus Agents `api.agents.read`, `api.agents.write` and `api.responses.write` permissions. Account/model/API availability has not been tested.
+`credentials-setup.mjs status` reads metadata only; `configured: true` is not API authentication. `remove` removes only this dedicated item. `build` compiles without reading credentials. Actual account/API/model access needs an explicitly consented live request. The key needs Decisions access plus Agents `api.agents.read`, `api.agents.write` and `api.responses.write` permissions.
 
-## Live flow and limits
+### This checkout’s runtime prerequisite
 
-- `scoreDemo`: one `POST https://api.openai.com/v1/decisions`, `gpt-6-luna`, two fixed public records and one clearly fictional profile. The score is a weighted rubric index, not enrollment probability or treatment benefit.
-- `agentDemo`: `POST /v1/agents/sessions`, `OpenAI-Beta: agents=v1`, `gpt-6-astra`, `environment.type: none`, one read-only `get_public_trial_evidence` function. Tool arguments can only name the fixture's public NCT records. The helper posts matching `agent.session.input.tool_result` events, requires observed evidence-tool results for every study plus a completed turn, and accepts only known NCT/question/caution IDs.
-- No Responses-API substitution or locally fabricated “live” result. Stubbed tests return `mode: test`; production transport returns `mode: live` only after validated API responses.
-- Decisions timeout: 25 seconds. Agent timeout: 90 seconds. At most six tool calls, 16 KB final agent JSON, bounded HTTP/SSE bodies. The documented Agents create schema has no max-output-token field; no unsupported parameter is invented. Low reasoning/verbosity, short schema, output-byte/time limits and two-study scope bound the demo, but are not a provider billing hard cap.
-- Provider requests go directly to the fixed TLS host with certificate verification and no redirects. The launcher starts Node in an empty environment with only non-secret HOME/PATH, preventing inherited proxy/Node/TLS flags.
-- Cancel/stdio EOF aborts work and requests cancellation for incomplete/active turns with a fresh cleanup budget, then attempts session DELETE with bounded polling/retries (at most 5.5 seconds total). Cancellation acceptance is not completion. The helper validates the exact deletion acknowledgement before labeling it deleted. No untrusted session-ID path component is used. A successful API DELETE is not a promise of immediate physical erasure. Agents retains provider state until deletion and is not a ZDR endpoint. If creation disconnects before the session ID is received, deletion cannot target that unknown session; cleanup is marked unconfirmed. Cleanup failure is explicit in the in-memory trace; after a panel closes there is no retained trace/history.
-- The default demo sends only fictional/public data. The real-data path is separately policy-gated: `prepareReal` is local-only, validates the minimized packet and current policy receipt, loads native-owned public records, and pins both exact API request bodies plus public tool evidence. It returns a SHA-256 digest and an opaque five-minute RAM token. `executeReal` accepts only that token/digest/current receipt and one operation; it cannot replace the prepared data. Each operation is one-use. New preparation, revocation, cancellation, panel disconnect and TTL expiry clear the cache and abort relevant work. Unknown/private fields, stale policy, unknown conditions or studies, changed receipts and replay fail before credentials or network access. Conditions require explicit selection; the 3,514 public snapshot labels are not a MeSH ontology or automated diagnosis mapping. The native catalog contains the same 2,000 records and source hash as the UI. Minimized health data is still sensitive and is not claimed anonymous, HIPAA-certified or legally certified.
+The prior installed Homebrew Node executable could not start because its `libcrypto.4.dylib` dependency was missing. The native installation has been refreshed using the working bundled Node 24.22.1 runtime. Native stdio status is now successful and reports provider `openai`, but credential metadata remains **`configured: false`**. No credential has been retrieved and no live provider request has been verified.
 
-## Evidence and limits
+The current checkout’s secure configuration command is independent of the terminal’s working directory:
 
-The Swift Security helper was compiled after Apple documentation lookup; local Xcode documentation bridge was unavailable, so official Apple Security documentation supplied API behavior. Tests use fake Keychain executables and stub provider transports. No user credential was read, no Chrome/native registration was changed outside isolated test homes, and no live API request was made.
+```sh
+/Users/LenovoT440p/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node /Users/LenovoT440p/work/treatable/extension/native/credentials-setup.mjs configure
+```
 
-JavaScript/OS memory cannot be promised forensically erased, nor can this design defend against same-user administrator malware or a compromised browser/OS.
+That path is machine-specific. On another computer, use its working Node runtime. Do not copy a key into this command; the helper requests it privately in the terminal.
+
+## Current-page analysis
+
+The protected `private-match.html` window is non-web-accessible and must match its registered top-level window/document/source context. The website overlay and badge frames cannot invoke native model operations.
+
+- `liveCatalog` fetches fresh official ClinicalTrials.gov records for **all loaded current-page NCT IDs, maximum 10**. It checks TLS, strict record/response IDs, byte/time bounds and bounded concurrency. Immutable public evidence snapshots expire after five minutes. Condition labels come from these records, not the older bundled corpus. Missing facts stay unknown; truncation is visible.
+- `prepareLive` requires the current policy receipt and a strict minimized packet: age band, optional US state/sex, 1–6 explicitly selected public condition IDs, every loaded NCT ID for Decisions, and 1–2 selected NCT IDs for Agents. No provider call occurs. The helper pins both exact API bodies and public tool outputs to a digest and opaque five-minute token bound to the source snapshot/query/profile.
+- `executeLive` accepts only that pinned token/digest/current receipt and an operation. It cannot replace the packet, evidence or tools. Each operation is one-use. Changed form/source, revocation, expiry, disconnect and cancellation invalidate relevant state. Model request bodies exclude local authorization/binding IDs, tokens, digest, operator/contact text and patient identity fields.
+- `scoreLive` makes one `POST https://api.openai.com/v1/decisions` with `gpt-6-luna` and one typed relevance question per loaded record. The index is neither eligibility, enrollment probability, safety nor benefit. Apply requires a full validated score map for the same page; larger/partial pages are not ranked.
+- `agentLive` uses `POST https://api.openai.com/v1/agents/sessions`, `OpenAI-Beta: agents=v1`, `gpt-6-astra`, `environment.type: none` and one read-only `get_public_trial_evidence` function restricted to the selected 1–2 NCT IDs. It must read each study, complete its turn, and return known study/question/caution IDs. Trusted templates render the result. Agents does not consume Decisions scores.
+
+There is no Responses-API substitution or fabricated live mode. Stub transports return `mode: test`; production results require validated provider responses. Public text is untrusted data and model authority is bounded; this is not an absolute guarantee against influence on allowed choices.
+
+## Retained fictional and snapshot paths
+
+The older protected panel retains `scoreDemo`/`agentDemo`: one compiled fictional profile and two fixed public study excerpts, with explicit preview and consent. The separate `prepareReal`/`executeReal` path uses up to two native-owned snapshot records and the matching 3,514-label vocabulary from the bundled 2,000-record corpus. That path’s snapshot limit does **not** apply to current-page matching.
+
+Both paths reject arbitrary raw patient text, notes, page text, names, exact age/ZIP/coordinates, endpoints, prompts, tools and credentials. Minimized health labels, age band and optional state/sex remain sensitive and potentially identifying; no anonymity, HIPAA certification or legal sufficiency is claimed.
+
+## Provider and lifecycle limits
+
+Decisions has a 25-second timeout; Agents has 90 seconds, at most six tool calls, bounded HTTP/SSE bodies and at most 16 KB final JSON. Low reasoning/verbosity, short schemas, output-byte/time bounds and two-study scope bound work; they are not a provider billing cap. No unsupported max-output-token parameter is invented.
+
+Requests go to the fixed TLS provider host with certificate verification and no redirects. The launcher starts Node in an empty environment with only non-secret HOME/PATH, avoiding inherited proxy/Node/TLS routing flags. Keys exist only in the dedicated Keychain item and transient native memory; status does not expose the value.
+
+Stop/stdio EOF aborts work, requests cancellation for incomplete/active turns with a fresh cleanup budget, then attempts session DELETE with bounded polling/retries (at most 5.5 seconds). Cancellation acceptance is not completion. Only the validated deletion acknowledgment is labeled deleted. Agents stores application state until deletion and is not a ZDR endpoint; successful DELETE does not promise immediate physical erasure. Creation failure before receiving a session ID leaves cleanup unconfirmed. Failure stays visible in the in-memory trace; no history is retained after the private window ends.
+
+OpenAI default abuse monitoring may retain content for up to 30 days, subject to legal exceptions; API data is not used for training by default. The notice and exact-payload confirmation precede real-data sends. Closing local UI cannot retract data already sent to the provider.
+
+Raw private state ends with the protected window/native session. After explicit Apply, only validated NCT IDs, derived scores and fixed compatibility buckets remain in tab-bound extension RAM for at most five minutes. No browser profile or credential persistence, and no service-worker storage fallback, is used. The dedicated OS Keychain credential deliberately persists until removed. Application clearing is not forensic erasure and cannot defend against a compromised browser/OS, same-user malware or administrator access.
+
+## Verification
+
+At `e95f8d0`, 52 native tests pass alongside 116 extension tests, typecheck and all three builds. Tests use fake Keychain helpers and intercepted provider transports, including strict request serialization, source/packet/token binding, replay/expiry, unknown-field rejection, key/canary non-egress, required evidence calls, fatal/incomplete event handling and cleanup failures. These are automated boundary checks, not live API acceptance.
+
+On the current machine, repaired native stdio status passes with `configured: false`. The installed helper also fetched the public Gov record `NCT06567886` through its real `liveCatalog` operation, and all 14 installed native/shared files match their source copies. No model request was made. Chrome rendering, the Chrome-to-native handshake and authorized OpenAI execution remain outstanding. For a bounded live preflight, use the toolbar’s current-page matching window with a clearly fictional entered profile and public records, initially at most one Decisions batch and one Agents task. Identify the example as fictional; the preview still labels the real-analysis transport in use. Show failures honestly.
 
 Official contracts: [Decisions](https://developers.openai.com/api/docs/guides/decisions), [create decision](https://developers.openai.com/api/reference/resources/decisions/methods/create), [Agents create](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/methods/create), [functions](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), [events](https://developers.openai.com/api/docs/guides/agents-api/sessions/events), [session deletion](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [data controls](https://developers.openai.com/api/docs/guides/your-data).
-
-## Real-data verification
-
-Seven additional tests cover the full catalog hash, strict packet boundaries, pinned two-operation previews, policy/digest/token replay and TTL rejection, and actual native stdio through the intercepted HTTPS serializer. Six generated API requests match only the exact consented bodies/public tool evidence; caller RPC IDs, tokens, digest, operator/contact text and unauthorized canaries are absent. This is intercepted test traffic with fake credentials, not a live OpenAI run. Existing 14 native lifecycle/protocol tests remain passing.

@@ -1,12 +1,12 @@
-# Treatable extension MVP
+# Treatable Chrome extension
 
-ClinicalTrials.gov study exploration for patients, with a panel-memory local workflow and a default **fictional OpenAI Decisions/Agents demo** and optional explicitly consented real-data analysis. Version B applies [make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better). The standalone web prototype on localhost:5556 is separate and unchanged.
+Version B is the primary Treatable interface. Its toolbar button opens a search-first overlay on **ClinicalTrials.gov only**. Submit website filters, work with the currently loaded study cards, and optionally open a separate protected matching window for explicitly consented OpenAI analysis.
 
-The sidebar is enabled only on `https://clinicaltrials.gov` and `https://www.clinicaltrials.gov`. It is disabled on other sites. After updating an unpacked build, use **Reload** on `chrome://extensions` and refresh the ClinicalTrials.gov tab so the updated manifest and service worker take effect.
+The standalone prototype on localhost:5556 and the native/mobile app work are separate projects. This extension iteration does not include application submission, researcher profiles, literature search or early-results synthesis.
 
-## Current build and setup
+## Build and install
 
-Requires Chrome **142+** (the documented `sidePanel.onClosed` event), Node 20+, macOS and Xcode command-line tools for the native Keychain helper.
+Requires Chrome **142+**, a working Node **20+** runtime, macOS and Xcode command-line tools for the native Keychain helper. Search and public records do not require an API key. Private Decisions/Agents analysis requires the installed native helper and an authorized OpenAI key.
 
 ```sh
 cd extension
@@ -17,115 +17,68 @@ node --import tsx --test tests/*.test.ts
 node --test native/test/*.test.mjs
 ```
 
-From the repository root:
+The build folders are:
+
+| Folder | Interface |
+|---|---|
+| `extension/dist` | Current Version B; default build |
+| `extension/dist-b` | Identical Version B compatibility build |
+| `extension/dist-a` | Preserved Version A reference |
+
+Chrome → Extensions → Developer mode → Load unpacked → choose **`extension/dist`**. After an update, Reload the extension and refresh the ClinicalTrials.gov tab. All variants share a pinned extension ID; use only one in a Chrome profile at a time. The current B archive is `extension/artifacts/treatable-version-b-current.zip`, with the manifest at its root. Extract into a dedicated folder before loading unpacked. Earlier A archives marked **PRE-PRIVACY BASELINE — NOT CURRENT** are historical artifacts.
+
+From the repository root, install the native helper before configuring its credential:
 
 ```sh
-node extension/native/install.mjs --manifest extension/dist-b/manifest.json
+node extension/native/install.mjs --manifest extension/dist/manifest.json
 node extension/native/credentials-setup.mjs configure
+node extension/native/credentials-setup.mjs status
 ```
 
-The second command securely prompts in a terminal and writes only the dedicated macOS Keychain item. Never put the key in Chrome, a command argument, environment variable, a configuration file, chat, or logs. [Native/API setup](native/API_SETUP.md) describes the exact permissions and retention limits. Setup does not verify API authorization or make a provider request.
+The installer pins the Node executable used to run it. Use a functioning runtime; rerun the installer after moving or replacing that runtime. Credential setup prompts with terminal echo disabled and saves only the dedicated macOS Keychain item. Never put the key in Chrome, arguments, environment variables, configuration files, chat or logs. `status` checks metadata; it does not verify account authorization. See [native setup and runtime recovery](native/API_SETUP.md).
 
-Chrome → Extensions → Developer mode → Load unpacked → choose `extension/dist-b` for B or `extension/dist` for A. Both use the same pinned extension ID and native helper; test only one variant in a Chrome profile at a time. No Chrome installation or switching was performed by the agents. Do not uninstall an existing installation as an implicit switching step. Unpacked switching and real Chrome/native handshake remain unverified.
+## Search the website
 
-Built packages: `artifacts/treatable-version-a-current.zip` and `artifacts/treatable-version-b-current.zip` (manifest at archive root). Extract into a dedicated folder before loading unpacked.
+1. Open `https://clinicaltrials.gov` or `https://www.clinicaltrials.gov` and click Treatable in Chrome’s toolbar. Other hosts and HTTP pages are unsupported; there is no globally enabled Treatable side panel.
+2. Enter condition/disease, other terms, intervention/treatment or location. More filters starts collapsed and contains all 28 logical fields: status, eligibility and age ranges, phase/type, results/documents, funder, six date ranges and additional search fields.
+3. Search navigates to the registry’s own results URL. Search terms and website filters go to ClinicalTrials.gov and may appear in browser history. This action makes **no OpenAI request**.
+4. The overlay reopens compact after the search. Expand it to check loaded cards, load fresh public records, or start private matching. Collapse or Close/Escape makes the website available; the background-opacity control leaves text opaque.
 
-**Current A and B share the new security policy.** Any original A ZIP retained from the earlier prototype is an archived **PRE-PRIVACY BASELINE — NOT CURRENT** artifact. It includes the former storage behavior and is not the current MVP download.
+US ZIP codes resolve from approximate offline postal centers, with a default 50-mile distance. Editing location text discards prior coordinates. Other addresses, cities, states or countries require the website’s own location controls; collapse/close Treatable to use them, then reopen it on the resulting search. Treatable refuses an unresolved location rather than pretending the filter was applied. Table/map views and unknown card layouts remain read-only.
 
-## Real patient workflow
+## Match the loaded cards
 
-- The temporary `storage` permission exists only to remove the known legacy `treatable.patient.v1` key from extension local and session areas. The migration does not read stored values or write a migration flag.
-- Patient entry and API actions remain disabled until deletion succeeds and the panel's session channel is ready. Failures stay visibly blocked with a retry action.
-- Profiles, notes, local search results, captured page text and traces live only in the mounted panel. There is no save/remember control, storage sync, browser-history feature, or patient-data cache.
-- Search and structured screening use the bundled 2,000-study snapshot and offline ZIP centroids. The snapshot is incomplete and may become stale. Missing facts stay unknown; a distance preference is not medical exclusion.
-- Only exact HTTPS `clinicaltrials.gov` and `www.clinicaltrials.gov` hosts can be read. There is no `activeTab`, all-site, cookies, debugger or web-request permission.
-- Form submission is prevented before validation; autofill and spellchecking are requested off. Browser/OS honoring of those requests is not guaranteed.
+1. Use the website’s **10-results page size**. Treatable detects only the cards currently loaded on that page, including offscreen cards. It does not rank the full registry or other result pages. More than 10 loaded studies is explicitly refused before matching; partial pages are never reordered.
+2. Choose **Set up private matching**. The registered, non-web-accessible extension window fetches fresh official API records for every loaded NCT ID. It does not use the bundled 2,000-study snapshot or its condition vocabulary. Fetch failures remain failures; missing public facts stay unknown.
+3. Read the Privacy + Health Data Notice to its bottom, acknowledge and accept for this session. Select an age band, optional US state/sex, and 1–6 public condition labels from the fetched studies. Choose 1–2 studies for the independent Agents evidence review.
+4. **Prepare request preview** makes no OpenAI call. The native helper pins both exact request bodies and public tool outputs to a five-minute, one-use authorization. The concise payload summary stays visible; exact technical JSON starts collapsed. Confirm the specific operation separately before sending.
+5. Run **Score with Decisions** and/or **Review with Agents**. Decisions scores every loaded study; Agents reads allowlisted public evidence and selects study-team question templates. Agents does not consume Decisions scores. A relevance index is neither eligibility nor an enrollment probability.
+6. **Apply matches to this page** accepts only a validated current analysis ID. It moves the website’s actual cards and places scores in extension-origin frames over the cards. Every current card must have a score from the same query, source snapshot and profile. Known structured age/sex mismatches rank behind unknown compatibility; topical relevance cannot override them. Restore original order is available.
 
-## Fictional API workflow
+The website can observe changed card order. Scores, profile details and score classifications are not copied into its DOM text, attributes or frame URLs. Public NCT IDs identify badge frames. Actual Chrome mounting, positioning, focus and native handshake still require browser integration proof; source and mocked tests alone do not prove them.
 
-1. Open **API demo**, choose one of three compiled fictional fixtures, and inspect the full shared request preview.
-2. Explicitly consent to sending that fictional profile and its fixed public study excerpts to OpenAI.
-3. Run **Decisions scoring**. The displayed index measures relevance for the fictional profile, not eligibility, enrollment probability, safety or benefit.
-4. Run the **Agents task**. It must call the allowlisted `get_public_trial_evidence` tool and return only known study/question/caution IDs. The UI renders trusted templates rather than arbitrary model advice.
-5. Inspect the actual in-memory request stages, tool calls, result mode and cleanup status. Stubbed test results say `test`; a live success requires validated provider responses.
+## Privacy and session lifetime
 
-Fictional operations accept only fixture IDs and fixture-allowlisted public NCT IDs. Real operations accept a separate strict minimized packet; arbitrary free text, page content, prompts, endpoints, credentials and tools are rejected. Real profile searches do not choose the demo studies. The stdio helper has no HTTP listener or Ollama daemon. Fixed TLS provider requests occur only after the applicable explicit consent. Real-data preparation itself makes no provider call.
+Private fields contain no names, patient contact information, DOB, exact age, ZIP, coordinates or freeform notes. Explicit condition labels, age bands and optional state/sex remain sensitive and potentially identifying: **minimized is not anonymous**. Consent is required before sending those fields to OpenAI. The notice’s Operator and privacy contact section identifies **Kurt Lehnardt - Developer of Treatable**, **privacy.6vpc5@mailer.me**; these notice details are never model input.
 
-## Optional real-data analysis
+There is no Save/Remember control or patient-history feature. The temporary `storage` permission only removes known legacy patient keys from extension local/session storage; it does not read their contents or write a migration flag. Private entry stays blocked until removal succeeds.
 
-1. Open **Optional real analysis**. Read the embedded Privacy + Health Data Notice to its bottom, check the acknowledgment, then accept for this panel session. Local search and the fictional demo work without acceptance.
-2. Explicitly choose a broad age band (including 90+), optional state and sex, 1–6 public condition/symptom labels and 1–2 public studies. The 3,514 labels come from ClinicalTrials.gov's snapshot, not a medical diagnosis ontology. Unknown terms can stay private in local search.
-3. **Prepare exact request preview** sends only that minimized packet to the native helper; it does not call OpenAI. The helper pins both API bodies and public tool outputs to a digest and opaque five-minute token.
-4. Review the sensitive exact preview and separately confirm the operation to send. Execution contains only the pinned token, digest, operation and current policy receipt; it cannot replace the packet. Every operation consumes its own confirmation and can run only once per prepared token. Any form or selection change discards the preview and confirmation.
-5. End/hide/close clears packet, acknowledgment, tokens, previews, results and traces in panel memory. A fresh session needs fresh policy acceptance. Already sent data cannot be retracted by clearing this panel.
+Raw profile, preview, tokens, results and traces stay in the protected window/native session and clear when it ends or becomes hidden. Explicitly applied NCT IDs, derived scores and fixed compatibility buckets may remain in tab-scoped extension RAM for **up to five minutes** after the private window closes. End page matching, source query/navigation changes, hidden pages, lost connections and lease expiry clear badges and restore still-connected cards. Visible search and matching use nonsensitive ten-second heartbeats; they do not extend their five-minute ceilings. There is no storage fallback for service-worker suspension.
 
-Exact age, ZIP, coordinates, notes, DOB, names and patient contact details are excluded. Explicit health labels, state and age bands are still sensitive and potentially identifying: **minimized is not anonymous**. No HIPAA compliance or legal sufficiency is claimed; see [HHS de-identification guidance](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html). UI/native public corpus hashes must match at build time.
+The stdio-only native helper has no localhost HTTP inference listener. Credentials stay in the dedicated Keychain item and transient native memory. Browser OpenAI requests, arbitrary model/tool/URL proxies, cookies and telemetry are absent. Model output is bounded to validated IDs and trusted templates; this reduces authority but cannot promise that untrusted text never influences a permitted choice.
 
-Operator: **Kurt Lehnardt - Developer of Treatable**. Privacy contact: **privacy.6vpc5@mailer.me**. This notice information is local product text, never model input. Contact details have not been independently verified. No patient request/identity history is retained to locate prior provider records.
+Agents retains provider application state until deletion and is not a ZDR endpoint. Cleanup is attempted and its outcome shown; acknowledged deletion does not promise immediate physical erasure. Creation loss before receiving a session ID may leave unconfirmed state. Default abuse monitoring may retain content for up to 30 days, subject to exceptions; API data is not used for training by default. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data).
 
-## Session end and limits
+Application clearing is not forensic memory erasure. A compromised browser/OS, same-user malware, administrator access, swap/crash data and arbitrary debugging remain outside these guarantees. No anonymity, HIPAA certification or legal sufficiency is claimed. See [HHS de-identification guidance](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html).
 
-**End session**, panel page-hide, hidden-document events, Chrome panel-close events and context unload request clearing and native disconnection. Closing any Treatable panel deliberately ends all registered panel sessions. Reopened/ended panels require a blank session. Each panel owns its native connection; there is no global patient/native session.
+## Retained reference workflows
 
-These are application lifecycle controls, **not forensic memory erasure**. Same-user malware, an administrator, a compromised browser/OS, swap/crash data, website cookies/history, and arbitrary debugging are outside this guarantee. Actual Chrome close/hide and keyboard behavior have not been integration-tested here because the browser-control connection was unavailable.
+Version A and B retain the earlier protected panel with local screening and a clearly fictional API demo. Local screening uses the incomplete bundled 2,000-study ClinicalTrials.gov snapshot and offline ZIP data; those results may be stale. The older optional real-analysis path uses snapshot labels and at most two studies. These reference paths are distinct from the toolbar’s fresh current-page matching path above. The retained panel entry is `chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/panel.html`; its actual Chrome access still needs verification. They use the same notice, pinned-confirmation and no-browser-persistence boundaries; the Keychain credential is deliberately persistent.
 
-Agents keeps provider state until deletion and is not a zero-data-retention endpoint. The helper attempts bounded deletion after completion/cancellation. Deletion may fail; physical cleanup may be asynchronous; creation loss before receiving a session ID may leave unconfirmed state. Default abuse-monitoring retention may include content for up to 30 days, subject to legal exceptions. API data is not used for training by default. Explicitly confirmed minimized real health information may be sent through the optional real path. See [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data). [Provider details](native/API_SETUP.md).
+## Verification status
 
-## Verification
+At commit `e95f8d0`, the recorded automated checkpoint is **116 extension tests, 52 native tests, typecheck and all three builds passing**. Coverage includes validation, scoped permissions, search encoding, protected consent, current-page binding, actual-node reorder logic, legacy-key deletion failure, stale reply rejection, private canaries, provider errors/cleanup and service-worker lease expiry. Native/API tests use explicit test transports; they are not live provider acceptance.
 
-The combined real-consent checkpoint passes 49 extension tests, 21 native tests, typecheck and both builds. Gates include scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Fresh independent source and automated-boundary review passed; see [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+The installed helper’s direct stdio status and a public Gov `liveCatalog` fetch pass; all 14 installed native/shared files match source. This does not prove Chrome-to-native communication. Live OpenAI authentication and actual Chrome rendering/native handshake are separate outstanding runtime checks. A configured credential is not proof of API access. The current machine’s credential metadata reports `configured: false`; secure terminal setup is required before a live provider run. Historical security reports apply to their named commits and must not be treated as runtime verification of this page path.
 
-[North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
-
-Decisions and Agents are independent operations over the same selected case (fictional by default, explicitly consented real packet optionally). The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. Legacy panels do not accept caller-supplied scores. The new page path retains only explicitly applied derived scores in bounded extension memory, as described below.
-
-
-## Search-first overlay development
-
-The primary build is now Version B: `npm run build` writes `dist/`, and
-`npm run build:b` writes the compatible `dist-b/` folder. The preserved A
-reference is explicitly built with `npm run build:a` into `dist-a/`. A and B
-retain the same extension identity; use one installed version at a time.
-
-New `overlay.html` and `score-badge.html` entries are web-accessible only on the
-two named ClinicalTrials.gov HTTPS hosts. The overlay collects website search
-filters and displays public results. It has no patient-profile, final-consent,
-credential, or native-model authority. Private matching opens the non-web-accessible
-protected extension window. Scores are rendered inside extension-origin badge
-frames, never written into website text, attributes, titles, or frame URLs.
-
-The overlay reports all loaded cards on the current results page. It does not
-claim to rank the entire registry. Private matching is wired through a registered, non-web-accessible top-level
-`private-match.html` window and the native STDIO helper. It fetches fresh records
-for all loaded NCT IDs (maximum 10), without using the shipped 2,000-record
-snapshot. For larger pages, select a website page size of 10; incomplete pages
-are never reordered. Condition labels are taken from those fetched records.
-
-The private form collects only age band, optional state/sex and explicitly
-selected public condition labels. Its scrollable notice and separate pinned
-confirmation gate real Decisions scoring and an independent Agents review of
-one or two records. Exact request bodies start collapsed. The browser never
-receives the Keychain credential or supplies model evidence, prompts or URLs.
-
-Apply sends only an analysis ID. The background accepts scores only from a
-validated native result bound to the current query, frozen snapshot and minimized
-profile. Known structured sex or whole-age-band mismatches remain visible and
-rank behind unknown compatibility, regardless of topical relevance. No result
-establishes eligibility.
-
-After Apply, only derived NCT IDs, relevance values and fixed compatibility
-buckets remain in tab-scoped extension memory for up to five minutes. Closing
-the private window clears its raw profile, preview and trace. End page matching,
-query/navigation changes, hidden pages, expiry and lost runtime connections
-clear badges and restore the original connected card order. A generation-only
-heartbeat runs every ten seconds while the applied page lease is active; a cold
-worker without that lease makes the content controller restore immediately on
-its next check. No health persistence is used to survive worker suspension.
-
-The packed CSP permits embedding and browser public-record fetches only for the
-two named Gov HTTPS origins; scripts remain packaged-only. The private entry is
-not web-accessible and requires its registered popup, window ID, document ID and
-top-level sender. OpenAI remains reachable only through the native helper. Actual Chrome rendering, focus, iframe positioning, and motion
-checks remain unverified until browser integration is exercised.
-
-Current automated checkpoint: 114 extension tests and 52 native tests pass, plus typecheck and all three builds. Live OpenAI authentication, actual Chrome rendering and its native-host handshake remain unverified. Earlier security-review reports describe their named historical commits, not this new live-page path.
+[Three-minute demo and acceptance checks](NORTHSTAR.md) · [Native setup](native/API_SETUP.md) · [Security review](SECURITY_REVIEW.md) · [Version B design evidence](VERSION_B_REVIEW.md)

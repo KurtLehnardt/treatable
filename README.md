@@ -1,6 +1,6 @@
 # Treatable
 
-> **Demoed product:** the Treatable Chrome extension in [`extension/`](extension/README.md), with its local native host in [`extension/native/`](extension/native/API_SETUP.md). The rest of this README describes the legacy `scaffold/` web app, which is not part of the demo.
+> **Demoed product:** the Treatable Chrome extension in [`extension/`](extension/README.md), with its local native host in [`extension/native/`](extension/native/API_SETUP.md). Version B is the primary build at `extension/dist`: a search-first ClinicalTrials.gov overlay with optional protected current-page matching. The rest of this README describes the legacy `scaffold/` web app, which is not part of the demo.
 >
 > **Security:** [SECURITY.md](SECURITY.md) (vulnerability reporting, scope, release gate) · [Threat model](docs/security/THREAT_MODEL.md) · [Demo-day checklist](docs/security/DEMO_DAY_CHECKLIST.md). Treatable is not a HIPAA-covered product, no compliance or certification is claimed, and minimized health data is not anonymous.
 
