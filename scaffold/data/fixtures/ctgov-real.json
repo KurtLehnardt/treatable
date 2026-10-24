@@ -1,0 +1,1505 @@
+{
+  "fetchedAt": "2026-10-24T03:43:48.920Z",
+  "source": "https://clinicaltrials.gov/api/v2/studies",
+  "studies": [
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT07703137",
+          "orgStudyIdInfo": {
+            "id": "19742P"
+          },
+          "organization": {
+            "fullName": "University of Oklahoma",
+            "class": "OTHER"
+          },
+          "briefTitle": "NAD Supplementation in Parkinson's Disease",
+          "officialTitle": "Neurovascular Coupling, Clinical Outcomes, and NAD Supplementation in Parkinson's Disease"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-08",
+          "overallStatus": "ENROLLING_BY_INVITATION",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2026-08-10",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2027-07",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2027-07",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2026-06-26",
+          "studyFirstSubmitQcDate": "2026-07-08",
+          "studyFirstPostDateStruct": {
+            "date": "2026-07-14",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-08-10",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-08-12",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "University of Oklahoma",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Presbyterian Health Foundation",
+              "class": "OTHER"
+            }
+          ]
+        },
+        "oversightModule": {
+          "oversightHasDmc": false,
+          "isFdaRegulatedDrug": false,
+          "isFdaRegulatedDevice": false
+        },
+        "descriptionModule": {
+          "briefSummary": "The goal of this clinical trial is to learn whether Nicotinamide Riboside, a form of Vitamin B3 also known as NR, can improve blood vessel health in the brain, memory, and physical function in eligible study participants. NR is considered investigational for this study because it is not yet established for this specific use.\n\nThe main questions it aims to answer are:\n\nCan NR improve non-invasive measures of blood vessel health in the brain? Can NR improve memory testing results and physical function?\n\nResearchers will compare participants who receive NR with participants who receive a placebo, an inactive substance that looks like the study drug, to see if NR has beneficial effects. Participants will be randomly assigned to receive either NR or placebo.\n\nThey will complete 3 study visits over 13 weeks at the Translational Geroscience Laboratory at the University of Oklahoma Health Campus. During the visits, participants will complete questionnaires, memory testing, non-invasive blood vessel measurements, physical function tests, and a blood draw.",
+          "detailedDescription": "This is a single-site, randomized, placebo-controlled clinical trial evaluating oral nicotinamide riboside (NR), a form of vitamin B3, in adults over 55 years of age with Parkinson's disease. NR is commercially available as a dietary supplement, however, its use in this study for Parkinson's disease is considered investigational because it is not approved by the U.S. Food and Drug Administration as a treatment for Parkinson's disease.\n\nThe purpose of this study is to explore whether daily NR supplementation over 12 weeks may improve measures related to brain health, memory, motor function, physical performance, and vascular function in participants with Parkinson's disease. Participants will be randomly assigned to receive either NR or placebo. Neither the participants nor the investigators will choose the assigned group.\n\nStudy participation includes 3 in-person visits: screening, baseline, and follow-up. Study procedures include collection of medical and health information, questionnaires, blood draw, memory and cognitive testing, non-invasive measurements of brain activity and blood vessel function, walking and balance assessments, grip strength testing, and use of a study watch to assess activity and sleep patterns.\n\nThe study procedures will be conducted at the Translational Geroscience Laboratory at the University of Oklahoma Health Sciences Center."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Parkinson's Disease"
+          ],
+          "keywords": [
+            "nicotinamide riboside",
+            "Parkinson's disease",
+            "brain health",
+            "intervention"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "NA"
+          ],
+          "designInfo": {
+            "allocation": "RANDOMIZED",
+            "interventionModel": "PARALLEL",
+            "interventionModelDescription": "Participants will be randomly assigned to either the NR group or the placebo group, and they will remain in their assigned group throughout the study. The two groups will be compared to evaluate the effects of NR.",
+            "primaryPurpose": "PREVENTION",
+            "maskingInfo": {
+              "masking": "DOUBLE",
+              "whoMasked": [
+                "PARTICIPANT",
+                "INVESTIGATOR"
+              ]
+            }
+          },
+          "enrollmentInfo": {
+            "count": 40,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Active intervention",
+              "type": "ACTIVE_COMPARATOR",
+              "description": "Participants will be randomized to receive either oral nicotinamide riboside at a total daily dose of 1 g or an identically appearing placebo for 12 weeks.",
+              "interventionNames": [
+                "Dietary Supplement: Nicotinamide Riboside (NR)"
+              ]
+            },
+            {
+              "label": "Placebo intervention",
+              "type": "PLACEBO_COMPARATOR",
+              "description": "Participants assigned to the placebo arm will take an oral placebo capsule daily for 12 weeks. The placebo will appear identical to the nicotinamide riboside capsules.",
+              "interventionNames": [
+                "Dietary Supplement: Oral placebo capsules"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "DIETARY_SUPPLEMENT",
+              "name": "Nicotinamide Riboside (NR)",
+              "description": "Participants will be randomized to receive either oral nicotinamide riboside at a total daily dose of 1 g or an identically appearing placebo for 12 weeks.",
+              "armGroupLabels": [
+                "Active intervention"
+              ]
+            },
+            {
+              "type": "DIETARY_SUPPLEMENT",
+              "name": "Oral placebo capsules",
+              "description": "1 g identically appearing placebo capsule",
+              "armGroupLabels": [
+                "Placebo intervention"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Change in task-evoked neurovascular coupling response measured by functional near-infrared spectroscopy",
+              "description": "Neurovascular coupling will be assessed using functional near-infrared spectroscopy during study tasks. The primary reported value will be the change in task-evoked oxygenated hemoglobin response (change in oxygenated hemoglobin concentration in micromolar) from baseline to the 12-week follow-up visit. Changes will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo.",
+              "timeFrame": "Baseline to 12 weeks"
+            }
+          ],
+          "secondaryOutcomes": [
+            {
+              "measure": "Change in NIH Toolbox Cognitive Battery score",
+              "description": "Cognitive performance will be assessed using the NIH Toolbox Cognitive Battery, a computer-based set of tests designed to measure cognitive domains such as memory, attention, executive function, and processing speed. The reported outcome will be the change in NIH Toolbox Cognitive Battery score from baseline to the 12-week follow-up visit. Changes will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in timed walking test completion",
+              "description": "Walking performance will be assessed using a timed walking test. The reported outcome will be the change in time (seconds) required to complete the walking test from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in gait speed during single and dual-task walking",
+              "description": "Gait speed will be measured using a pressure-sensing walkway during normal walking and while participants walk and perform a cognitive task, such as serial subtraction. The reported outcome will be the change in gait speed (meter/second) from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in handgrip strength",
+              "description": "Handgrip strength will be measured using a hand-grip dynamometer. Three trials will be performed for each hand, and the reported value (kilograms-force) will be the average grip strength. The reported outcome will be the change in average handgrip strength from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in static balance performance",
+              "description": "Static balance will be assessed while participants stand with eyes open and eyes closed on both a firm surface and a foam surface. The reported outcome will be the change in the selected balance parameter (seconds, sway area and center-of-pressure displacement) from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            }
+          ],
+          "otherOutcomes": [
+            {
+              "measure": "Change from baseline in NAD\u207a concentrations and circulating NAD-related metabolites",
+              "description": "NAD\u207a concentrations and circulating NAD-related metabolites will be measured from blood samples collected at baseline and after 12 weeks of treatment. Changes from baseline to the 12-week follow-up visit will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in Montreal Cognitive Assessment score",
+              "description": "Global cognitive function will be assessed using the Montreal Cognitive Assessment (MoCA), a brief screening tool used to evaluate memory and thinking problems. The reported outcome will be the change in total MoCA score (MoCA total score, range 0-30 points) from baseline to the 12-week follow-up visit and changes will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in Parkinson's motor rating scale score",
+              "description": "Motor function will be assessed using a standard Parkinson's disease motor rating scale. The reported outcome will be the change in total motor score from baseline to the 12-week follow-up visit. Changes will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo. Unit of Measure: Points on a scale",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in body composition",
+              "description": "Body fat percentage will be measured using a body composition scale. The reported outcome (percent) will be the change in body fat percentage from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in skeletal muscle mass",
+              "description": "Skeletal muscle mass will be measured using a body composition scale. The reported outcome (kilograms) will be the change in skeletal muscle mass from baseline to the 12-week follow-up visit.",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in sleep quality questionnaire score",
+              "description": "Sleep quality will be assessed using a standardized sleep quality questionnaire. The reported outcome will be the change in total sleep quality score from baseline to the 12-week follow-up visit. Changes will be compared between participants assigned to nicotinamide riboside and participants assigned to placebo.\n\nUnit of Measure: Points on a scale",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in fatigue questionnaire score",
+              "description": "Fatigue will be assessed using a standardized fatigue questionnaire. The reported outcome will be the change in total fatigue score from baseline to the 12-week follow-up visit.\n\nUnit of Measure: Points on a scale",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in food security questionnaire score",
+              "description": "Food security will be assessed using a standardized food security questionnaire with a 30-day lookback period. The reported outcome will be the change in food security score from baseline to the 12-week follow-up visit. Unit of Measure: Points on a scale",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in pain score",
+              "description": "Pain will be assessed using a standardized pain scale or questionnaire. The reported outcome will be the change in pain score from baseline to the 12-week follow-up visit.\n\nUnit of Measure: Points on a scale",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in daily step count measured by wrist-worn activity monitor watch",
+              "description": "Physical activity will be assessed using a wrist-worn activity monitor. The reported outcome will be the change in average daily step count from baseline to the 12-week follow-up period.\n\nUnit of Measure: Steps per day",
+              "timeFrame": "Baseline to 12 weeks"
+            },
+            {
+              "measure": "Change in total sleep time measured by wrist-worn activity monitor watch",
+              "description": "Sleep duration will be assessed using a wrist-worn activity monitor. The reported outcome will be the change in average total sleep time from baseline to the 12-week follow-up period.\n\nUnit of Measure: Minutes per night",
+              "timeFrame": "Baseline to 12 weeks"
+            }
+          ]
+        },
+        "eligibilityModule": {
+          "eligibilityCriteria": "Inclusion Criteria:\n\n* Clinical diagnosis of Parkinson's disease according to Movement Disorder Society clinical diagnostic criteria (59), Hoehn and Yahr stages I-III at enrollment (ON medication state when applicable) (60).\n* Age \u226555 years at enrollment.\n* Adequate hearing and visual acuity to participate in the examinations\n* Ability to provide written informed consent in English.\n* Ability to complete study procedures, including seated tasks and walking tasks (with or without an assistive device, if needed for safety).\n* Stable antiparkinsonian medication regimen for \u22654 weeks prior to baseline (or drug-naive).\n\nExclusion Criteria:\n\n* Not able to communicate or follow instructions due to aphasia or severe cognitive impairment.\n* Active CNS disease including multiple sclerosis, uncontrolled seizures, active cancer.\n* Cerebrovascular accident other than TIA within 60 days prior to Visit 0.\n* Major psychiatric disease, including major depression not currently controlled on medications, alcohol or drug abuse.\n* Abnormal kidney function (creatinine \\>2mg/dL or EGFR \\<30mL/min) by most recent labs within 6 months prior to Visit 0.\n* Elevated liver enzymes (AST and/or ALT above x2 upper limit of normal) by most recent labs within 6 months prior to Visit 0.\n* Treatment with other NAD enhancers (Nicotinamide riboside or nicotinamide mononucleotide) within 4 weeks prior to randomization.\n* Any other medical condition and/or unstable or severe medical illness which, in the opinion of investigator, would render the patient inappropriate or too unstable to complete the study protocol.",
+          "healthyVolunteers": false,
+          "sex": "ALL",
+          "minimumAge": "55 Years",
+          "maximumAge": "85 Years",
+          "stdAges": [
+            "ADULT",
+            "OLDER_ADULT"
+          ]
+        },
+        "contactsLocationsModule": {
+          "overallOfficials": [
+            {
+              "name": "Andriy Yabluchanskiy, MD, PhD",
+              "affiliation": "University of Oklahoma Health Campus",
+              "role": "PRINCIPAL_INVESTIGATOR"
+            }
+          ],
+          "locations": [
+            {
+              "facility": "Center for Geroscience and Healthy Brain Aging",
+              "city": "Oklahoma City",
+              "state": "Oklahoma",
+              "zip": "73117",
+              "country": "United States",
+              "geoPoint": {
+                "lat": 35.46756,
+                "lon": -97.51643
+              }
+            }
+          ]
+        },
+        "ipdSharingStatementModule": {
+          "ipdSharing": "NO"
+        }
+      },
+      "derivedSection": {
+        "miscInfoModule": {
+          "versionHolder": "2026-10-23"
+        },
+        "conditionBrowseModule": {
+          "meshes": [
+            {
+              "id": "D010300",
+              "term": "Parkinson Disease"
+            }
+          ],
+          "ancestors": [
+            {
+              "id": "D020734",
+              "term": "Parkinsonian Disorders"
+            },
+            {
+              "id": "D001480",
+              "term": "Basal Ganglia Diseases"
+            },
+            {
+              "id": "D001927",
+              "term": "Brain Diseases"
+            },
+            {
+              "id": "D002493",
+              "term": "Central Nervous System Diseases"
+            },
+            {
+              "id": "D009422",
+              "term": "Nervous System Diseases"
+            },
+            {
+              "id": "D009069",
+              "term": "Movement Disorders"
+            },
+            {
+              "id": "D000080874",
+              "term": "Synucleinopathies"
+            },
+            {
+              "id": "D019636",
+              "term": "Neurodegenerative Diseases"
+            }
+          ]
+        },
+        "interventionBrowseModule": {
+          "meshes": [
+            {
+              "id": "C018613",
+              "term": "nicotinamide-beta-riboside"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT04704505",
+          "orgStudyIdInfo": {
+            "id": "J2116"
+          },
+          "secondaryIdInfos": [
+            {
+              "id": "IRB00273010",
+              "type": "OTHER",
+              "domain": "JHM IRB"
+            }
+          ],
+          "organization": {
+            "fullName": "Sidney Kimmel Comprehensive Cancer Center at Johns Hopkins",
+            "class": "OTHER"
+          },
+          "briefTitle": "Bipolar Androgen Therapy (BAT) and Radium-223 (RAD) in Metastatic Castration-resistant Prostate Cancer (mCRPC)",
+          "officialTitle": "Bipolar Androgen Therapy (BAT) and Radium-223 (RAD) in Metastatic Castration-resistant Prostate Cancer (mCRPC) (BAT-RAD Study)",
+          "acronym": "BAT-RAD"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-02",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2022-04-28",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2028-02",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2029-02",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2021-01-07",
+          "studyFirstSubmitQcDate": "2021-01-08",
+          "studyFirstPostDateStruct": {
+            "date": "2021-01-11",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-02-03",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-02-06",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "Sidney Kimmel Comprehensive Cancer Center at Johns Hopkins",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Bayer",
+              "class": "INDUSTRY"
+            }
+          ]
+        },
+        "oversightModule": {
+          "oversightHasDmc": true,
+          "isFdaRegulatedDrug": true,
+          "isFdaRegulatedDevice": false,
+          "isUsExport": false
+        },
+        "descriptionModule": {
+          "briefSummary": "This is a single-arm, multicenter open label, international, phase II study of Bipolar Androgen Therapy (BAT) plus Radium-223 (RAD) in men with metastatic castration-resistant prostate cancer (mCRPC). Men with mCRPC with progressive disease (radiographically and/or biochemically) who have been treated with gonadotropin-releasing hormone (GnRH)-analogue (LHRH agonists/antagonists) continuously or bilateral orchidectomy will be enrolled in this study. Previous antiandrogen therapies are permitted, but no more than one (such as abiraterone, enzalutamide, apalutamide, darolutamide). All patients will receive treatment with Radium-223 at a dose of 55 Kilobecquerel (kBq) per kilogram of body weight IV every 28 days, for 6 cycles, plus Testosterone Cypionate 400mg Intramuscular (IM) every 28 days, until progression or unacceptable toxicity."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Prostate Adenocarcinoma",
+            "Metastatic Prostate Adenocarcinoma",
+            "Castration-resistant"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE2"
+          ],
+          "designInfo": {
+            "allocation": "NA",
+            "interventionModel": "SINGLE_GROUP",
+            "primaryPurpose": "TREATMENT",
+            "maskingInfo": {
+              "masking": "NONE"
+            }
+          },
+          "enrollmentInfo": {
+            "count": 47,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Bipolar Androgen Therapy in addition to RADium-223 (RAD)",
+              "type": "EXPERIMENTAL",
+              "description": "Participants will receive Bipolar Androgen Therapy (BAT) plus Radium-223 (RAD).",
+              "interventionNames": [
+                "Radiation: radium-223",
+                "Drug: Bipolar Androgen Therapy (BAT)"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "RADIATION",
+              "name": "radium-223",
+              "description": "Radium-223 is an alpha-particle-emitting bone-targeted therapy. All patients will receive Treatment with Radium-223 at a dose of 55 kBq per kilogram of body weight IV every 28 days, for 6 cycles,",
+              "armGroupLabels": [
+                "Bipolar Androgen Therapy in addition to RADium-223 (RAD)"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Bipolar Androgen Therapy (BAT)",
+              "description": "All Patients will receiveTestosterone Cypionate 400mg IM every 28 days, until progression or unacceptable toxicity.",
+              "armGroupLabels": [
+                "Bipolar Androgen Therapy in addition to RADium-223 (RAD)"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Radiographic progression-free survival (rPFS) of BAT-RAD",
+              "description": "To determine the radiographic progression-free survival (rPFS) of BAT-RAD in patients with mCRPC treated with at least one novel androgen receptor (AR) targeted treatment.",
+              "timeFrame": "24 months"
+            }
+          ],
+          "secondaryOutcomes": [
+            {
+              "measure": "PSA decline \u2265 50 percent rate (PSA50) of BAT-RAD",
+              "description": "To determine the PSA decline \u2265 50% rate (PSA50) of BAT-RAD in patients with mCRPC in 24 months.",
+              "timeFrame": "24 months"
+            },
+            {
+              "measure": "Change in alkaline phosphatase of BAT-RAD",
+              "description": "To determine if the dynamics (change) of alkaline phosphatase of BAT-RAD in patients with mCRPC.",
+              "timeFrame": "Baseline and then on day one of each cycle (each cycle is 28 days), up to 9 cycles"
+            },
+            {
+              "measure": "PSA progression-free survival (PSA-PFS) of BAT-RAD",
+              "description": "To determine the PSA progression-free survival (PSA-PFS) of BAT-RAD in patients with mCRPC in 24 months.",
+              "timeFrame": "24 months"
+            },
+            {
+              "measure": "Time to disease progression of BAT-RAD",
+              "description": "To determine the time to disease progression of BAT-RAD in patients with mCRPC measured in months.",
+              "timeFrame": "24 months"
+            },
+            {
+              "measure": "Overall survival of BAT-RAD",
+              "description": "To determine the overall survival of BAT-RAD in patients with mCRPC in 24 months.",
+              "timeFrame": "24 months"
+            },
+            {
+              "measure": "Symptomatic skeletal event-free survival",
+              "description": "To determine the symptomatic skeletal event-free survival in patients with mCRPC in 24 months.",
+              "timeFrame": "24 months"
+            },
+            {
+              "measure": "Change in Quality of life as assessed by anxiety/depression EuroQol 5 dimensions 3 levels (EQ-5D-3L)",
+              "description": "The EQ-5D-3L is made up of 5 questions each with 3 levels. The lowest level being none and the highest level being extreme. Overall score range of 3-15 with higher scores signifying worse quality of life.",
+              "timeFrame": "Baseline, cycle 4 day 1, cycle 7 day 1 and at the end of treatment, up to 28 days post cycle 9 (each cycle is 28 days)"
+            },
+            {
+              "measure": "Change in Quality of life as assessed by the Functional Assessment of Cancer Therapy- Prostate (FACT-P)",
+              "description": "The (FACT-P) is made up of 39 question the scoring is between 0 and 156 with 0 being the best and 156 as the worst.",
+              "timeFrame": "Baseline, cycle 4 day 1, cycle 7 day 1 and at the end of treatment, up to 28 days post cycle 9 (each cycle is 28 days)"
+            },
+            {
+              "measure": "Change in Quality of life as assessed by the Brief Pain Inventory-Short Form (BPI-SF)",
+              "description": "The Brief Pain Inventory-Short Form (BPI-SF) is 1 question 0 being the best and 10 being the worst.",
+              "timeFrame": "Baseline, cycle 4 day 1, cycle 7 day 1 and at the end of treatment, up to 28 days post cycle 9 (each cycle is 28 days)"
+            },
+            {
+              "measure": "Safety of BAT-RAD in patients with mCRPC as assessed by number of participants removed for adverse events",
+              "description": "To determine the safety of BAT-RAD in patients with mCRPC in patients with mCRPC compared with standard of care treatment for this patient population. This will be measured through Physical assessment, adverse events and labs and will be measured by how many patients are removed for adverse events.",
+              "timeFrame": "Up to 10 months"
+            }
+          ],
+          "otherOutcomes": [
+            {
+              "measure": "Percentage of patients with somatic (tumor) or germline (inherited) mutations",
+              "description": "To estimate the percentage of patients with somatic (tumor) or germline (inherited) mutations in homologous repair (HR) and/or mismatch repair (MMR) genes in patients with mCRPC.",
+              "timeFrame": "24 months"
+            }
+          ]
+        },
+        "eligibilityModule": {
+          "eligibilityCriteria": "Inclusion Criteria:\n\n* Histologically documented adenocarcinoma of the prostate confirmed by pathology report from prostate biopsy or a radical prostatectomy specimen. If prostatic tumor is of mixed histology, \\> 50% of the tumor must be adenocarcinoma.\n* Bone metastases as manifested by one or more lesions on a Technetium 99m bone scan performed within 2 months of screening\n* Castrate-resistant prostate cancer, in the setting of castrate levels of testosterone (\u2264 50 ng/dL), defined as current or historical evidence of disease progression concomitant with surgical castration or androgen deprivation therapy (ADT), as demonstrated by two consecutive rises in PSA OR new lesions on bone scan:\n* PSA progression will be defined as 2 rising PSA values compared to a reference value, measured at least 7 days apart and the second value is \u2265 2 ng/mL. Appearance of one or more new areas of abnormal uptake on bone scan when compared to imaging studies acquired during castration therapy or against the precastration studies if there was no response. Increased uptake of pre-existing lesions on bone scan does not constitute progression. It must be documented within 8 weeks of screening Documented bone lesions by the appearance of \u2265 2 new lesions by bone scintigraphy or dimensionally measurable soft tissue metastatic lesion assessed by CT or MRI.\n* Serum PSA \u2265 2.0 ng/mL\n* Patients must be on bone health agents, either zoledronic acid or denosumab, for at least 4 weeks before enrollment. These treatments must then be continued during the study.\n* Screening Eastern Cooperative Oncology Group (ECOG) performance status \u2264 1\n* Asymptomatic or minimally symptomatic disease (no opioids)\n* Prior treatment with no more than one novel AR targeted drug (abiraterone, enzalutamide, darolutamide or apalutamide) is permitted, but not required. Prior first-generation AR targeted therapies such as bicalutamide or nilutamide are permitted as previous therapy and does not count as novel AR targeted therapy.\n* Prior chemotherapy for hormone-sensitive prostate cancer (given \u2265 12 months prior to study entry) is allowed, but not necessary.\n* Adequate bone marrow, renal and liver function (Absolute Neutrophil count \\> 1,000, Platelets \\>100,000, Hemoglobin \u2265 9g/dL aspartate aminotransferase/ alanine amino transferase (AST)/(ALT) within normal limits (WNL); Total Bilirubin WNL.\n* No evidence (within 5 years) of prior malignancies (except successfully treated basal cell or squamous cell carcinoma of the skin).\n* All patients must have tissue for genomic analysis. A biopsy of a metastatic site may be done during the screening; however, archive tissue will be allowed. Prostate tissue from prostate biopsy will be allowed.\n\nExclusion Criteria:\n\n* The presence of known visceral metastasis, including lung, liver and brain metastases.\n* Spinal cord compression, imminent long bone fracture, or any other condition that, in the opinion of the investigator, is likely to require radiation therapy and/or steroids for pain control during the active phase.\n* Previous treatment with chemotherapy for mCRPC, or chemotherapy for any reason within 12 months prior to registration. (Chemotherapy in the adjuvant setting or for hormone-sensitive prostate cancer is permitted, as long as it was completed more than 6 months before registration).\n* History of radiation therapy, either via external beam or brachytherapy within 28 days prior to registration.\n* Systemic therapy with strontium-89, samarium-153, rhenium-186 or rhenium-188 for the treatment of bony metastases within previous 24 weeks\n* Use of opioid analgesics for cancer-related pain such as oxycodone, morphine or methadone. Weak opioid analgesics such as codeine or tramadol are permitted.\n* Use of experimental drug within 4 weeks of treatment.\n* Patients with an intact prostate AND urinary obstructive symptoms are excluded (which includes patients with urinary symptoms from benign prostatic hyperplasia (BPH).\n* Patients receiving anticoagulation therapy with warfarin are not eligible for study. Patients on other anticoagulants such as rivaroxaban, dabigatran, apixaban are permitted.\n* Symptomatic nodal disease, i.e. scrotal, penile or leg edema.\n* Poor medical risk due to a serious, uncontrolled medical disorder, non-malignant systemic disease, or active, uncontrolled infection or a disease that may compromise safety. Examples include, but are not limited to, diabetes, heart failure, chronic obstructive pulmonary disease (COPD), ulcerative colitis, or Crohn's disease, Paget's disease, ventricular arrhythmia, recent (within 12 months) myocardial infarction, thromboembolic events or any psychiatric disorder that prohibits obtaining informed consent. Any medical intervention, any other condition, or any other circumstance which, in the opinion of the investigator, could compromise adherence with study requirements or otherwise compromise the study's objectives.\n* Evidence of disease in sites or extent that, in the opinion of the investigator, would put the patient at risk from therapy with testosterone (e.g. femoral metastases with concern over fracture risk, severe and extensive spinal metastases with concern over spinal cord compression, etc). Patients with low volume visceral metastasis are permitted at the discretion of the investigator, however bone disease must be predominant.",
+          "healthyVolunteers": true,
+          "sex": "MALE",
+          "minimumAge": "18 Years",
+          "stdAges": [
+            "ADULT",
+            "OLDER_ADULT"
+          ]
+        },
+        "contactsLocationsModule": {
+          "centralContacts": [
+            {
+              "name": "Rana Sullivan, RN",
+              "role": "CONTACT",
+              "phone": "410-614-6337",
+              "email": "ProstateCancerClinicalTrials@live.johnshopkins.edu"
+            },
+            {
+              "name": "Amber Michalik, BA",
+              "role": "CONTACT",
+              "phone": "667-306-8336",
+              "email": "ProstateCancerClinicalTrials@live.johnshopkins.edu"
+            }
+          ],
+          "overallOfficials": [
+            {
+              "name": "Pedro Isaacsson Velho, M,D",
+              "affiliation": "Moinhos de Vento Hospital",
+              "role": "PRINCIPAL_INVESTIGATOR"
+            },
+            {
+              "name": "Samuel Denmeade, M,D",
+              "affiliation": "Sidney Kimmel Comprehensive Cancer Center at the Johns Hopkins Hospital",
+              "role": "PRINCIPAL_INVESTIGATOR"
+            }
+          ],
+          "locations": [
+            {
+              "facility": "Amber Michalik",
+              "status": "RECRUITING",
+              "city": "Baltimore",
+              "state": "Maryland",
+              "zip": "20707",
+              "country": "United States",
+              "contacts": [
+                {
+                  "name": "Amber Michalik, BA",
+                  "role": "CONTACT",
+                  "phone": "667-306-8336",
+                  "email": "amichal2@jhmi.edu"
+                }
+              ],
+              "geoPoint": {
+                "lat": 39.29038,
+                "lon": -76.61219
+              }
+            },
+            {
+              "facility": "Moinhos de Vento Hospital",
+              "status": "NOT_YET_RECRUITING",
+              "city": "Porto Alegre",
+              "zip": "90560-010",
+              "country": "Brazil",
+              "contacts": [
+                {
+                  "name": "Pedro Isaacsson Velho, M,D",
+                  "role": "CONTACT",
+                  "phone": "+55 51 980609999",
+                  "email": "pedro.isaacsson@hmv.org.br"
+                }
+              ],
+              "geoPoint": {
+                "lat": -30.03283,
+                "lon": -51.23019
+              }
+            }
+          ]
+        }
+      },
+      "derivedSection": {
+        "miscInfoModule": {
+          "versionHolder": "2026-10-23"
+        },
+        "interventionBrowseModule": {
+          "meshes": [
+            {
+              "id": "C000615150",
+              "term": "Radium-223"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT07454356",
+          "orgStudyIdInfo": {
+            "id": "RCT-EF-225"
+          },
+          "organization": {
+            "fullName": "Ermi LLC",
+            "class": "INDUSTRY"
+          },
+          "briefTitle": "Knee Flexionater to Avoid Motion Restoring Surgery",
+          "officialTitle": "Comparing High Intensity Stretch Device Combined With Physical Therapy Versus Physical Therapy Alone to Prevent Motion-Restoring Surgery Following Primary Total Knee Arthroplasty: Study Protocol for a Randomized Controlled Trial"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-03",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2025-12-09",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2029-12",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2029-12",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2026-03-02",
+          "studyFirstSubmitQcDate": "2026-03-02",
+          "studyFirstPostDateStruct": {
+            "date": "2026-03-06",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-03-02",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-03-06",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "Ermi LLC",
+            "class": "INDUSTRY"
+          }
+        },
+        "oversightModule": {
+          "oversightHasDmc": false,
+          "isFdaRegulatedDrug": false,
+          "isFdaRegulatedDevice": true,
+          "isUsExport": false
+        },
+        "descriptionModule": {
+          "briefSummary": "The goal of this clinical trial is to learn whether adding a stretching device to standard physical therapy can help people regain knee bending after total knee replacement surgery.\n\nSome people have difficulty bending their knee during recovery. When this happens, doctors may recommend another procedure called motion-restoring surgery to improve knee movement.\n\nThis study aims to answer two main questions. First, does adding a hydraulic high-intensity stretching device to physical therapy help people regain knee bending after surgery? Second, does using the device affect recovery, daily activities, or the chance of needing another procedure?\n\nResearchers will compare two treatment approaches. One group will receive standard physical therapy alone. The other group will receive standard physical therapy and will also use a hydraulic high-intensity stretching device called the Ermi Knee Flexionater at home.\n\nParticipants who receive the device will use it at home each day in addition to attending their physical therapy sessions. Researchers will measure how well participants can bend their knee and will ask questions about pain, daily function, and activity level. Participants will also complete simple walking and mobility tests.\n\nStudy visits will occur about four weeks after surgery when participants enroll, and again at about eight weeks, twelve weeks, six months, one year, and two years after surgery. Researchers will compare results between the two groups to see whether the stretching device improves recovery after knee replacement."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Joint Contractures",
+            "Total Knee Anthroplasty",
+            "Knee Arthrofibrosis"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "NA"
+          ],
+          "designInfo": {
+            "allocation": "RANDOMIZED",
+            "interventionModel": "PARALLEL",
+            "primaryPurpose": "TREATMENT",
+            "maskingInfo": {
+              "masking": "NONE"
+            }
+          },
+          "enrollmentInfo": {
+            "count": 150,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Physical Therapy Only",
+              "type": "ACTIVE_COMPARATOR",
+              "description": "Participants will receive standard postoperative physical therapy following primary total knee arthroplasty according to the treating clinician's usual rehabilitation protocol.",
+              "interventionNames": [
+                "Other: Standard Physical Therapy"
+              ]
+            },
+            {
+              "label": "Hydraulic high-Intensity Stretch Device Plus Standard Physical Therapy",
+              "type": "EXPERIMENTAL",
+              "description": "Participants will receive standard postoperative physical therapy and will use a hydraulic high-intensity stretch device (Ermi Knee Flexionater) at home in accordance with the study protocol.",
+              "interventionNames": [
+                "Device: Hydraulic high Intensity Stretch Device"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "DEVICE",
+              "name": "Hydraulic high Intensity Stretch Device",
+              "description": "A hydraulic high-intensity mechanical stretch device (Ermi Knee Flexionater) used as an adjunct to standard postoperative physical therapy following primary total knee arthroplasty. The device is designed to apply controlled, patient-actuated stretch to increase knee flexion range of motion. Participants assigned to this intervention will use the device at home daily for approximately one hour, in addition to attending prescribed physical therapy sessions. Device use will begin at approximately four weeks postoperatively and continue for up to eight weeks, consistent with the study protocol. Participants will receive in-person instruction on device setup and operation and will record frequency and duration of use in a log. Compliance will be monitored through weekly check-ins.",
+              "armGroupLabels": [
+                "Hydraulic high-Intensity Stretch Device Plus Standard Physical Therapy"
+              ]
+            },
+            {
+              "type": "OTHER",
+              "name": "Standard Physical Therapy",
+              "description": "Supervised postoperative physical therapy following primary total knee arthroplasty. Therapy includes range of motion exercises, strengthening, neuromuscular re-education, manual therapy, and functional rehabilitation as determined by the treating clinician.",
+              "armGroupLabels": [
+                "Physical Therapy Only"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Change from Enrollment in Active and Passive Knee Flexion Range of Motion (Degrees)",
+              "description": "Change in active and passive knee flexion measured in degrees using a standard goniometer. Higher values indicate greater knee flexion and improved range of motion.",
+              "timeFrame": "Baseline (Enrollment at 4 weeks post-operative), 8 weeks post-operative, 12 weeks post-operative, 6 months post-operative, 1 year post-operative, and 2 years post-operative"
+            }
+          ],
+          "secondaryOutcomes": [
+            {
+              "measure": "Change from Enrollment in KOOS Score",
+              "description": "Change in Knee injury and Osteoarthritis Outcome Score (KOOS). Scores range from 0 to 100, where 0 represents extreme knee problems and 100 represents no knee problems. Higher scores indicate better knee function.",
+              "timeFrame": "Baseline (Enrollment), 8 weeks, 12 weeks, 6 months, 1 year, and 2 years post-operative"
+            },
+            {
+              "measure": "Change from Enrollment in WOMAC Score",
+              "description": "Change in Western Ontario and McMaster Universities Osteoarthritis Index (WOMAC). Total scores range from 0 to 96, where higher scores indicate worse pain, stiffness, and functional limitation.",
+              "timeFrame": "Baseline (Enrollment), 8 weeks, 12 weeks, 6 months, 1 year, and 2 years post-operative"
+            },
+            {
+              "measure": "Change from Enrollment in Visual Analog Scale (VAS) Pain Score",
+              "description": "Change in self-reported pain measured using a 0-10 scale, where 0 indicates no pain and 10 indicates the worst possible pain. Lower scores indicate less pain.",
+              "timeFrame": "Baseline (Enrollment), 8 weeks, 12 weeks, 6 months, 1 year, and 2 years post-operative"
+            },
+            {
+              "measure": "Change from Enrollment in Timed Up and Go (TUG) Test Time (Seconds)",
+              "description": "Change in time required to complete the Timed Up and Go test. Lower times (seconds) indicate improved mobility.",
+              "timeFrame": "Baseline (Enrollment), 8 weeks, 12 weeks, 6 months, 1 year, and 2 years post-operative"
+            },
+            {
+              "measure": "Change from Enrollment in Six-Minute Walk Test (6MWT) Distance (Meters)",
+              "description": "Change in distance walked during the Six-Minute Walk Test measured in meters. Greater distance indicates improved functional endurance.",
+              "timeFrame": "Baseline (Enrollment), 8 weeks, 12 weeks, 6 months, 1 year, and 2 years post-operative"
+            },
+            {
+              "measure": "Number of Participants Experiencing Adverse Events",
+              "description": "Number of participants experiencing any adverse event, including but not motion restoring surgery, limited to infection, pulmonary embolism, rehospitalization, revision surgery, or other complications following enrollment.",
+              "timeFrame": "From enrollment to 2 years post-operative follow-up"
+            }
+          ]
+        },
+        "eligibilityModule": {
+          "eligibilityCriteria": "Inclusion Criteria:\n\n* Age 40 years or older\n* Undergoing primary total knee replacement surgery\n* Knee flexion less than 105 degrees at approximately 4 weeks after surgery\n* Considered a candidate for motion-restoring surgery, with any surgery delayed until after 2 months of nonoperative treatment\n\nExclusion Criteria:\n\n* Not willing to participate\n* Diagnosis of advanced rheumatoid arthritis\n* Neurological deficit affecting the operative leg\n* Revision total knee replacement or previous major surgery on the same knee\n* Cognitive impairment\n* Prior total hip replacement on the same side (ipsilateral total hip arthroplasty)\n* Living more than 2 hours from the study site or unwilling to attend required local physical therapy visits",
+          "healthyVolunteers": false,
+          "sex": "ALL",
+          "minimumAge": "40 Years",
+          "stdAges": [
+            "ADULT",
+            "OLDER_ADULT"
+          ]
+        },
+        "contactsLocationsModule": {
+          "overallOfficials": [
+            {
+              "name": "Shaun K Stinton, PhD",
+              "affiliation": "Ermi LLC",
+              "role": "STUDY_DIRECTOR"
+            }
+          ],
+          "locations": [
+            {
+              "facility": "INOV8 Orthopedics",
+              "status": "RECRUITING",
+              "city": "Houston",
+              "state": "Texas",
+              "zip": "77043",
+              "country": "United States",
+              "contacts": [
+                {
+                  "name": "Director of Research",
+                  "role": "CONTACT",
+                  "phone": "832-240-5974",
+                  "email": "bpeace@inov8hc.com"
+                }
+              ],
+              "geoPoint": {
+                "lat": 29.76328,
+                "lon": -95.36327
+              }
+            }
+          ]
+        },
+        "ipdSharingStatementModule": {
+          "ipdSharing": "NO"
+        }
+      },
+      "derivedSection": {
+        "miscInfoModule": {
+          "versionHolder": "2026-10-23"
+        }
+      },
+      "hasResults": false
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT04899037",
+          "orgStudyIdInfo": {
+            "id": "STUDY001352"
+          },
+          "organization": {
+            "fullName": "University of South Florida",
+            "class": "OTHER"
+          },
+          "briefTitle": "Pilot Study to Evaluate the Long-term Chronic Care of Patients Who Could or do Utilize an Osseointegrated Device (OID)",
+          "officialTitle": "Pilot Study to Evaluate the Long-term Chronic Care of Patients Who Could or do Utilize an Osseointegrated Device (OID)"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-09",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2021-01-29",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2027-12",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2027-12",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2021-05-19",
+          "studyFirstSubmitQcDate": "2021-05-19",
+          "studyFirstPostDateStruct": {
+            "date": "2021-05-24",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-09-03",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-09-09",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "PRINCIPAL_INVESTIGATOR",
+            "investigatorFullName": "Victoria Sanchez (Williams)",
+            "investigatorTitle": "Principal Investigator",
+            "investigatorAffiliation": "University of South Florida"
+          },
+          "leadSponsor": {
+            "name": "University of South Florida",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Oticon Medical",
+              "class": "INDUSTRY"
+            }
+          ]
+        },
+        "oversightModule": {
+          "oversightHasDmc": false,
+          "isFdaRegulatedDrug": false,
+          "isFdaRegulatedDevice": false
+        },
+        "descriptionModule": {
+          "briefSummary": "The primary objective of the study is to evaluate OID hearing intervention on cognition among patients who could vs. do utilize an OID. We will also evaluate the long-term effects of OID use on secondary outcomes measures (hearing performance, quality-of-life, social interaction, communication, physical functioning, etc)",
+          "detailedDescription": "Hearing impairment is highly prevalent and independently associated with cognitive decline. Little is known about the various types, degrees, and configurations of hearing loss and how it relates to uptake of a hearing intervention and possible long-term benefits of using the intervention. The purpose of this study is to investigate the comparative effectiveness within an observational study design to determine the long-term effects of hearing intervention, in the form of osseointegrated devices (OID), among patients with either conductive, mixed, or single-sided hearing loss. Participants will be followed for 3 years (36 months) to answer the following aims:\n\nAim 1: To compare the effect of OID intervention versus no audiological intervention on rates of decline in global cognitive function (primary outcome measure) in 18-85 year-old well-functioning and cognitively-normal older adults with hearing loss. We hypothesize that there will be a significant difference in cognitive function between patients that utilized OID hearing intervention compared to no audiological intervention.\n\nSecondary Aims: To compare the effect of OID intervention on secondary outcomes of hearing, social, mental, physical, and cognitive functioning. We hypothesize that there are significant differences in secondary outcomes between patients that utilized OID hearing intervention compared to no audiological intervention."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Hearing Loss, Conductive",
+            "Hearing Loss, Mixed",
+            "Deafness, Unilateral"
+          ],
+          "keywords": [
+            "osseointegrated device",
+            "cognition",
+            "hearing loss",
+            "neurocognitive",
+            "BAHA",
+            "Ponto",
+            "Osseointegrated Bone-Conducting Hearing Protheses",
+            "Osia",
+            "Osseointegrated Auditory Device",
+            "Auditory Wellness"
+          ]
+        },
+        "designModule": {
+          "studyType": "OBSERVATIONAL",
+          "patientRegistry": false,
+          "designInfo": {
+            "observationalModel": "OTHER",
+            "timePerspective": "PROSPECTIVE"
+          },
+          "enrollmentInfo": {
+            "count": 50,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Osseointegrated Device Uptake",
+              "description": "The participants in this group will be in the 18-85 year age range who have a hearing loss configuration that would benefit from an OID and choose to uptake an OID.",
+              "interventionNames": [
+                "Other: No intervention"
+              ]
+            },
+            {
+              "label": "Osseointegrated Device Non Uptake",
+              "description": "The participants in this group will be in the 18-85 year age range and who a hearing loss configuration that would benefit from an OID but choose to not uptake an OID.",
+              "interventionNames": [
+                "Other: No intervention"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "OTHER",
+              "name": "No intervention",
+              "description": "This is an observational study of participants that either choose or not choose to utilize an OID. This is not an intervention prescribed study, however, participants may choose uptake of standard of care intervention and obtain and utilize an OID. An OID is an FDA-approved device commonly recommended to patients with conductive, mixed, or singled-sided hearing loss. There is no experimental intervention evaluated in this study.",
+              "armGroupLabels": [
+                "Osseointegrated Device Non Uptake",
+                "Osseointegrated Device Uptake"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Change from baseline to month 36 on Ensuring Speech Understanding Test scores, evaluating a participants ability to hear the examiner during the Neurocognitive Test Battery",
+              "description": "In this test, five sentences are read aloud to the participant by a research staff member, and the participant is asked to repeat back the sentence. Participants are scored on the number of target words repeated back correctly (3 target words/sentence). This test contains 2 trials, Trial 1 and Trial 2, with Trial 2 only being completed if the score on Trial 1 is below the specified criteria. The total score for Trail 1 is 1 (one target word repeated correctly) to 15 (all target words repeated correctly). If a participant's score is 12 or less on Trial 1, Trial 2 will be administered using a slightly louder tone. Trial 2 contains 15 target words and the same scoring criteria as Trail 1. If the score on Trial 2 is 12 or less, the examiner will use a slightly louder tone while administering the neurocognitive test battery. This test guards against poor speech understanding from hearing loss directly confounding administration of neurocognitive tests with auditory stimuli.",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Mini Mental State Exam scores, evaluating cognitive function ability",
+              "description": "This test is a standardized instrument for screening a limited number of cognitive functions. The MMSE is used to exclude those with significant cognitive impairment at baseline, and as an outcome for tracking cognitive decline, and dementia. The MMSE is administered by interview and should be attempted in all participants. Scores range from 0 (no cognitive function questions answered correctly) to 30 (all cognitive function questions answered correctly).",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Delayed Word Recall Test scores, evaluating verbal memory",
+              "description": "The DWRT is a measure of verbal memory that requires the participant to recall a list of 10 common nouns following a short delay. The participant is presented with a stimulus card for each of the 10 words. The examiner reads each word aloud, and asks the participant to repeat the word and use it in a sentence. This procedure is repeated, providing two exposures to the words. Following an approximate 5-minute delay, during which the (non-verbal) digit symbol substitution test (DSST) is given, the participant is asked to recall as many words as possible. Scores range from 0 (no words recalled correctly) to 10 (all words recalled correctly).",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Digit Symbol Substitution Test scores, evaluating psychomotor speed and sustained attention",
+              "description": "The DSST is a measure of psychomotor speed and sustained attention and also serves as a nonverbal distractor task, interposed between learning and recall for the Delayed Word Recall Test (DWRT). The participant is asked to translate numbers (1-9) to symbols using a key provided at the top of the test form. The participant is provided with a pencil (without an eraser). Instructions are provided in a deliberate and slow pace. One point is given for each correctly drawn symbol completed within the 90-second time limit. Scores range from 0 (no symbols correctly drawn) to 93 (all symbols correctly drawn).",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Incidental Learning Test scores, evaluating non-verbal recent memory",
+              "description": "The Incidental Learning Test was adapted from the WAIS-R NI and provides a non-verbal measure of recent memory. Following the Digit Symbol Substitution Test (DSST), the participant is presented with the Incidental Learning Template. The participant is asked to write down as many of the DSST symbols as he/she can remember, in any order. Next, the participant is asked to write down the number that was paired with each of the symbols from the DSST. Two scores are yielded: 1) Free Recall: total number of symbols recalled, regardless of pairing and 2) Pairing: number of correct symbols correctly paired with corresponding numbers. Scores for each range from 0 (no symbols recalled, no symbols correctly paired to corresponding numbers) to 9 (all symbols recalled, all symbols correctly paired to corresponding numbers).",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Trail Making Test Part A (TMT A) scores, evaluating attention, sequencing, mental flexibility, visual search, and motor function",
+              "description": "The TMT A is a timed task in which participants connect numbers in sequence as quickly as possible. TMT measures attention, sequencing, mental flexibility, and visual search and motor function. In the TMT A, the participant is asked to draw a line and connect a series of numbers (from 1-25) as quickly as possible. Prior to the test part, the participant is given a sample test to demonstrate the task. The score for TMT A is the number of seconds required to complete the task. Scores range from 1 (1 second to connect all numbers) to 240 (240 seconds to connect all numbers). A maximum of 240 seconds (4 minutes) and 5 errors is allowed. If a participant makes 5 errors, the test is stopped even if the participant has not reached the 240 second limit, and a score of 240 seconds is given.",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Trail Making Test Part B (TMT B) scores, evaluating attention, sequencing, mental flexibility, visual search, and motor function",
+              "description": "The TMT Part B is a timed task in which participants connect letters and numbers in sequence as quickly as possible. The TMT measures attention, sequencing, mental flexibility, and visual search and motor function. In the TMT B, the participant is asked to draw a line and connect a series of numbers and letters, alternating between a given number and letter (e.g., 1 to A, A to 2, 2 to B, B to 3, etc.) as quickly as possible. Prior to the test part, the participant is given a sample test to demonstrate the task. The score for TMT B is the number of seconds required to complete the task. Scores range from 1 (1 second to connect all numbers and letters) to 240 (240 seconds to connect all numbers and letters). A maximum of 240 seconds (4 minutes) and 5 errors is allowed. If a participant makes 5 errors, the test is stopped even if the participant has not reached the 240 second limit, and a score of 240 seconds is given.",
+              "timeFrame": "Baseline and Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Logical Memory I and II scores, evaluating immediate and delayed verbal recall",
+              "description": "The Logical Memory I and II provides a measure of immediate and delayed verbal recall for the number of ideas presented in two stories, which are read to the participant. Both stories are read to the participant, and after each story is presented, the participant is asked to recall as much of the story as possible. The Logical Memory I score is calculated as the average number of ideas recalled from Story A and B. Each story contains 25 scoring units, the maximum score is 25 (25+25/2). An approximate 20-minute delay follows, during which the remaining (non-memory) tests are administered. Following the delay period, the participant is again asked to recall the stories. The Logical Memory II score is calculated as the average number of story elements recalled from Story A and B. Scores range from 0 (no story elements correctly recalled) to 25 (all story elements correctly recalled).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Digit Span Backwards scores, evaluating attention and working memory",
+              "description": "The Digit Span Backwards is part of the Wechsler Memory Scale-Revised and provides a measure of attention and working memory. The participant is read a series of numbers progressively increasing in length from two to eight digits. After the numbers are read, the participant is asked to repeat the numbers in the reverse order. Two trials at each digit length are performed (i.e., 2 trials with 2 digits, 2 trials with 3 digits, etc.). The test is discontinued after two consecutive errors of the same length item. Scores range from 0 (no trails correctly repeated in reverse order) to 12 (all trials correctly repeated in reverse order).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Boston Naming Test scores, evaluating visual naming ability",
+              "description": "The Boston Naming Test assess visual naming ability using black-and-white drawings of common objects. For this study, the 30-item version used by the National Alzheimer's Coordinating Centers Uniform Data Set will be used. The participant is presented with a series of line drawings of objects and asked to name each object. The items become progressive more difficult based on their frequency of occurrence in the English language. A total score is calculated as the number of spontaneously produced correct responses. Scores may range from 0 (no object named correctly) to 30 (all objects named correctly).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Word Fluency Test scores, evaluating verbal functioning",
+              "description": "The Word Fluency Test is a measure of verbal functioning. In this task, the participant is asked to produce as many words as possible that begin with the letters F, A, and S within a time limit of 60 seconds for each letter, avoiding proper nouns, variations, plurals, and repetitions. The score is the total number of admissible words produced across letters, ranging from 0 (no words produced) to X (number of words produced).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Animal Naming Test scores, evaluating category fluency",
+              "description": "Animal Naming is a measure of category fluency (semantic association). Category fluency, and specifically animal naming, is part of the Boston Diagnostic Aphasia Examination, the Stanford-Binet test, and the CERAD. The participant is asked to name as many different animals as possible within a 60 second time limit. The score is given as the sum of all admissible names, from 0 (no animals named) to X (number of animals named).",
+              "timeFrame": "Baseline to Month 36"
+            }
+          ],
+          "secondaryOutcomes": [
+            {
+              "measure": "Change from baseline to month 36 on Oticon SSD Questionnaire (OSSDQ) ratings, evaluating why a patient wants to use OID hearing intervention",
+              "description": "The OSSDQ was developed by Oticon Medical as a brief instrument to capture reasons why a patient with single sided deafness may want to use OID hearing intervention. The OSSDQ is a self-administered questionnaire.",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Tinnitus Functional Index (TFI) ratings, evaluating the intrusiveness of tinnitus in a participant's everyday life",
+              "description": "The Tinnitus Functional Index has eight subscales that address the intrusiveness of tinnitus, the sense of control the patient has, cognitive interference, sleep disturbance, auditory issues, relaxation issues, quality of life, and emotional distress. The subject will report (either directly onto the questionnaire in person, via web, or over the phone) answers to each of the 25 questions using a scale of 0 (tinnitus did not interfere) to 10 (tinnitus completely interfered).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Center for Epidemiological Studies Depression and Hopelessness Scale (CES-D) ratings, which screens for clinical depression",
+              "description": "The CES-D Short Form is a screening tool for identifying clinical depression, and is a self-administered questionnaire. Participants are asked to rate each item on a 3-point scale, 0 (hardly ever or never) to 2 (much or most of the time), on the basis of \"how often you have felt this way during the past week.\"",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Baecke Physical Activity Questionnaire (BPAQ) ratings, evaluating the frequency and duration of self report activities",
+              "description": "This is a self-administered questionnaire given to each participant that measures the frequency and duration of self-reported activities. This questionnaire asks about habitual physical activities including sport-related activities during leisure time, non-sport related physical activity during leisure time, and television viewing. Ratings range from A (least amount of physical activity) to E (highest amount of physical activity), with each question containing a different explanation for scores A-E based on the question asked.",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Hearing Handicap Inventory for the Elderly (HHIE) ratings, evaluating the emotional and social impacts of hearing loss",
+              "description": "This is a self-administered screening questionnaire given to each participant to gather data on the perception of the impact of hearing loss. This questionnaire assesses the social and emotional impacts the participant perceives due to their hearing loss. Ratings range from 0 (No, hearing loss does not affect me) to 20 (Yes, hearing loss does affect me).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on SF36 Health Survey (SF-36) ratings, evaluating health related quality of life",
+              "description": "The SF-36 Health Survey is a self-administered questionnaire that assesses health-related quality of life. It is a generic measure, as opposed to one that targets a specific age, disease, or treatment group. The SF-36 is the most widely-used health survey throughout the world because it is both brief and comprehensive, readily available, psychometrically-sound, and of proven usefulness in measuring health status and monitoring health outcomes. Eight domains of health can be estimated from the SF-36 (physical function, role limitations due to physical problems, social functioning, bodily pain, general mental health perception, role limitations due to emotional problems, emotional well-being, general health perception). Each domain is evaluated on a range of 0 (worst) to 100 (best) with a global median of 50.",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Social Network Index (SNI) ratings, evaluating participant's social network",
+              "description": "The Cohen SNI is a self-administered questionnaire given to each participant to gather social network data. The Social Network Index evaluates two outcome variables: (1) Social Network Diversity - Number of social roles in which the participant had regular contact with for at least once every 2 weeks, and (2) People in Social Network -Total number of people with whom the participant had regular contact (at least once every 2 weeks). Examples of items include, \"How many other relatives (other than your spouse, parents \\& children) do you feel close to?\", \"Do you attend any classes (school, university, technical training, or adult education) on a regular basis?\", \"Are you currently involved in regular volunteer work?\", among others.",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 in UCLA Loneliness Scale (UCLA - LS) ratings, evaluating participant's perception of loneliness",
+              "description": "This is a self-administered questionnaire given to each participant to gather loneliness data. This questionnaire measures subjective ratings of social isolation and loneliness (e.g. lacking companionship, feeling left out, and isolated from others, among others). Ratings range from 0 (never feeling what the question is asking) to 4 (always feeling what the question is asking).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Falls and Mobility ratings, measuring self reported physical ability, fatigue, and falls",
+              "description": "This is a self-administered questionnaire given to each participant to record living circumstances, self-reported physical ability, fatigue, and falls. Subjective ratings depend on the section being evaluated (e.g. no difficulty, never, 1 fall, do not remember).",
+              "timeFrame": "Baseline to Month 36"
+            },
+            {
+              "measure": "Change from baseline to month 36 on Number of Hospitalizations",
+              "description": "This is a self-administered questionnaire given to each participant to record recent hospitalizations since the last time of study contact. Responses include Yes (hospitalized since last contact), or No (not hospitalized since last contact).",
+              "timeFrame": "Baseline to Month 36"
+            }
+          ],
+          "otherOutcomes": [
+            {
+              "measure": "Change from baseline to month 36 on the Audiometric Assessment, evaluating pure tone and speech audiometric abilities",
+              "description": "The audiometric diagnostic battery will be conducted by a trained audiology staff member for all participants. This assessment is standard of care. The battery includes otoscopy, tympanometry, pure tone audiometry, and speech audiometry (including word recognition testing in noise). The goal of this battery it to provide a diagnosis of hearing loss at the screening appointment, and then to monitor the participants hearing status during the study's time period.",
+              "timeFrame": "Baseline to Month 36"
+            }
+          ]
+        },
+        "eligibilityModule": {
+          "eligibilityCriteria": "Inclusion Criteria:\n\n* age 18-85 years\n* community dwelling\n* residency: participants must plan to reside in the local area for the study duration.\n* fluent English-speaker\n* Audiometric hearing impairment: participants must have hearing configuration that could benefit from OID hearing intervention.\n* Mini-Mental State Exam (MMSE) score \\> 23 for individuals with high-school degree or less; Mini-Mental State Exam (MMSE) score \\>25 for individuals with some college or more; participants must be at risk for cognitive decline the range quantified well by neurocognitive testing, and so must be free from more substantial cognitive impairment at baseline.\n* willingness to participant and adhere to the protocol: participants must be willing and able to consent to participate in the study and be willing to commit to adhere to the study protocol for the duration of the study (3 years)\n\nExclusion Criteria:\n\n* self-reported disability in \\>2 or more Activities of Daily Living (ADL)\n* medical contraindication to use of OID; because OIDs will be the primary device used in the hearing intervention, participants with medical contraindications to OID use are excluded",
+          "healthyVolunteers": false,
+          "sex": "ALL",
+          "minimumAge": "18 Years",
+          "maximumAge": "85 Years",
+          "stdAges": [
+            "ADULT",
+            "OLDER_ADULT"
+          ],
+          "studyPopulation": "adults age 18-85 years with an audiometric configuration (conductive or mixed hearing loss, single sided deafness) would could benefit from an OID hearing intervention",
+          "samplingMethod": "NON_PROBABILITY_SAMPLE"
+        },
+        "contactsLocationsModule": {
+          "centralContacts": [
+            {
+              "name": "Marsadi L. Parliament, Audiologist, Co-Investigator, Au.D.",
+              "role": "CONTACT",
+              "phone": "813-974-1262",
+              "email": "marsadi@usf.edu"
+            },
+            {
+              "name": "Morgan Oktela, Audiologist, Au.D.",
+              "role": "CONTACT",
+              "phone": "813-974-1262",
+              "email": "moktela@usf.edu"
+            }
+          ],
+          "overallOfficials": [
+            {
+              "name": "Victoria Sanchez, Au.D, Ph.D",
+              "affiliation": "University of South Florida",
+              "role": "PRINCIPAL_INVESTIGATOR"
+            },
+            {
+              "name": "Marsadi L Parliament, Au.D",
+              "affiliation": "University of South Florida",
+              "role": "STUDY_DIRECTOR"
+            }
+          ],
+          "locations": [
+            {
+              "facility": "Department of USF Health Otolaryngology; Auditory Rehabilitation & Clinical Trials Lab",
+              "status": "RECRUITING",
+              "city": "Tampa",
+              "state": "Florida",
+              "zip": "33613",
+              "country": "United States",
+              "contacts": [
+                {
+                  "name": "Marsadi L Parliament, AuD Co-Investigator, Au.D",
+                  "role": "CONTACT",
+                  "phone": "813-974-1262",
+                  "email": "marsadi@usf.edu"
+                },
+                {
+                  "name": "Morgan Oktela, Au.D.",
+                  "role": "CONTACT",
+                  "phone": "813-974-1262",
+                  "email": "moktela@usf.edu"
+                }
+              ],
+              "geoPoint": {
+                "lat": 27.94752,
+                "lon": -82.45843
+              }
+            }
+          ]
+        },
+        "referencesModule": {
+          "references": [
+            {
+              "type": "BACKGROUND",
+              "citation": "Pickles JO. An introduction to the physiology of hearing. Bingley, UK: Emerald Group Publishing; 2008"
+            },
+            {
+              "type": "BACKGROUND",
+              "citation": "WHO. World Health Organization Prevention of Blindness and Deafness (PBD) Program. Prevention of Deafness and Hearing Impaired Grades of Hearing Impairment. <http://www.who.int/pbd/deafness/hearing_impairment_grades/en/index.html>.In."
+            },
+            {
+              "pmid": "22083573",
+              "type": "BACKGROUND",
+              "citation": "Lin FR, Niparko JK, Ferrucci L. Hearing loss prevalence in the United States. Arch Intern Med. 2011 Nov 14;171(20):1851-2. doi: 10.1001/archinternmed.2011.506. No abstract available."
+            },
+            {
+              "pmid": "21357188",
+              "type": "BACKGROUND",
+              "citation": "Lin FR, Thorpe R, Gordon-Salant S, Ferrucci L. Hearing loss prevalence and risk factors among older adults in the United States. J Gerontol A Biol Sci Med Sci. 2011 May;66(5):582-90. doi: 10.1093/gerona/glr002. Epub 2011 Feb 27."
+            },
+            {
+              "pmid": "22332170",
+              "type": "BACKGROUND",
+              "citation": "Chien W, Lin FR. Prevalence of hearing aid use among older adults in the United States. Arch Intern Med. 2012 Feb 13;172(3):292-3. doi: 10.1001/archinternmed.2011.1408. No abstract available."
+            },
+            {
+              "pmid": "29222544",
+              "type": "BACKGROUND",
+              "citation": "Loughrey DG, Kelly ME, Kelley GA, Brennan S, Lawlor BA. Association of Age-Related Hearing Loss With Cognitive Function, Cognitive Impairment, and Dementia: A Systematic Review and Meta-analysis. JAMA Otolaryngol Head Neck Surg. 2018 Feb 1;144(2):115-126. doi: 10.1001/jamaoto.2017.2513."
+            },
+            {
+              "pmid": "28735855",
+              "type": "BACKGROUND",
+              "citation": "Livingston G, Sommerlad A, Orgeta V, Costafreda SG, Huntley J, Ames D, Ballard C, Banerjee S, Burns A, Cohen-Mansfield J, Cooper C, Fox N, Gitlin LN, Howard R, Kales HC, Larson EB, Ritchie K, Rockwood K, Sampson EL, Samus Q, Schneider LS, Selbaek G, Teri L, Mukadam N. Dementia prevention, intervention, and care. Lancet. 2017 Dec 16;390(10113):2673-2734. doi: 10.1016/S0140-6736(17)31363-6. Epub 2017 Jul 20. No abstract available."
+            },
+            {
+              "pmid": "29202654",
+              "type": "BACKGROUND",
+              "citation": "Rutherford BR, Brewster K, Golub JS, Kim AH, Roose SP. Sensation and Psychiatry: Linking Age-Related Hearing Loss to Late-Life Depression and Cognitive Decline. Am J Psychiatry. 2018 Mar 1;175(3):215-224. doi: 10.1176/appi.ajp.2017.17040423. Epub 2017 Dec 5."
+            },
+            {
+              "pmid": "24875093",
+              "type": "BACKGROUND",
+              "citation": "Lin FR, Albert M. Hearing loss and dementia - who is listening? Aging Ment Health. 2014;18(6):671-3. doi: 10.1080/13607863.2014.915924. No abstract available."
+            },
+            {
+              "pmid": "30419131",
+              "type": "BACKGROUND",
+              "citation": "Reed NS, Altan A, Deal JA, Yeh C, Kravetz AD, Wallhagen M, Lin FR. Trends in Health Care Costs and Utilization Associated With Untreated Hearing Loss Over 10 Years. JAMA Otolaryngol Head Neck Surg. 2019 Jan 1;145(1):27-34. doi: 10.1001/jamaoto.2018.2875."
+            },
+            {
+              "pmid": "30364572",
+              "type": "BACKGROUND",
+              "citation": "Deal JA, Goman AM, Albert MS, Arnold ML, Burgard S, Chisolm T, Couper D, Glynn NW, Gmelin T, Hayden KM, Mosley T, Pankow JS, Reed N, Sanchez VA, Richey Sharrett A, Thomas SD, Coresh J, Lin FR. Hearing treatment for reducing cognitive decline: Design and methods of the Aging and Cognitive Health Evaluation in Elders randomized controlled trial. Alzheimers Dement (N Y). 2018 Oct 5;4:499-507. doi: 10.1016/j.trci.2018.08.007. eCollection 2018."
+            },
+            {
+              "pmid": "8168443",
+              "type": "BACKGROUND",
+              "citation": "Tjellstrom A, Granstrom G. Long-term follow-up with the bone-anchored hearing aid: a review of the first 100 patients between 1977 and 1985. Ear Nose Throat J. 1994 Feb;73(2):112-4."
+            }
+          ]
+        },
+        "ipdSharingStatementModule": {
+          "ipdSharing": "UNDECIDED"
+        }
+      },
+      "derivedSection": {
+        "miscInfoModule": {
+          "versionHolder": "2026-10-23"
+        },
+        "conditionBrowseModule": {
+          "meshes": [
+            {
+              "id": "D006314",
+              "term": "Hearing Loss, Conductive"
+            },
+            {
+              "id": "D046089",
+              "term": "Hearing Loss, Mixed Conductive-Sensorineural"
+            },
+            {
+              "id": "D046088",
+              "term": "Hearing Loss, Unilateral"
+            },
+            {
+              "id": "D034381",
+              "term": "Hearing Loss"
+            }
+          ],
+          "ancestors": [
+            {
+              "id": "D006311",
+              "term": "Hearing Disorders"
+            },
+            {
+              "id": "D004427",
+              "term": "Ear Diseases"
+            },
+            {
+              "id": "D010038",
+              "term": "Otorhinolaryngologic Diseases"
+            },
+            {
+              "id": "D012678",
+              "term": "Sensation Disorders"
+            },
+            {
+              "id": "D009461",
+              "term": "Neurologic Manifestations"
+            },
+            {
+              "id": "D009422",
+              "term": "Nervous System Diseases"
+            },
+            {
+              "id": "D012816",
+              "term": "Signs and Symptoms"
+            },
+            {
+              "id": "D013568",
+              "term": "Pathological Conditions, Signs and Symptoms"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT05909501",
+          "orgStudyIdInfo": {
+            "id": "UPCC 11423"
+          },
+          "organization": {
+            "fullName": "Abramson Cancer Center at Penn Medicine",
+            "class": "OTHER"
+          },
+          "briefTitle": "Assessment of Geriatric Evaluations Impact on New AML Guidance",
+          "officialTitle": "AGE-ING (Assessment of Geriatric Evaluations Impact on New AML Guidance) Study",
+          "acronym": "AGE-ING"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-09",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2023-10-25",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2027-12-01",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2027-12-01",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2023-06-12",
+          "studyFirstSubmitQcDate": "2023-06-12",
+          "studyFirstPostDateStruct": {
+            "date": "2023-06-18",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-09-29",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-10-02",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "Abramson Cancer Center at Penn Medicine",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Bristol-Myers Squibb",
+              "class": "INDUSTRY"
+            }
+          ]
+        },
+        "oversightModule": {
+          "oversightHasDmc": false,
+          "isFdaRegulatedDrug": false,
+          "isFdaRegulatedDevice": false
+        },
+        "descriptionModule": {
+          "briefSummary": "The goal of the study is to measure physiologic age (there is no current formal definition but is meant to imply that patients should be evaluated holistically rather than on age alone) at baseline in newly diagnosed AML patients over 50 years receiving either intensive or non-intensive treatment. This information will be used to evaluate toxicity, early mortality, remission rates and long term survival."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "AML, Adult"
+          ]
+        },
+        "designModule": {
+          "studyType": "OBSERVATIONAL",
+          "patientRegistry": false,
+          "designInfo": {
+            "observationalModel": "COHORT",
+            "timePerspective": "PROSPECTIVE"
+          },
+          "enrollmentInfo": {
+            "count": 100,
+            "type": "ESTIMATED"
+          }
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Evaluate physiologic age using baseline measures of physical function, depression, cognition, frailty, and PROs in newly diagnosed AML patients receiving intensive and non-intensive treatment in relation to overall survival at 1 year.",
+              "description": "Short physical performance battery (SPPB), geriatric depression scale (GDS), mini-COG, patient reported outcomes of physical function, fatigue, depression, cognition, anxiety",
+              "timeFrame": "At baseline, 14 days after treatment, 1 month after treatment"
+            },
+            {
+              "measure": "Evaluate baseline measures of physiologic age in relation to short term mortality",
+              "timeFrame": "At 30 days and 60 days"
+            },
+            {
+              "measure": "Evaluate baseline measures of physiologic age in relation to grade 3, 4, and 5 toxicities from treatment",
+              "timeFrame": "At baseline, 14 days after treatment, 1 month after treatment"
+            },
+            {
+              "measure": "Evaluate baseline measures of physiologic age in relation to complete remission",
+              "timeFrame": "At baseline, 14 days after treatment, 1 month after treatment"
+            },
+            {
+              "measure": "Compare baseline measurements to serial measurements to understand how physical function changes over time with treatment",
+              "timeFrame": "At baseline, 14 days after treatment, 1 month after treatment"
+            },
+            {
+              "measure": "Evaluate albumin as a biomarker predictor of clinical outcomes of short term mortality, 1 year OS and toxicity",
+              "timeFrame": "At 30 days and 60 days"
+            },
+            {
+              "measure": "Create a predictive pre-treatment screening tool",
+              "timeFrame": "At baseline, 14 days after treatment, 1 month after treatment"
+            }
+          ]
+        },
+        "eligibilityModule": {
+          "eligibilityCriteria": "Inclusion Criteria:\n\n* AML diagnosis by peripheral flow cytometry and/or bone marrow aspirate and biopsy\n* New diagnosis being considered for new line of treatment\n* Age \u2265 50 years.\n* Performance status 0,1, and 2\n\nExclusion Criteria:\n\n* Inability to understand or unable to sign a written informed consent\n* Unable to fill out questionnaires on their own and/or do not have someone to help complete them",
+          "healthyVolunteers": false,
+          "sex": "ALL",
+          "minimumAge": "50 Years",
+          "stdAges": [
+            "ADULT",
+            "OLDER_ADULT"
+          ],
+          "studyPopulation": "Participants will be recruited from the physician practices of Penn Medicine.",
+          "samplingMethod": "NON_PROBABILITY_SAMPLE"
+        },
+        "contactsLocationsModule": {
+          "centralContacts": [
+            {
+              "name": "Colleen Redlinger",
+              "role": "CONTACT",
+              "phone": "2152209693",
+              "email": "colleen.redlinger@pennmedicine.upenn.edu"
+            },
+            {
+              "name": "Catherine Lai, MD",
+              "role": "CONTACT",
+              "phone": "2153600561",
+              "email": "Catherine.Lai@Pennmedicine.upenn.edu"
+            }
+          ],
+          "overallOfficials": [
+            {
+              "name": "Catherine Lai, MD",
+              "affiliation": "Abramson Cancer Center at Penn Medicine",
+              "role": "PRINCIPAL_INVESTIGATOR"
+            }
+          ],
+          "locations": [
+            {
+              "facility": "Abramson Cancer Center at University of Pennsylvania",
+              "status": "RECRUITING",
+              "city": "Philadelphia",
+              "state": "Pennsylvania",
+              "zip": "19104",
+              "country": "United States",
+              "geoPoint": {
+                "lat": 39.95238,
+                "lon": -75.16362
+              }
+            }
+          ]
+        }
+      },
+      "derivedSection": {
+        "miscInfoModule": {
+          "versionHolder": "2026-10-23"
+        },
+        "conditionBrowseModule": {
+          "meshes": [
+            {
+              "id": "D015470",
+              "term": "Leukemia, Myeloid, Acute"
+            }
+          ],
+          "ancestors": [
+            {
+              "id": "D007951",
+              "term": "Leukemia, Myeloid"
+            },
+            {
+              "id": "D007938",
+              "term": "Leukemia"
+            },
+            {
+              "id": "D009370",
+              "term": "Neoplasms by Histologic Type"
+            },
+            {
+              "id": "D009369",
+              "term": "Neoplasms"
+            },
+            {
+              "id": "D006402",
+              "term": "Hematologic Diseases"
+            },
+            {
+              "id": "D006425",
+              "term": "Hemic and Lymphatic Diseases"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+import { createHash } from "node:crypto";
+export const ALLOWED_STATUSES=new Set(["RECRUITING","NOT_YET_RECRUITING","ENROLLING_BY_INVITATION","AVAILABLE"]);
+export const SEEDS=["pain","chronic pain","cancer pain","neuropathy","palliative","symptom management","hospice","fibromyalgia","dyspnea","cachexia","nausea","fatigue","spinal cord stimulation","intrathecal","nerve block","ketamine","cannabinoid","psilocybin"];
+export async function fetchPages({fetchFn=fetch,max=4000,onPage=()=>{},sleepFn=ms=>new Promise(r=>setTimeout(r,ms)),query=SEEDS.map(s=>`"${s}"`).join(" OR ")}={}){
+ const studies=[];let token;let page=0;
+ do {const u=new URL("https://clinicaltrials.gov/api/v2/studies");u.searchParams.set("format","json");u.searchParams.set("pageSize","1000");u.searchParams.set("filter.overallStatus",[...ALLOWED_STATUSES].join(","));u.searchParams.set("query.term",query);u.searchParams.set("query.locn","United States");if(token)u.searchParams.set("pageToken",token);
+ let res;for(let attempt=0;attempt<4;attempt++){res=await fetchFn(u.toString(),{signal:AbortSignal.timeout(90000)});if(res.ok)break;if(res.status!==429&&res.status<500)throw Error(`CT.gov HTTP ${res.status}`);await sleepFn(1000*2**attempt);}if(!res?.ok)throw Error(`CT.gov HTTP ${res?.status}`);
+ const data=await res.json();if(!Array.isArray(data.studies))throw Error("CT.gov response missing studies");onPage(data,page++);studies.push(...data.studies);token=data.nextPageToken;if(token&&studies.length<max)await sleepFn(350);
+ }while(token&&studies.length<max);return studies.slice(0,max);
+}
+export function normalizeStudy(raw,fetchedAt=new Date().toISOString()){
+ const p=raw.protocolSection||{},i=p.identificationModule||{},s=p.statusModule||{},d=p.designModule||{},e=p.eligibilityModule||{},c=p.contactsLocationsModule||{};if(!i.nctId||!ALLOWED_STATUSES.has(s.overallStatus))return null;
+ const allLocations=c.locations||[],locations=allLocations.filter(l=>l.country==="United States").map(l=>({facility:l.facility||"",city:l.city,state:l.state,zip:l.zip,country:l.country,lat:l.geoPoint?.lat,lon:l.geoPoint?.lon,status:l.status}));
+ if(allLocations.length&&!locations.length)return null;
+ const central=[...(c.centralContacts||[]),...(c.overallOfficials||[]),...allLocations.filter(l=>l.country==="United States").flatMap(l=>l.contacts||[])];const contacts=[...new Map(central.map(v=>[`${v.name}|${v.phone}|${v.email}`,{name:v.name||"Study team",role:v.role,phone:v.phone,email:v.email}])).values()];
+ return {id:i.nctId,briefTitle:i.briefTitle||i.officialTitle||i.nctId,officialTitle:i.officialTitle||"",briefSummary:p.descriptionModule?.briefSummary||"",detailedDescription:p.descriptionModule?.detailedDescription||"",conditions:p.conditionsModule?.conditions||[],keywords:p.conditionsModule?.keywords||[],interventions:(p.armsInterventionsModule?.interventions||[]).map(v=>({type:v.type||"OTHER",name:v.name||""})),studyType:d.studyType||(s.overallStatus==="AVAILABLE"?"EXPANDED_ACCESS":"INTERVENTIONAL"),phase:d.phases||[],overallStatus:s.overallStatus,startDate:s.startDateStruct?.date,primaryCompletionDate:s.primaryCompletionDateStruct?.date,lastUpdatePostDate:s.lastUpdatePostDateStruct?.date,eligibility:{criteriaText:e.eligibilityCriteria||"",minimumAge:e.minimumAge,maximumAge:e.maximumAge,sex:e.sex,healthyVolunteers:e.healthyVolunteers,stdAges:e.stdAges||[]},locations,contacts,sponsor:p.sponsorCollaboratorsModule?.leadSponsor?.name||"",sourceUrl:`https://clinicaltrials.gov/study/${i.nctId}`,provenance:"ctgov_api_v2",fetchedAt,hasPlacebo:(p.armsInterventionsModule?.armGroups||[]).some(a=>a.type==="PLACEBO_COMPARATOR")||undefined};
+}
+export function studyEmbedText(s){return [s.briefTitle,...s.conditions,...s.interventions.map(v=>v.name),s.briefSummary,s.eligibility.criteriaText.slice(0,1500)].join(". ");}
+export function contentHash(s){return createHash("sha256").update(studyEmbedText(s)).digest("hex");}
