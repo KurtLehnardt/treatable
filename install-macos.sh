@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# Granted — one-shot macOS installer.
+for treatable_arg in "$@"; do
+  if [ "$treatable_arg" = "--dry-run" ]; then
+    printf '%s\n' "Treatable installer dry run (no changes):" "1. Check macOS, git and Node22+; install missing prerequisites." "2. Clone or update KurtLehnardt/treatable without overwriting local work." "3. Install pinned npm dependencies and build." "4. Download and verify the local search model." "5. Offer Ollama and a local chat model." "6. Install the per-user Treatable launcher and menu-bar helper."
+    exit 0
+  fi
+done
+# Treatable — one-shot macOS installer.
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/KurtLehnardt/granted/main/install-macos.sh)"
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/KurtLehnardt/treatable/main/install-macos.sh)"
 #
 # Deliberately not `curl ... | bash`: this script shells out
 # to `brew install` more than once, and Homebrew's own progress renderer reads
@@ -14,30 +20,30 @@
 #
 # Installs git + Node.js 22+ if missing, clones the repo, runs `npm ci`
 # (installs exactly what's pinned in package-lock.json, and never rewrites it)
-# and `npm run build` (the production build Granted is served from), and
+# and `npm run build` (the production build Treatable is served from), and
 # (optionally) installs Ollama for a fully local run. Safe to re-run: skips
 # anything already present/done (npm ci does remove and reinstall node_modules
 # each time, and the build runs each time, which is expected).
 #
-# After this finishes, `cd granted/scaffold` and run `npm run setup` (an
+# After this finishes, `cd treatable/scaffold` and run `npm run setup` (an
 # OpenAI or Claude key for scoring; search needs no key) or `npm run
 # setup:local -- --yes` (fully local via Ollama), then `npm run build` (setup
 # can change build-time NEXT_PUBLIC_* flags) and `npm run start`.
 #
-# Set GRANTED_REF to a release tag (v1.2.3) to install that release instead
+# Set TREATABLE_REF to a release tag (v1.2.3) to install that release instead
 # of main.
 set -euo pipefail
 set -o errtrace
 
 # Reports real progress back to the Electron GUI, the same mechanism and for
 # the same reason as install-windows.ps1's (see that script's own header
-# comment for the full story): $GRANTED_STATUS_FILE is set by the GUI to a
+# comment for the full story): $TREATABLE_STATUS_FILE is set by the GUI to a
 # path it's already polling; this falls back to a fixed name so the script
 # still no-ops safely run standalone (copy-pasted into a terminal by hand, as
 # the README documents). write_status's JSON shape -- {state,message,pid} --
 # is read by the exact same installer/src/main/ipcPure.ts
 # parseInstallStatusJson Windows's does.
-STATUS_PATH="${GRANTED_STATUS_FILE:-${TMPDIR:-/tmp}/granted-install-status.json}"
+STATUS_PATH="${TREATABLE_STATUS_FILE:-${TMPDIR:-/tmp}/treatable-install-status.json}"
 # macOS ships no flock(1) (a Linux util-linux tool, not part of the base
 # system) to hold a real exclusive lock the way install-windows.ps1 does
 # with a file handle, so a directory stands in for it: `mkdir` either
@@ -46,7 +52,7 @@ STATUS_PATH="${GRANTED_STATUS_FILE:-${TMPDIR:-/tmp}/granted-install-status.json}
 # moment this process ends, however it ends (done, error, or the Terminal
 # window closed outright, which sends SIGTERM) -- except SIGKILL, which no
 # trap can catch; a poller that finds the directory still there then falls
-# back to checking the recorded pid directly (see openGranted.ts's
+# back to checking the recorded pid directly (see openTreatable.ts's
 # isStatusWindowAlive). Must stay in sync with installer/src/main/ipcPure.ts's
 # macStatusLockPath -- a test checks.
 STATUS_LOCK_DIR="${STATUS_PATH}.lock.d"
@@ -105,16 +111,16 @@ die()  { write_status "error" "$1"; printf '  \033[31mx\033[0m %s\n' "$1" >&2; e
 
 write_status "running" ""
 
-# GRANTED_REPO_URL: tests point this at a local repo (mirrors
+# TREATABLE_REPO_URL: tests point this at a local repo (mirrors
 # install-windows.ps1's identical override).
-REPO_URL="${GRANTED_REPO_URL:-https://github.com/KurtLehnardt/granted.git}"
-TARGET_DIR="${GRANTED_INSTALL_DIR:-granted}"
+REPO_URL="${TREATABLE_REPO_URL:-https://github.com/KurtLehnardt/treatable.git}"
+TARGET_DIR="${TREATABLE_INSTALL_DIR:-treatable}"
 NODE_MAJOR_MIN=22
 # Lowest macOS major version Ollama's .app/.dmg (and the Homebrew cask) support.
 # Keep in sync with OLLAMA_MIN_MACOS in scaffold/scripts/setup-local.mjs.
 OLLAMA_MIN_MACOS=14
 OLLAMA_TGZ_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-darwin.tgz"
-OLLAMA_PREFIX="${GRANTED_OLLAMA_PREFIX:-$HOME/.local/ollama}"
+OLLAMA_PREFIX="${TREATABLE_OLLAMA_PREFIX:-$HOME/.local/ollama}"
 # The Homebrew bootstrap installer (used below when there's no Homebrew and
 # no terminal to prompt through) is fetched from this exact commit rather
 # than from Homebrew/install's HEAD, so the bytes we execute are pinned to a
@@ -129,15 +135,15 @@ HOMEBREW_INSTALL_COMMIT="8ab1549dfa1189fd4d818a2116592d8f0ee06d8c"
 # an old, possibly outdated Homebrew bootstrap.
 HOMEBREW_INSTALL_SHA256="5f333bbe53bc490e51e7ccb1df8779b3dd6ee73a1a7379efda216edb08ccb148"
 
-# GRANTED_REF: install this release (a tag like v1.2.3) instead of the
+# TREATABLE_REF: install this release (a tag like v1.2.3) instead of the
 # latest code on main -- same rule as install-windows.ps1's. An install made
 # by this script is moved to it on a re-run.
-GRANTED_REF="${GRANTED_REF:-}"
-if [ -n "$GRANTED_REF" ] && [[ ! "$GRANTED_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  die "GRANTED_REF must be a release tag like v1.2.3 (got '$GRANTED_REF')."
+TREATABLE_REF="${TREATABLE_REF:-}"
+if [ -n "$TREATABLE_REF" ] && [[ ! "$TREATABLE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  die "TREATABLE_REF must be a release tag like v1.2.3 (got '$TREATABLE_REF')."
 fi
 
-log "Granted — macOS install"
+log "Treatable — macOS install"
 
 # 0) Confirm we're actually on macOS, and learn the version/arch. Everything
 #    below (Homebrew prefix, the Ollama split) keys off these two facts.
@@ -197,7 +203,7 @@ else
   # no cached/passwordless sudo gets a clear, actionable message instead of
   # Homebrew's own context-free "Insufficient permissions" abort.
   if ! sudo -n true 2>/dev/null; then
-    die "Installing Homebrew (needed to finish this without a terminal to prompt on) needs sudo, and this session has no cached sudo credential. Either run 'sudo -v' once in this terminal first and re-run this one-liner within a few minutes, or don't pipe it -- download and run it directly so it has a terminal to prompt through: curl -fsSL https://raw.githubusercontent.com/KurtLehnardt/granted/main/install-macos.sh -o install-macos.sh && bash install-macos.sh"
+    die "Installing Homebrew (needed to finish this without a terminal to prompt on) needs sudo, and this session has no cached sudo credential. Either run 'sudo -v' once in this terminal first and re-run this one-liner within a few minutes, or don't pipe it -- download and run it directly so it has a terminal to prompt through: curl -fsSL https://raw.githubusercontent.com/KurtLehnardt/treatable/main/install-macos.sh -o install-macos.sh && bash install-macos.sh"
   fi
   log "No Homebrew and no terminal to prompt through — installing Homebrew (needed for an unattended install)..."
   # Fetched into a variable first and checked explicitly: a failure INSIDE a
@@ -226,7 +232,7 @@ else
   if [ -n "$SHELL_PROFILE" ]; then
     SHELLENV_LINE="eval \"\$($(command -v brew) shellenv)\""
     if [ ! -f "$SHELL_PROFILE" ] || ! grep -qF "$SHELLENV_LINE" "$SHELL_PROFILE"; then
-      printf '\n# Added by the Granted installer\n%s\n' "$SHELLENV_LINE" >> "$SHELL_PROFILE"
+      printf '\n# Added by the Treatable installer\n%s\n' "$SHELLENV_LINE" >> "$SHELL_PROFILE"
       ok "added Homebrew to PATH in $SHELL_PROFILE (open a new terminal, or run: source $SHELL_PROFILE)"
     fi
   else
@@ -339,7 +345,7 @@ version_gt() {
 # matches ANY process whose args happen to contain the path at all -- an
 # editor with the folder open, a `tail -f`, `rg` -- and kill -9 on an
 # editor can lose unsaved work. Narrowed the same way install-windows.ps1's
-# Stop-GrantedIn is scoped: filtered to Name='powershell.exe'/
+# Stop-TreatableIn is scoped: filtered to Name='powershell.exe'/
 # Name='node.exe' AND the install path as a specific argument, not just
 # anywhere in the command line -- here, the process name is checked on its
 # own (via ps's columns) rather than folded into one pgrep pattern against
@@ -370,16 +376,16 @@ matching_pids() {
   '
 }
 
-# Stops a Granted this script is about to overwrite, so npm ci never runs
+# Stops a Treatable this script is about to overwrite, so npm ci never runs
 # under a server that holds its own files open. Lower-stakes than
-# install-windows.ps1's Stop-GrantedIn (POSIX lets you replace a file a
+# install-windows.ps1's Stop-TreatableIn (POSIX lets you replace a file a
 # process still has open -- the old data just stays open under the old
 # inode until that process closes it), but done explicitly anyway rather
-# than relied on implicitly: matched the same way Stop-GrantedIn matches --
+# than relied on implicitly: matched the same way Stop-TreatableIn matches --
 # by command line mentioning this install's own path, not by port (which
 # may not even be known here) -- so it also catches a `npm run dev` left
 # running in a plain terminal, not just a tray.
-stop_granted_in() {
+stop_treatable_in() {
   local dir="$1" full pids deadline
   full="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0
   pids="$(matching_pids "$full")"
@@ -393,7 +399,7 @@ stop_granted_in() {
   done
   pids="$(matching_pids "$full")"
   for pid in $pids; do kill -9 "$pid" 2>/dev/null || true; done
-  ok "stopped the Granted that was running (it starts again when you open it)"
+  ok "stopped the Treatable that was running (it starts again when you open it)"
 }
 
 # 3) Clone (skip if already present). Checked via scaffold/package.json, not a
@@ -409,27 +415,27 @@ if [ -f "$TARGET_DIR/scaffold/package.json" ]; then
   # made in the folder, and never backwards: an older installer run again
   # (or one whose update check failed) must not replace newer code. Same
   # rules as install-windows.ps1's.
-  if [ -n "$GRANTED_REF" ]; then
-    if [ ! -f "$TARGET_DIR/.git/granted-installer" ]; then
-      warn "Not changing $TARGET_DIR to $GRANTED_REF -- it wasn't installed by this installer (your own checkout?)."
+  if [ -n "$TREATABLE_REF" ]; then
+    if [ ! -f "$TARGET_DIR/.git/treatable-installer" ]; then
+      warn "Not changing $TARGET_DIR to $TREATABLE_REF -- it wasn't installed by this installer (your own checkout?)."
     elif [ -n "$(git -C "$TARGET_DIR" status --porcelain --untracked-files=no)" ]; then
-      warn "Not changing $TARGET_DIR to $GRANTED_REF -- it has local changes."
+      warn "Not changing $TARGET_DIR to $TREATABLE_REF -- it has local changes."
     else
       # Just this tag, forced: a release tag that was moved on GitHub
       # (re-tagged after a fix) must not break updates, and a stale local
       # copy of it must not be what's installed.
-      git -C "$TARGET_DIR" fetch --quiet --force origin "+refs/tags/${GRANTED_REF}:refs/tags/${GRANTED_REF}" \
-        || die "Couldn't download Granted $GRANTED_REF (git fetch failed)."
-      if git -C "$TARGET_DIR" merge-base --is-ancestor "refs/tags/$GRANTED_REF" HEAD; then
-        ok "already includes Granted $GRANTED_REF -- nothing to update"
+      git -C "$TARGET_DIR" fetch --quiet --force origin "+refs/tags/${TREATABLE_REF}:refs/tags/${TREATABLE_REF}" \
+        || die "Couldn't download Treatable $TREATABLE_REF (git fetch failed)."
+      if git -C "$TARGET_DIR" merge-base --is-ancestor "refs/tags/$TREATABLE_REF" HEAD; then
+        ok "already includes Treatable $TREATABLE_REF -- nothing to update"
       else
         # REGRESSION (review): the installed version used to be read via
         # `node -p "require('./${TARGET_DIR}/...)...` -- string-interpolated
         # straight into the JS source. That breaks (throws, caught, and
-        # $HAVE degrades to empty) whenever GRANTED_INSTALL_DIR is an
+        # $HAVE degrades to empty) whenever TREATABLE_INSTALL_DIR is an
         # absolute path (require() only treats a BARE relative path like
-        # "granted/scaffold/..." as a file path when it's given a leading
-        # "./" -- an absolute GRANTED_INSTALL_DIR has neither) or contains a
+        # "treatable/scaffold/..." as a file path when it's given a leading
+        # "./" -- an absolute TREATABLE_INSTALL_DIR has neither) or contains a
         # quote character -- and an empty $HAVE silently skips the very
         # no-backwards-move guard two lines below promises never happens.
         # Resolved to an absolute path first, then passed through argv
@@ -440,32 +446,32 @@ if [ -f "$TARGET_DIR/scaffold/package.json" ]; then
           HAVE_RAW="$(node -e 'console.log(require(process.argv[1]).version)' "$ABS_TARGET_DIR/scaffold/package.json" 2>/dev/null)" || HAVE_RAW=""
         fi
         HAVE="$(version_number "$HAVE_RAW")"
-        WANT="$(version_number "$GRANTED_REF")"
-        if [ -n "$HAVE" ] && [ -n "$WANT" ] && version_gt "$HAVE" "$WANT" && [ "${GRANTED_ALLOW_DOWNGRADE:-}" != "1" ]; then
-          warn "Not changing $TARGET_DIR to $GRANTED_REF -- it already has a newer Granted ($HAVE)."
+        WANT="$(version_number "$TREATABLE_REF")"
+        if [ -n "$HAVE" ] && [ -n "$WANT" ] && version_gt "$HAVE" "$WANT" && [ "${TREATABLE_ALLOW_DOWNGRADE:-}" != "1" ]; then
+          warn "Not changing $TARGET_DIR to $TREATABLE_REF -- it already has a newer Treatable ($HAVE)."
         else
-          log "Updating $TARGET_DIR to Granted $GRANTED_REF ..."
-          stop_granted_in "$TARGET_DIR"
-          git -C "$TARGET_DIR" -c advice.detachedHead=false checkout --quiet "refs/tags/$GRANTED_REF" \
-            || die "Couldn't switch $TARGET_DIR to $GRANTED_REF (git checkout failed)."
-          ok "now at $GRANTED_REF"
+          log "Updating $TARGET_DIR to Treatable $TREATABLE_REF ..."
+          stop_treatable_in "$TARGET_DIR"
+          git -C "$TARGET_DIR" -c advice.detachedHead=false checkout --quiet "refs/tags/$TREATABLE_REF" \
+            || die "Couldn't switch $TARGET_DIR to $TREATABLE_REF (git checkout failed)."
+          ok "now at $TREATABLE_REF"
         fi
       fi
     fi
   fi
 else
   log "Cloning $REPO_URL into ./$TARGET_DIR ..."
-  if [ -n "$GRANTED_REF" ]; then
+  if [ -n "$TREATABLE_REF" ]; then
     # Clone, then check out the release tag -- not `clone --branch <tag>`,
     # which can warn about a tag not being a branch for an annotated tag, as
     # releases are (install-windows.ps1 avoids the same thing the same way).
     git clone --no-checkout "$REPO_URL" "$TARGET_DIR" \
       || die "git clone failed. If $TARGET_DIR was partially created, remove it before re-running."
-    if ! git -C "$TARGET_DIR" -c advice.detachedHead=false checkout --quiet "refs/tags/$GRANTED_REF"; then
+    if ! git -C "$TARGET_DIR" -c advice.detachedHead=false checkout --quiet "refs/tags/$TREATABLE_REF"; then
       # This run just created the folder (it held no install): remove it,
       # so a re-run isn't blocked by a half-made clone.
       rm -rf "$TARGET_DIR"
-      die "Couldn't check out Granted $GRANTED_REF (is it a published release?)."
+      die "Couldn't check out Treatable $TREATABLE_REF (is it a published release?)."
     fi
   else
     git clone "$REPO_URL" "$TARGET_DIR" \
@@ -473,27 +479,27 @@ else
   fi
   # Marks this clone as made by the installer (inside .git, so git never
   # sees it) -- same purpose as install-windows.ps1's marker.
-  printf 'Cloned by install-macos.sh on %s\n' "$(date +"%Y-%m-%dT%H:%M:%S")" > "$TARGET_DIR/.git/granted-installer"
+  printf 'Cloned by install-macos.sh on %s\n' "$(date +"%Y-%m-%dT%H:%M:%S")" > "$TARGET_DIR/.git/treatable-installer"
   ok "cloned"
 fi
 
 # 4) npm ci -- never rewrites package-lock.json (unlike npm install). A
-# re-run (an update, say) while Granted is running: quit it first -- its
+# re-run (an update, say) while Treatable is running: quit it first -- its
 # server holds files in node_modules that npm ci is about to replace.
-if [ "$EXISTING_INSTALL" = "1" ]; then stop_granted_in "$TARGET_DIR"; fi
+if [ "$EXISTING_INSTALL" = "1" ]; then stop_treatable_in "$TARGET_DIR"; fi
 cd "$TARGET_DIR/scaffold"
 log "Installing npm dependencies..."
 npm ci
 ok "dependencies installed"
 
-# 4a) The production build Granted is actually served from. Nothing starts the
-# app with `npm run dev` any more: the menu-bar tray (scripts/macos/granted-tray.sh),
-# the GUI installer's "Open Granted" and the self-updater all run `npm run start`
+# 4a) The production build Treatable is actually served from. Nothing starts the
+# app with `npm run dev` any more: the menu-bar tray (scripts/macos/treatable-tray.sh),
+# the GUI installer's "Open Treatable" and the self-updater all run `npm run start`
 # (`next start`), which serves what `npm run build` produced here. Two reasons
 # it is built now rather than at first start:
 #
 #   * A build error stops the install with a message, instead of reaching the
-#     user as Next's red error overlay in the browser once they open Granted.
+#     user as Next's red error overlay in the browser once they open Treatable.
 #   * `next start` has nothing to serve without it, so a first start would
 #     have to build anyway -- slower, and with the output buried in a log.
 #
@@ -507,20 +513,20 @@ ok "dependencies installed"
 # uses next/font/google, so `next build` fetches the three font families and
 # self-hosts them (`next dev` fetches them on first render instead -- the
 # dependency is not new, only earlier and louder).
-log "Building Granted (a minute or two)..."
-npm run build || die "Granted couldn't be built -- see the output above for the underlying error."
+log "Building Treatable (a minute or two)..."
+npm run build || die "Treatable couldn't be built -- see the output above for the underlying error."
 ok "built"
 
 # The built-in search model (about 275 MB), so search works offline and needs
 # no API key. Idempotent: verifies what's already there and downloads only
-# what's missing. Never fatal: if it can't download now, Granted fetches the
-# model the first time someone searches. GRANTED_MODEL_URL points it at a mirror.
+# what's missing. Never fatal: if it can't download now, Treatable fetches the
+# model the first time someone searches. TREATABLE_MODEL_URL points it at a mirror.
 if [ -f scripts/fetch-model.mjs ]; then
   log "Downloading the built-in search model (about 275 MB)..."
   if node scripts/fetch-model.mjs; then
     ok "search model ready"
   else
-    warn "Couldn't download the search model now. Granted will download it the first time you search."
+    warn "Couldn't download the search model now. Treatable will download it the first time you search."
   fi
 fi
 
@@ -571,14 +577,14 @@ else
 fi
 
 write_status "done" ""
-# Run by the Granted installer app (it set GRANTED_STATUS_FILE): it takes it
-# from here -- keys, local models, opening Granted -- so no terminal commands.
-if [ -n "${GRANTED_STATUS_FILE:-}" ]; then
-  log "Done. Granted is installed -- carry on in the Granted installer."
+# Run by the Treatable installer app (it set TREATABLE_STATUS_FILE): it takes it
+# from here -- keys, local models, opening Treatable -- so no terminal commands.
+if [ -n "${TREATABLE_STATUS_FILE:-}" ]; then
+  log "Done. Treatable is installed -- carry on in the Treatable installer."
 else
   log "Done. Next steps:"
   echo "  cd $TARGET_DIR/scaffold"
-  echo "  npm run setup                  # an OpenAI or Claude key for scoring (search needs none), or"
+  echo "  npm run setup                  # an optional OpenAI key for explanations (search needs none), or"
   echo "  npm run setup:local -- --yes   # fully local via Ollama, no API keys"
   # Built again after setup on purpose: setup writes .env.local, and Next bakes
   # its NEXT_PUBLIC_* flags into the client bundle at build time, so a flag set
@@ -586,10 +592,15 @@ else
   # and the installer do this for themselves -- they rebuild whenever .env.local
   # is newer than the build.)
   echo "  npm run build                  # after changing .env.local"
-  echo "  npm run start                  # -> http://localhost:3000"
+  echo "  npm run start                  # -> the configured local URL"
   if [ "$MACOS_MAJOR" -gt 0 ] && [ "$MACOS_MAJOR" -lt "$OLLAMA_MIN_MACOS" ]; then
     echo
     echo "  Going local on this macOS? Start the daemon first, in another terminal:"
     echo "    ollama serve"
   fi
+fi
+
+# Install only the per-user launcher; starting remains an explicit user action.
+if [ -f "scripts/macos/applications-launcher.sh" ]; then
+  bash "scripts/macos/applications-launcher.sh" install
 fi

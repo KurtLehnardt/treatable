@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Granted -- uninstall Granted on macOS.
+# Treatable -- uninstall Treatable on macOS.
 #
 # The macOS counterpart of scripts/windows/uninstall.ps1, with the same safety
 # rules, the same exit codes and the same one-JSON-line output. Windows has an
 # "Installed apps" list to be registered in and to be run from; macOS has no
 # such list, so this script has no -Register half at all. It is reached instead
 # from the two places the work order names: the menu-bar icon's "Uninstall
-# Granted..." item (which runs it through `granted-tray.sh uninstall`) and
-# Settings -> About Granted in the app itself (which runs it with --quiet,
+# Treatable..." item (which runs it through `treatable-tray.sh uninstall`) and
+# Settings -> About Treatable in the app itself (which runs it with --quiet,
 # having done its own asking in the page).
 #
 #   uninstall.sh                     uninstall, asking first
@@ -26,9 +26,9 @@
 #
 # What it does, in this order:
 #
-#   - refuses a folder that isn't a Granted install, a folder that is a symlink
+#   - refuses a folder that isn't a Treatable install, a folder that is a symlink
 #     to one, and -- the check this whole macOS arc has used for "did our
-#     installer make this?" -- a folder with no .git/granted-installer marker,
+#     installer make this?" -- a folder with no .git/treatable-installer marker,
 #     which is how someone's own checkout is never deleted (the same marker
 #     install-macos.sh writes and scaffold/lib/appUpdate/install.ts reads);
 #   - asks first; then, if the folder holds work that isn't on GitHub
@@ -42,13 +42,13 @@
 #     --keep-keys and --no-keep-keys decide it outright wherever either is
 #     given, --quiet or not, and the question is then not asked at all; the
 #     dialog decides only an interactive run that was given neither;
-#   - quits Granted: the menu-bar helper and the server under its LaunchAgent
-#     (through granted-tray.sh stop, so none of that logic lives twice), then
+#   - quits Treatable: the menu-bar helper and the server under its LaunchAgent
+#     (through treatable-tray.sh stop, so none of that logic lives twice), then
 #     any node/npm still running from inside the folder (a `npm run dev` left
 #     in a terminal), matched the way install-macos.sh's matching_pids matches
 #     and never on the path alone;
 #   - moves the folder aside, then deletes it;
-#   - removes the LaunchAgent plist, the ~/Applications/Granted.app launcher
+#   - removes the LaunchAgent plist, the ~/Applications/Treatable.app launcher
 #     and its Dock entry -- each only when it belongs to THIS install -- and
 #     the shared settings and logs folders;
 #   - prints one JSON line saying what it did.
@@ -65,7 +65,7 @@
 # Installed-apps list to count, so the shared settings and logs are deleted in
 # that case only when a LaunchAgent plist or an ~/Applications launcher naming
 # THIS exact folder is found -- the only evidence available that the path given
-# ever was a Granted install. Without it, `--install-dir /a/typo` would delete
+# ever was a Treatable install. Without it, `--install-dir /a/typo` would delete
 # a real install's settings while reporting success.
 #
 # WHY THE FOLDER IS MOVED ASIDE FIRST, and what that does and does not buy on
@@ -90,30 +90,30 @@
 # asking Finder to do it through AppleScript, which needs Automation permission
 # for Finder: on current macOS that shows a system prompt the user has to
 # accept (and which a GUI-less run cannot answer at all), and a refusal would
-# leave the install sitting there. And a Granted install is a git clone with
+# leave the install sitting there. And a Treatable install is a git clone with
 # node_modules in it -- gigabytes, which the user would then have to empty by
 # hand. The script that put the files there deletes them again.
 #
 # Test-only overrides, so nothing here ever touches a real install:
-#   GRANTED_LAUNCH_LABEL       the LaunchAgent label
-#   GRANTED_LAUNCH_AGENTS_DIR  where its plist lives
-#   GRANTED_LOG_DIR            the log folder
-#   GRANTED_SETTINGS_PATH      the settings file (its folder is the shared one)
-#   GRANTED_APPLICATIONS_DIR   where the launcher lives (never ~/Applications)
-#   GRANTED_UNINSTALL_ASK_CMD  what asks the user: "yes" or "no" to answer
+#   TREATABLE_LAUNCH_LABEL       the LaunchAgent label
+#   TREATABLE_LAUNCH_AGENTS_DIR  where its plist lives
+#   TREATABLE_LOG_DIR            the log folder
+#   TREATABLE_SETTINGS_PATH      the settings file (its folder is the shared one)
+#   TREATABLE_APPLICATIONS_DIR   where the launcher lives (never ~/Applications)
+#   TREATABLE_UNINSTALL_ASK_CMD  what asks the user: "yes" or "no" to answer
 #                              without a dialog, or a command run with the
 #                              question as its argument (exit 0 = yes). An
 #                              osascript dialog would block a test run forever.
-#   GRANTED_UNINSTALL_BACKUP_DIR  where a kept copy of the keys goes, instead
+#   TREATABLE_UNINSTALL_BACKUP_DIR  where a kept copy of the keys goes, instead
 #                              of the user's real Documents folder
-#   plus everything granted-tray.sh and applications-launcher.sh themselves
-#   honour (GRANTED_DOCK_DOMAIN, GRANTED_DOCK_RELOAD_CMD, ...), which this
+#   plus everything treatable-tray.sh and applications-launcher.sh themselves
+#   honour (TREATABLE_DOCK_DOMAIN, TREATABLE_DOCK_RELOAD_CMD, ...), which this
 #   script passes through by calling those scripts rather than reimplementing
 #   them.
 #
 # Exit codes, matching uninstall.ps1's: 0 removed (or --check, or a folder that
 # was already deleted by hand), 1 cancelled or an unexpected error, 2 refused
-# (not a Granted install, not made by the installer, a symlink), 3 the folder
+# (not a Treatable install, not made by the installer, a symlink), 3 the folder
 # could not be moved aside so nothing was deleted, 4 unsaved work under --quiet
 # without --force, 64 bad input (an unknown option, an option given no value, a
 # --port that isn't a number, a --backup-dir inside the install folder). Every
@@ -147,9 +147,9 @@ DEFAULT_INSTALL_DIR="$(cd -- "$SCRIPT_DIR/../../.." && pwd -P)"
 # starts -- but the menu-bar helper and a direct CLI run have no such
 # --check step first, so for them this is the only way to report the real
 # reason instead of a bare nonzero exit. Two of these are reachable without
-# a single typed argument -- GRANTED_UNINSTALL_BACKUP_DIR pointed inside the
+# a single typed argument -- TREATABLE_UNINSTALL_BACKUP_DIR pointed inside the
 # install folder (or, now, the shared settings/log folders), and a
-# GRANTED_PORT that isn't a number.
+# TREATABLE_PORT that isn't a number.
 json_string() {
   printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"
 }
@@ -190,11 +190,11 @@ KEEP_KEYS=1
 # secrets, and --no-keep-keys means do not write them anywhere.
 KEEP_KEYS_GIVEN=0
 BACKUP_DIR=""
-PORT="${GRANTED_PORT:-3000}"
+PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCRIPT_DIR/../../lib/runtime.mjs")}"
 
 # An option that takes a value must actually have been given one, and must say
 # so when it wasn't -- the same guard, for the same reason, as
-# granted-tray.sh's and applications-launcher.sh's: with `set -u` a bare
+# treatable-tray.sh's and applications-launcher.sh's: with `set -u` a bare
 # `--port` at the end of the line dies on `$2: unbound variable`, which exits 1
 # with a raw shell diagnostic instead of this script's own message and its own
 # exit 64 for bad input. Exit 1 means something else entirely here: it is what
@@ -225,7 +225,7 @@ esac
 
 [ -n "$INSTALL_DIR" ] || INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 # Absolute, with no trailing slash, and WITHOUT resolving symlinks: a folder
-# that is a symlink to a Granted install must be reported as the link it is
+# that is a symlink to a Treatable install must be reported as the link it is
 # (see is_a_link below), never followed and then deleted at the other end.
 case "$INSTALL_DIR" in
   /*) ;;
@@ -238,20 +238,20 @@ while [ "${INSTALL_DIR%/}" != "$INSTALL_DIR" ]; do INSTALL_DIR="${INSTALL_DIR%/}
 
 SCAFFOLD_DIR="$INSTALL_DIR/scaffold"
 MACOS_DIR="$SCAFFOLD_DIR/scripts/macos"
-TRAY_SCRIPT="$MACOS_DIR/granted-tray.sh"
-MARKER="$INSTALL_DIR/.git/granted-installer"
+TRAY_SCRIPT="$MACOS_DIR/treatable-tray.sh"
+MARKER="$INSTALL_DIR/.git/treatable-installer"
 KEY_FILES=("$SCAFFOLD_DIR/.env.local" "$SCAFFOLD_DIR/data/local/llm-config.json")
 
-LABEL="${GRANTED_LAUNCH_LABEL:-com.granted.server}"
-LAUNCH_AGENTS_DIR="${GRANTED_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+LABEL="${TREATABLE_LAUNCH_LABEL:-com.treatable.server}"
+LAUNCH_AGENTS_DIR="${TREATABLE_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 PLIST_PATH="$LAUNCH_AGENTS_DIR/$LABEL.plist"
-LOG_DIR="${GRANTED_LOG_DIR:-$HOME/Library/Logs/Granted}"
-SETTINGS_PATH="${GRANTED_SETTINGS_PATH:-$HOME/Library/Application Support/Granted/settings.json}"
+LOG_DIR="${TREATABLE_LOG_DIR:-$HOME/Library/Logs/Treatable}"
+SETTINGS_PATH="${TREATABLE_SETTINGS_PATH:-$HOME/Library/Application Support/Treatable/settings.json}"
 SUPPORT_DIR="$(dirname -- "$SETTINGS_PATH")"
-APPLICATIONS_DIR="${GRANTED_APPLICATIONS_DIR:-$HOME/Applications}"
-APP_PATH="$APPLICATIONS_DIR/Granted.app"
+APPLICATIONS_DIR="${TREATABLE_APPLICATIONS_DIR:-$HOME/Applications}"
+APP_PATH="$APPLICATIONS_DIR/Treatable.app"
 DOMAIN="gui/$(id -u)"
-[ -n "$BACKUP_DIR" ] || BACKUP_DIR="${GRANTED_UNINSTALL_BACKUP_DIR:-$HOME/Documents/Granted backup $(date '+%Y-%m-%d %H%M')}"
+[ -n "$BACKUP_DIR" ] || BACKUP_DIR="${TREATABLE_UNINSTALL_BACKUP_DIR:-$HOME/Documents/Treatable backup $(date '+%Y-%m-%d %H%M')}"
 
 # The copy of the keys has to go somewhere that outlives the uninstall, so the
 # finished BACKUP_DIR is made absolute and then refused if it is inside the
@@ -287,11 +287,11 @@ while [ "${BACKUP_DIR%/}" != "$BACKUP_DIR" ]; do BACKUP_DIR="${BACKUP_DIR%/}"; d
 # collapse "..", but it reports a path's on-disk CAPITALISATION only when what
 # it was given contained a symlink, which is what forces bash to ask getcwd(3)
 # instead of tracking the path itself -- verified here, where an
-# already-resolved ".../GRANTED" comes back spelled exactly that way.
+# already-resolved ".../TREATABLE" comes back spelled exactly that way.
 #
 # So the question goes to the filesystem instead. A directory has one identity,
 # its device and inode numbers, however many names lead to it, and that is
-# immune to spelling by construction: ".../GRANTED" and ".../granted" report
+# immune to spelling by construction: ".../TREATABLE" and ".../treatable" report
 # the same pair.
 BACKUP_INSIDE=0
 
@@ -312,7 +312,7 @@ existing_ancestor() {
 
 # Device and inode, of the directory itself and never of what a symlink points
 # at (BSD stat is lstat unless given -L). That matters for INSTALL_DIR: a
-# folder that is a symlink to a Granted install is reported as the link it is
+# folder that is a symlink to a Treatable install is reported as the link it is
 # and never followed (see is_a_link below), so it is not going to be deleted
 # and a backup inside the folder it POINTS at is not in danger. The literal
 # comparison below still refuses a backup written through the link's own path.
@@ -418,6 +418,7 @@ refused() {
 # like nothing happened. An explicit `exit` does not re-trigger this (bash runs
 # an ERR trap only for a command whose own non-zero status would trip `set -e`),
 # so none of the refusals below are reported twice.
+# shellcheck disable=SC2329 # Invoked by the ERR trap.
 on_error() {
   local line="$1" command="$2"
   printf '{"removed":false,"reason":"error","detail":%s,"installDir":%s,"keptKeys":%s}\n' \
@@ -458,10 +459,10 @@ have_tty() {
 #
 # The buttons are named per question rather than always "Uninstall"/"Cancel",
 # because one of the questions is not about uninstalling at all: "Delete your
-# API keys with Granted?" reads as nonsense with an Uninstall button on it.
+# API keys with Treatable?" reads as nonsense with an Uninstall button on it.
 ask() {
   local question="$1" detail="${2:-}" yes_label="${3:-Uninstall}" no_label="${4:-Cancel}" override reply out
-  override="${GRANTED_UNINSTALL_ASK_CMD:-}"
+  override="${TREATABLE_UNINSTALL_ASK_CMD:-}"
   if [ -n "$override" ]; then
     case "$override" in
       yes) return 0 ;;
@@ -497,14 +498,14 @@ ask() {
 notify() {
   local text="$1"
   [ "$QUIET" = "1" ] && return 0
-  if [ -n "${GRANTED_UNINSTALL_ASK_CMD:-}" ] || have_tty; then
+  if [ -n "${TREATABLE_UNINSTALL_ASK_CMD:-}" ] || have_tty; then
     printf '%s\n' "$text" >&2
     return 0
   fi
-  osascript -e 'on run argv' -e 'display alert "Uninstall Granted" message (item 1 of argv)' -e 'end run' -- "$text" >/dev/null 2>&1 || true
+  osascript -e 'on run argv' -e 'display alert "Uninstall Treatable" message (item 1 of argv)' -e 'end run' -- "$text" >/dev/null 2>&1 || true
 }
 
-# --- is this really a Granted install? --------------------------------------
+# --- is this really a Treatable install? --------------------------------------
 # The top-level "name" in a package.json, read with sed rather than node for
 # the reason applications-launcher.sh's install_version is: uninstalling must
 # not need node to be on PATH (the user may well be uninstalling because the
@@ -516,7 +517,7 @@ package_name() {
   sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1
 }
 
-# Never delete a folder that isn't unmistakably a Granted clone, and never one
+# Never delete a folder that isn't unmistakably a Treatable clone, and never one
 # of the folders a mistyped --install-dir could point at.
 PROTECTED_DIRS=(
   "/" "/Applications" "/Library" "/System" "/Users" "/Volumes" "/bin" "/etc"
@@ -524,14 +525,14 @@ PROTECTED_DIRS=(
   "$HOME" "$HOME/Applications" "$HOME/Desktop" "$HOME/Documents" "$HOME/Downloads" "$HOME/Library"
 )
 
-is_granted_install() {
+is_treatable_install() {
   local dir="$1" protected
   for protected in "${PROTECTED_DIRS[@]}"; do
     if [ "$dir" = "$protected" ]; then return 1; fi
   done
   [ -f "$dir/scaffold/package.json" ] || return 1
-  [ -f "$dir/scaffold/scripts/macos/granted-tray.sh" ] || return 1
-  [ "$(package_name "$dir/scaffold/package.json" || true)" = "granted" ] || return 1
+  [ -f "$dir/scaffold/scripts/macos/treatable-tray.sh" ] || return 1
+  [ "$(package_name "$dir/scaffold/package.json" || true)" = "treatable" ] || return 1
   return 0
 }
 
@@ -570,14 +571,14 @@ collect_unsaved() {
 
 # --- what belongs to THIS install ------------------------------------------
 # Whether the LaunchAgent plist in place is the one for this install: its
-# WorkingDirectory is the install's own scaffold folder (see granted-tray.sh's
+# WorkingDirectory is the install's own scaffold folder (see treatable-tray.sh's
 # emit_plist). "none" | "own" | "other" -- and only "own" is ever removed, the
 # same rule the Windows script applies to a shortcut before deleting it.
 #
 # Matched with the "<string>…</string>" delimiters around it rather than as a
 # bare substring of the file. A bare one answers "own" for ANOTHER install
-# whose path merely contains this one's: an install at "/granted" and one at
-# "/Volumes/disk/granted" are different installs, and the second's plist does
+# whose path merely contains this one's: an install at "/treatable" and one at
+# "/Volumes/disk/treatable" are different installs, and the second's plist does
 # contain the first's path. Contrived, and the consequence is deleting another
 # install's LaunchAgent, so the one character on each side is worth having.
 launch_agent_owner() {
@@ -586,11 +587,11 @@ launch_agent_owner() {
 }
 
 # The same question for the ~/Applications launcher: its executable has this
-# install's own granted-tray.sh baked into it (see
+# install's own treatable-tray.sh baked into it (see
 # applications-launcher.sh's emit_launcher_script), as a single-quoted
 # assignment -- so the quotes are the boundary here, for the reason above.
 launcher_owner() {
-  local exe="$APP_PATH/Contents/MacOS/Granted"
+  local exe="$APP_PATH/Contents/MacOS/Treatable"
   [ -e "$APP_PATH" ] || { printf 'none'; return 0; }
   if [ -f "$exe" ] && grep -qF "TRAY_SCRIPT='$TRAY_SCRIPT'" "$exe" 2>/dev/null; then printf 'own'; else printf 'other'; fi
 }
@@ -621,7 +622,7 @@ EOF
   KEPT_KEYS="$BACKUP_DIR"
 }
 
-# --- stopping Granted ------------------------------------------------------
+# --- stopping Treatable ------------------------------------------------------
 # node and npm running from inside this install, and nothing else. Copied in
 # shape from install-macos.sh's matching_pids, including why the process name
 # is checked two ways rather than on `comm` alone: macOS's `ps` truncates the
@@ -636,7 +637,7 @@ EOF
 # merely starts the same way -- a `node` running in "<install>-dev" contains
 # "<install>" as a substring. That is a false positive this script must not
 # have: it would SIGKILL an unrelated program (the Windows script's own
-# regression test covers exactly that case, "granted-test-install-dev"), and
+# regression test covers exactly that case, "treatable-test-install-dev"), and
 # unlike there, it would happen while deleting things. So the character after
 # the match has to end the path: a separator, a space, or the end of the line.
 matching_pids() {
@@ -661,7 +662,7 @@ matching_pids() {
   '
 }
 
-stop_granted() {
+stop_treatable() {
   local pids pid deadline
   # The menu-bar helper and the server under its LaunchAgent, through the one
   # script that owns all of that. A non-zero exit means there was nothing
@@ -687,7 +688,7 @@ stop_granted() {
 
 # --- --check ---------------------------------------------------------------
 # Everything an uninstall would find, and nothing changed. This is what
-# Settings -> About Granted asks before it offers the button, so that the page
+# Settings -> About Treatable asks before it offers the button, so that the page
 # can do the asking itself (and pass --quiet, with --force only when the user
 # was actually shown the unsaved work and said yes anyway) rather than this
 # script popping dialogs behind a browser window.
@@ -697,11 +698,11 @@ if [ "$CHECK" = "1" ]; then
   while IFS= read -r f; do [ -n "$f" ] && keys+=("$f"); done <<EOF
 $(present_key_files)
 EOF
-  printf '{"check":true,"installDir":%s,"exists":%s,"isLink":%s,"grantedInstall":%s,"installerMade":%s,"unsaved":%s,"keyFiles":%s,"launchAgent":"%s","launcher":"%s","settingsPath":%s,"logDir":%s,"backupDir":%s}\n' \
+  printf '{"check":true,"installDir":%s,"exists":%s,"isLink":%s,"treatableInstall":%s,"installerMade":%s,"unsaved":%s,"keyFiles":%s,"launchAgent":"%s","launcher":"%s","settingsPath":%s,"logDir":%s,"backupDir":%s}\n' \
     "$(json_string "$INSTALL_DIR")" \
     "$([ -d "$INSTALL_DIR" ] && printf true || printf false)" \
     "$([ -L "$INSTALL_DIR" ] && printf true || printf false)" \
-    "$(is_granted_install "$INSTALL_DIR" && printf true || printf false)" \
+    "$(is_treatable_install "$INSTALL_DIR" && printf true || printf false)" \
     "$([ -f "$MARKER" ] && printf true || printf false)" \
     "$(json_list ${UNSAVED+"${UNSAVED[@]}"})" \
     "$(json_list ${keys+"${keys[@]}"})" \
@@ -734,9 +735,9 @@ ALREADY_GONE=0
 if [ ! -d "$INSTALL_DIR" ]; then ALREADY_GONE=1; fi
 
 if [ "$ALREADY_GONE" != "1" ]; then
-  if ! is_granted_install "$INSTALL_DIR"; then
-    notify "$INSTALL_DIR doesn't look like a Granted install, so nothing was deleted."
-    refused "not-a-granted-install"
+  if ! is_treatable_install "$INSTALL_DIR"; then
+    notify "$INSTALL_DIR doesn't look like a Treatable install, so nothing was deleted."
+    refused "not-a-treatable-install"
     exit 2
   fi
 
@@ -745,7 +746,7 @@ if [ "$ALREADY_GONE" != "1" ]; then
   # deleted -- not even with --force, whose job is the unsaved-work question
   # below and not this one.
   if [ ! -f "$MARKER" ]; then
-    notify "$INSTALL_DIR wasn't installed by the Granted installer, so it wasn't deleted. Delete the folder yourself if you're sure."
+    notify "$INSTALL_DIR wasn't installed by the Treatable installer, so it wasn't deleted. Delete the folder yourself if you're sure."
     refused "not-made-by-installer"
     exit 2
   fi
@@ -754,11 +755,11 @@ fi
 # --- asking ----------------------------------------------------------------
 if [ "$QUIET" != "1" ] && [ "$CONFIRMED" != "1" ]; then
   if [ "$ALREADY_GONE" = "1" ]; then
-    first_detail="$INSTALL_DIR is already gone. This removes what Granted left elsewhere on this Mac: its menu-bar icon's background job, its Applications launcher and Dock tile, and its settings and logs."
+    first_detail="$INSTALL_DIR is already gone. This removes what Treatable left elsewhere on this Mac: its menu-bar icon's background job, its Applications launcher and Dock tile, and its settings and logs."
   else
-    first_detail="This deletes $INSTALL_DIR, Granted's menu-bar icon, its Applications launcher and its settings. Git and Node stay installed."
+    first_detail="This deletes $INSTALL_DIR, Treatable's menu-bar icon, its Applications launcher and its settings. Git and Node stay installed."
   fi
-  if ! ask "Uninstall Granted?" "$first_detail"; then
+  if ! ask "Uninstall Treatable?" "$first_detail"; then
     refused "cancelled"
     exit 1
   fi
@@ -775,7 +776,7 @@ if [ "${#UNSAVED[@]}" -gt 0 ]; then
         "$(json_list "${UNSAVED[@]}")" "$(json_string "$INSTALL_DIR")"
       exit 4
     fi
-  elif ! ask "Uninstall Granted anyway?" "$detail"; then
+  elif ! ask "Uninstall Treatable anyway?" "$detail"; then
     printf '{"removed":false,"reason":"cancelled","unsaved":%s,"installDir":%s}\n' \
       "$(json_list "${UNSAVED[@]}")" "$(json_string "$INSTALL_DIR")"
     exit 1
@@ -796,7 +797,7 @@ if [ -n "$(present_key_files)" ]; then
   if [ "$QUIET" != "1" ] && [ "$KEEP_KEYS_GIVEN" = "0" ]; then
     # Default yes: the question is put the other way round so that the dialog's
     # safe default button is the one that keeps the copy.
-    if ask "Delete your API keys with Granted?" "Granted can keep a copy of your API keys and settings in:"$'\n'"$BACKUP_DIR" "Delete them" "Keep a copy"; then
+    if ask "Delete your API keys with Treatable?" "Treatable can keep a copy of your API keys and settings in:"$'\n'"$BACKUP_DIR" "Delete them" "Keep a copy"; then
       keep=0
     else
       keep=1
@@ -811,7 +812,7 @@ fi
 AGENT_OWNER="$(launch_agent_owner)"
 LAUNCHER_OWNER="$(launcher_owner)"
 
-stop_granted
+stop_treatable
 
 # The move: a sibling folder, then deleted (see the header for why not the
 # Trash, and for what this ordering does and does not buy on macOS). Tried a
@@ -842,7 +843,7 @@ if [ "$ALREADY_GONE" != "1" ]; then
   # substitution and its whole JSON line ended up inside the message this
   # script then reported. The `if` below suppresses errexit for the `mv`
   # itself, which is not in a subshell at all.
-  MOVE_ERROR_FILE="$(mktemp "${TMPDIR:-/tmp}/granted-uninstall-mv.XXXXXX")"
+  MOVE_ERROR_FILE="$(mktemp "${TMPDIR:-/tmp}/treatable-uninstall-mv.XXXXXX")"
   move_error=""
   moved=0
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -869,7 +870,7 @@ if [ "$ALREADY_GONE" != "1" ]; then
         ;;
       *)
         move_reason="files-in-use"
-        move_message="Granted's folder couldn't be moved, so nothing was deleted. Close anything using $INSTALL_DIR (a terminal open in there, say), then uninstall again."
+        move_message="Treatable's folder couldn't be moved, so nothing was deleted. Close anything using $INSTALL_DIR (a terminal open in there, say), then uninstall again."
         ;;
     esac
     notify "$move_message"
@@ -880,7 +881,7 @@ if [ "$ALREADY_GONE" != "1" ]; then
   fi
 fi
 
-# --- from here on, Granted is going ---------------------------------------
+# --- from here on, Treatable is going ---------------------------------------
 # The script that does the removing moved with the folder, so it is run from
 # where it is now -- or, for a folder that was already deleted by hand, from
 # beside THIS script, which is the only copy left. It is the same file either
@@ -916,39 +917,39 @@ if [ -n "$TRASH" ]; then
   if [ -e "$TRASH" ]; then LEFTOVER="$TRASH"; fi
 fi
 
-# The settings and the logs are shared by every Granted install on this Mac,
+# The settings and the logs are shared by every Treatable install on this Mac,
 # so they go with the last one out -- the same rule the Windows script applies
 # through its count of other registered installs. With no Installed-apps list
 # to count, what stands in for it is whether anything else here still belongs
 # to another install: a LaunchAgent plist or an ~/Applications launcher this
-# install didn't write. Either one means there is another Granted, and the
+# install didn't write. Either one means there is another Treatable, and the
 # shared files stay.
 SHARED_GO=1
 if [ "$AGENT_OWNER" = "other" ] || [ "$LAUNCHER_OWNER" = "other" ]; then SHARED_GO=0; fi
 # And for a folder deleted by hand there has to be some evidence that the path
-# given really was a Granted install before the settings of a possibly
+# given really was a Treatable install before the settings of a possibly
 # different one are deleted -- see the header. The marker went with the folder,
 # so what is left to go on is a LaunchAgent plist or a launcher that names this
 # exact folder.
 if [ "$ALREADY_GONE" = "1" ] && [ "$AGENT_OWNER" != "own" ] && [ "$LAUNCHER_OWNER" != "own" ]; then SHARED_GO=0; fi
 if [ "$SHARED_GO" = "1" ]; then
-  # Only ever a folder actually called Granted, however GRANTED_SETTINGS_PATH
-  # and GRANTED_LOG_DIR were pointed: this is an `rm -rf` of a path the caller
+  # Only ever a folder actually called Treatable, however TREATABLE_SETTINGS_PATH
+  # and TREATABLE_LOG_DIR were pointed: this is an `rm -rf` of a path the caller
   # chooses.
-  if [ "$(basename -- "$SUPPORT_DIR")" = "Granted" ] && [ -d "$SUPPORT_DIR" ]; then
+  if [ "$(basename -- "$SUPPORT_DIR")" = "Treatable" ] && [ -d "$SUPPORT_DIR" ]; then
     rm -rf -- "$SUPPORT_DIR" || true
     [ -d "$SUPPORT_DIR" ] || REMOVED_SETTINGS=true
   fi
-  if [ "$(basename -- "$LOG_DIR")" = "Granted" ] && [ -d "$LOG_DIR" ]; then
+  if [ "$(basename -- "$LOG_DIR")" = "Treatable" ] && [ -d "$LOG_DIR" ]; then
     rm -rf -- "$LOG_DIR" || true
     [ -d "$LOG_DIR" ] || REMOVED_LOGS=true
   fi
 fi
 
 if [ "$ALREADY_GONE" = "1" ]; then
-  done_text="Granted's folder ($INSTALL_DIR) was already deleted. What it left elsewhere on this Mac has been removed."
+  done_text="Treatable's folder ($INSTALL_DIR) was already deleted. What it left elsewhere on this Mac has been removed."
 else
-  done_text="Granted was uninstalled."
+  done_text="Treatable was uninstalled."
 fi
 if [ -n "$LEFTOVER" ]; then
   done_text="$done_text"$'\n\n'"A few files couldn't be deleted. You can delete this folder yourself: $LEFTOVER"

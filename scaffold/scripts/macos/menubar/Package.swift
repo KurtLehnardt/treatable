@@ -1,8 +1,8 @@
 // swift-tools-version:5.9
 //
-// Granted's macOS menu-bar helper: the counterpart of the Windows tray's
-// NotifyIcon (scaffold/scripts/windows/granted-tray.ps1). A small native
-// AppKit executable rather than an Electron tray, so running Granted in the
+// Treatable's macOS menu-bar helper: the counterpart of the Windows tray's
+// NotifyIcon (scaffold/scripts/windows/treatable-tray.ps1). A small native
+// AppKit executable rather than an Electron tray, so running Treatable in the
 // background costs about what it costs on Windows -- where the tray is a
 // scripted native icon, not a second long-lived runtime.
 //
@@ -11,17 +11,17 @@
 //
 //   swift build -c release --package-path scaffold/scripts/macos/menubar
 //
-// scaffold/scripts/macos/granted-tray.sh runs exactly that the first time
-// Granted starts in the background, and CI builds it the same way.
+// scaffold/scripts/macos/treatable-tray.sh runs exactly that the first time
+// Treatable starts in the background, and CI builds it the same way.
 import PackageDescription
 
 let package = Package(
-  name: "granted-menubar",
+  name: "treatable-menubar",
   platforms: [.macOS(.v12)],
   products: [
-    .executable(name: "granted-menubar", targets: ["GrantedMenuBar"])
+    .executable(name: "treatable-menubar", targets: ["TreatableMenuBar"])
   ],
   targets: [
-    .executableTarget(name: "GrantedMenuBar", path: "Sources/GrantedMenuBar")
+    .executableTarget(name: "TreatableMenuBar", path: "Sources/TreatableMenuBar")
   ]
 )

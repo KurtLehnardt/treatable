@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Granted -- the per-user ~/Applications launcher, and its Dock entry (macOS).
+# Treatable -- the per-user ~/Applications launcher, and its Dock entry (macOS).
 #
 # The macOS counterpart of scripts/windows/shortcuts.ps1. Windows gets a
-# Desktop and a Start-menu .lnk; macOS gets one small Granted.app in the
+# Desktop and a Start-menu .lnk; macOS gets one small Treatable.app in the
 # per-user ~/Applications folder (no admin rights needed, nothing written
 # outside the user's home folder) plus, if the user wants it, an entry in the
 # Dock.
@@ -10,12 +10,12 @@
 # The bundle is deliberately minimal and holds no logic of its own. Its
 # executable is a tiny shell script that runs
 #
-#   granted-tray.sh start --open-browser --port <this install's port>
+#   treatable-tray.sh start --open-browser --port <this install's port>
 #
 # detached, so one double-click from Finder or one click in the Dock starts
 # the background server under its LaunchAgent, puts the menu-bar icon up and
-# opens Granted the way the user prefers -- all of which already live in
-# granted-tray.sh and open-granted.sh, and none of which is reimplemented
+# opens Treatable the way the user prefers -- all of which already live in
+# treatable-tray.sh and open-treatable.sh, and none of which is reimplemented
 # here. The launcher process itself exits immediately; what it started is
 # launchd's, so it keeps running.
 #
@@ -52,7 +52,7 @@
 # optional, so a Dock failure is reported in the JSON as "failed" and the
 # installer shows it as a note rather than as a failed step.
 #
-# The icon is the repo's own scripts/windows/granted.ico, converted here with
+# The icon is the repo's own scripts/windows/treatable.ico, converted here with
 # macOS's own sips and iconutil -- no new dependency, and nothing committed
 # that a build step would have to keep in sync with the .ico. See make_icns.
 #
@@ -69,34 +69,34 @@
 #
 # Test-only overrides, so nothing here ever touches the real ~/Applications or
 # the real Dock:
-#   GRANTED_APPLICATIONS_DIR  where the launcher is created (default ~/Applications)
-#   GRANTED_DOCK_DOMAIN       the `defaults` domain to change. A path (with no
+#   TREATABLE_APPLICATIONS_DIR  where the launcher is created (default ~/Applications)
+#   TREATABLE_DOCK_DOMAIN       the `defaults` domain to change. A path (with no
 #                             .plist extension) is a throwaway plist file of
 #                             its own, which is how the tests change "a Dock"
 #                             without touching the real com.apple.dock.
-#   GRANTED_DOCK_RELOAD_CMD   what reloads the Dock ("none" = don't; the tests
+#   TREATABLE_DOCK_RELOAD_CMD   what reloads the Dock ("none" = don't; the tests
 #                             must never restart the user's real Dock)
-#   GRANTED_LAUNCHER_ICO      the .ico to convert (default scripts/windows/granted.ico)
-#   GRANTED_LOG_DIR           the log folder the launcher writes to
-#   GRANTED_LAUNCHER_ALERT    "none" = the launcher shows no alert when the
+#   TREATABLE_LAUNCHER_ICO      the .ico to convert (default scripts/windows/treatable.ico)
+#   TREATABLE_LOG_DIR           the log folder the launcher writes to
+#   TREATABLE_LAUNCHER_ALERT    "none" = the launcher shows no alert when the
 #                             install folder has gone (an osascript alert
 #                             would block a test run forever)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SCAFFOLD_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
-TRAY_SCRIPT="$SCRIPT_DIR/granted-tray.sh"
-ICO_PATH="${GRANTED_LAUNCHER_ICO:-$SCAFFOLD_DIR/scripts/windows/granted.ico}"
+TRAY_SCRIPT="$SCRIPT_DIR/treatable-tray.sh"
+ICO_PATH="${TREATABLE_LAUNCHER_ICO:-$SCRIPT_DIR/treatable.ico}"
 
-APPLICATIONS_DIR="${GRANTED_APPLICATIONS_DIR:-$HOME/Applications}"
-APP_PATH="$APPLICATIONS_DIR/Granted.app"
-DOCK_DOMAIN="${GRANTED_DOCK_DOMAIN:-com.apple.dock}"
+APPLICATIONS_DIR="${TREATABLE_APPLICATIONS_DIR:-$HOME/Applications}"
+APP_PATH="$APPLICATIONS_DIR/Treatable.app"
+DOCK_DOMAIN="${TREATABLE_DOCK_DOMAIN:-com.apple.dock}"
 
 # This bundle's identity. `remove` refuses to delete anything whose
 # Info.plist does not carry exactly this identifier, so a stray rm -rf can
-# never take someone else's Granted.app (or an unrelated folder that happens
+# never take someone else's Treatable.app (or an unrelated folder that happens
 # to be sitting at that path) with it.
-BUNDLE_ID="io.github.kurtlehnardt.granted.launcher"
+BUNDLE_ID="io.github.kurtlehnardt.treatable.launcher"
 
 ADD_TO_DOCK=0
 PORT=""
@@ -108,7 +108,7 @@ OUT=""
 
 # An option that takes a value must actually have been given one, and must say
 # so when it wasn't -- the same guard, for the same reason, as
-# granted-tray.sh's and open-granted.sh's: with `set -u` a bare `--port` at the
+# treatable-tray.sh's and open-treatable.sh's: with `set -u` a bare `--port` at the
 # end of the line would otherwise die on `$2: unbound variable`, which exits 1
 # with a raw shell diagnostic instead of this script's own message and its own
 # exit 64 for bad input.
@@ -129,17 +129,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ "$PORT_GIVEN" = "0" ]; then PORT="${GRANTED_PORT:-3000}"; fi
+if [ "$PORT_GIVEN" = "0" ]; then PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCAFFOLD_DIR/lib/runtime.mjs")}"; fi
 case "$PORT" in
   '') printf 'applications-launcher.sh: --port must be a number (got an empty value)\n' >&2; exit 64 ;;
   *[!0-9]*) printf 'applications-launcher.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
 esac
 
-LOG_DIR="${GRANTED_LOG_DIR:-$HOME/Library/Logs/Granted}"
+LOG_DIR="${TREATABLE_LOG_DIR:-$HOME/Library/Logs/Treatable}"
 
 note() {
   mkdir -p -- "$LOG_DIR" 2>/dev/null || true
-  printf '[granted-launcher %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_DIR/launcher.log" 2>/dev/null || true
+  printf '[treatable-launcher %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_DIR/launcher.log" 2>/dev/null || true
 }
 
 json_string() {
@@ -160,7 +160,7 @@ sh_quote() {
 }
 
 # --- the icon --------------------------------------------------------------
-# scripts/windows/granted.ico -> $1, an .icns, using only tools macOS already
+# scripts/windows/treatable.ico -> $1, an .icns, using only tools macOS already
 # has: sips reads the .ico (ImageIO hands it the largest representation in the
 # file -- 256x256 here, confirmed with `sips -g pixelWidth`), scales that into
 # an .iconset of the sizes Finder and the Dock ask for, and iconutil packs the
@@ -193,9 +193,9 @@ make_icns() {
   [ -f "$ICO_PATH" ] || { note "no icon at $ICO_PATH: the launcher will show the generic app icon"; return 1; }
   command -v sips >/dev/null 2>&1 || return 1
   command -v iconutil >/dev/null 2>&1 || return 1
-  work="$(mktemp -d "${TMPDIR:-/tmp}/granted-icns.XXXXXX")" || return 1
+  work="$(mktemp -d "${TMPDIR:-/tmp}/treatable-icns.XXXXXX")" || return 1
   base="$work/base.png"
-  iconset="$work/granted.iconset"
+  iconset="$work/treatable.iconset"
   mkdir -p -- "$iconset"
   if ! sips -s format png "$ICO_PATH" --out "$base" >/dev/null 2>&1; then
     rm -rf -- "$work"
@@ -248,9 +248,9 @@ install_version() {
 # were each killed about a second after the launcher exited, and only the
 # variant whose Info.plist said LSUIElement kept its child running.
 #
-# That is exactly the shape of this launcher: it starts granted-tray.sh
+# That is exactly the shape of this launcher: it starts treatable-tray.sh
 # detached and exits at once. Without this key the menu-bar helper would
-# appear and vanish, and Granted would never open at all -- the tray script
+# appear and vanish, and Treatable would never open at all -- the tray script
 # would be killed while it was still waiting for the server's first compile.
 # (The server itself survives either way; it is launchd's own child under the
 # LaunchAgent, which is why this was not obvious from the server alone.)
@@ -268,15 +268,15 @@ emit_info_plist() {
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>Granted</string>
+  <string>Treatable</string>
   <key>CFBundleDisplayName</key>
-  <string>Granted</string>
+  <string>Treatable</string>
   <key>CFBundleIdentifier</key>
   <string>$(xml_escape "$BUNDLE_ID")</string>
   <key>CFBundleExecutable</key>
-  <string>Granted</string>
+  <string>Treatable</string>
   <key>CFBundleIconFile</key>
-  <string>granted</string>
+  <string>treatable</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -300,13 +300,13 @@ PLIST
 #
 # The port is baked rather than read from the environment because an app
 # launched from Finder or the Dock gets none of the user's shell environment --
-# no GRANTED_PORT, no PATH additions. Everything else (the log folder, the
+# no TREATABLE_PORT, no PATH additions. Everything else (the log folder, the
 # alert) still honours an override if one is set, which is what lets the tests
 # run this exact script against throwaway paths.
 #
-# `nohup ... &` and an immediate exit, rather than waiting: granted-tray.sh's
+# `nohup ... &` and an immediate exit, rather than waiting: treatable-tray.sh's
 # `start --open-browser` waits for the server to answer before opening
-# Granted, which on a first run is a Next.js cold compile of up to a few
+# Treatable, which on a first run is a Next.js cold compile of up to a few
 # minutes, and a launcher that stayed alive for all of it would be a shim
 # process sitting in the app switcher for minutes. The menu-bar icon appears
 # within seconds of the click, which is the feedback that matters.
@@ -317,31 +317,31 @@ PLIST
 emit_launcher_script() {
   cat <<LAUNCHER
 #!/bin/bash
-# Granted -- the ~/Applications/Granted.app launcher.
+# Treatable -- the ~/Applications/Treatable.app launcher.
 #
 # Written by scaffold/scripts/macos/applications-launcher.sh for one specific
 # install; the paths below are that install's own. Don't edit this file: the
 # installer overwrites it whenever it creates the launcher again.
 set -u
 TRAY_SCRIPT=$(sh_quote "$TRAY_SCRIPT")
-LOG_DIR="\${GRANTED_LOG_DIR:-\$HOME/Library/Logs/Granted}"
+LOG_DIR="\${TREATABLE_LOG_DIR:-\$HOME/Library/Logs/Treatable}"
 mkdir -p -- "\$LOG_DIR" 2>/dev/null || true
 LOG="\$LOG_DIR/launcher.log"
 stamp() { date '+%Y-%m-%d %H:%M:%S'; }
 if [ ! -f "\$TRAY_SCRIPT" ]; then
-  printf '[granted-launcher %s] %s is gone -- Granted was moved or deleted\n' "\$(stamp)" "\$TRAY_SCRIPT" >> "\$LOG" 2>/dev/null || true
-  if [ "\${GRANTED_LAUNCHER_ALERT:-}" != "none" ]; then
-    osascript -e 'display alert "Granted has moved" message "Granted is no longer in the folder it was installed in, so this shortcut can'"'"'t start it. Install Granted again, or delete this launcher from your Applications folder." as critical' >/dev/null 2>&1 || true
+  printf '[treatable-launcher %s] %s is gone -- Treatable was moved or deleted\n' "\$(stamp)" "\$TRAY_SCRIPT" >> "\$LOG" 2>/dev/null || true
+  if [ "\${TREATABLE_LAUNCHER_ALERT:-}" != "none" ]; then
+    osascript -e 'display alert "Treatable has moved" message "Treatable is no longer in the folder it was installed in, so this shortcut can'"'"'t start it. Install Treatable again, or delete this launcher from your Applications folder." as critical' >/dev/null 2>&1 || true
   fi
   exit 1
 fi
-printf '[granted-launcher %s] starting Granted on port $PORT\n' "\$(stamp)" >> "\$LOG" 2>/dev/null || true
+printf '[treatable-launcher %s] starting Treatable on port $PORT\n' "\$(stamp)" >> "\$LOG" 2>/dev/null || true
 nohup /bin/bash "\$TRAY_SCRIPT" start --open-browser --port $PORT >> "\$LOG" 2>&1 &
 exit 0
 LAUNCHER
 }
 
-# Is $1 a Granted launcher this script created?
+# Is $1 a Treatable launcher this script created?
 #
 # Read with PlistBuddy from the bundle's own Info.plist. Only a "yes" here
 # allows the bundle to be replaced or deleted, so the test must be about the
@@ -362,27 +362,27 @@ is_our_bundle() {
 # bundle is removed only after the new one is complete, and only once
 # is_our_bundle has confirmed what it is -- anything else at that path is
 # refused rather than deleted, because this runs `rm -rf` on a path the user
-# can point anywhere with GRANTED_APPLICATIONS_DIR.
+# can point anywhere with TREATABLE_APPLICATIONS_DIR.
 create_bundle() {
   local staging contents icon_ok=1
   if [ -e "$APP_PATH" ] && ! is_our_bundle "$APP_PATH"; then
-    printf "applications-launcher.sh: %s already exists and isn't Granted's launcher -- leaving it alone\n" "$APP_PATH" >&2
+    printf "applications-launcher.sh: %s already exists and isn't Treatable's launcher -- leaving it alone\n" "$APP_PATH" >&2
     return 1
   fi
   mkdir -p -- "$APPLICATIONS_DIR" || return 1
-  staging="$(mktemp -d "$APPLICATIONS_DIR/.granted-launcher.XXXXXX")" || return 1
-  contents="$staging/Granted.app/Contents"
+  staging="$(mktemp -d "$APPLICATIONS_DIR/.treatable-launcher.XXXXXX")" || return 1
+  contents="$staging/Treatable.app/Contents"
   mkdir -p -- "$contents/MacOS" "$contents/Resources" || { rm -rf -- "$staging"; return 1; }
   emit_info_plist > "$contents/Info.plist" || { rm -rf -- "$staging"; return 1; }
-  emit_launcher_script > "$contents/MacOS/Granted" || { rm -rf -- "$staging"; return 1; }
-  chmod 755 "$contents/MacOS/Granted" || { rm -rf -- "$staging"; return 1; }
+  emit_launcher_script > "$contents/MacOS/Treatable" || { rm -rf -- "$staging"; return 1; }
+  chmod 755 "$contents/MacOS/Treatable" || { rm -rf -- "$staging"; return 1; }
   # The classic companion of Info.plist. Not strictly required for a modern
   # bundle, but it is what makes Finder treat the folder as an application
   # without waiting for LaunchServices to read the plist.
   printf 'APPL????' > "$contents/PkgInfo" || true
-  make_icns "$contents/Resources/granted.icns" || icon_ok=0
+  make_icns "$contents/Resources/treatable.icns" || icon_ok=0
   if [ -e "$APP_PATH" ]; then rm -rf -- "$APP_PATH"; fi
-  if ! mv -f -- "$staging/Granted.app" "$APP_PATH"; then
+  if ! mv -f -- "$staging/Treatable.app" "$APP_PATH"; then
     rm -rf -- "$staging"
     return 1
   fi
@@ -402,7 +402,7 @@ create_bundle() {
 # own URL form (type 15) the next time it saves its preferences, which is why
 # dock_index below has to understand both spellings.
 dock_tile() {
-  printf '<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>%s</string><key>_CFURLStringType</key><integer>0</integer></dict><key>file-label</key><string>Granted</string></dict><key>tile-type</key><string>file-tile</string></dict>' \
+  printf '<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>%s</string><key>_CFURLStringType</key><integer>0</integer></dict><key>file-label</key><string>Treatable</string></dict><key>tile-type</key><string>file-tile</string></dict>' \
     "$(xml_escape "$1")"
 }
 
@@ -416,7 +416,7 @@ dock_tile() {
 # load-bearing, because the two sides of every comparison below go through
 # this function and only one of them is ever a URL: $APP_PATH is a plain POSIX
 # path that was never encoded, so decoding it would corrupt any literal %XX in
-# a real folder name. A user whose home holds ".../100%added/Granted.app" hit
+# a real folder name. A user whose home holds ".../100%added/Treatable.app" hit
 # exactly that: "%ad" is a valid hex pair, so the raw path decoded to a
 # different string than the Dock's own "%25" spelling of it, and in-dock
 # reported a tile that was plainly there as absent -- which then let
@@ -457,7 +457,7 @@ export_dock() {
 dock_index() {
   local wanted="$1" exported i=0 url
   wanted="$(normalize_dock_path "$wanted")"
-  exported="$(mktemp "${TMPDIR:-/tmp}/granted-dock.XXXXXX")" || return 1
+  exported="$(mktemp "${TMPDIR:-/tmp}/treatable-dock.XXXXXX")" || return 1
   if ! export_dock "$exported"; then rm -f -- "$exported"; return 1; fi
   while /usr/libexec/PlistBuddy -c "Print :persistent-apps:$i" "$exported" >/dev/null 2>&1; do
     url="$(/usr/libexec/PlistBuddy -c "Print :persistent-apps:$i:tile-data:file-data:_CFURLString" "$exported" 2>/dev/null || true)"
@@ -494,7 +494,7 @@ DOCK_SETTLE_SECONDS=2
 DOCK_RESTART_WAIT=20
 
 reload_dock() {
-  local cmd="${GRANTED_DOCK_RELOAD_CMD-killall Dock}" before after deadline
+  local cmd="${TREATABLE_DOCK_RELOAD_CMD-killall Dock}" before after deadline
   [ "$cmd" = "none" ] && return 0
   [ -n "$cmd" ] || return 0
   before="$(pgrep -x Dock 2>/dev/null | head -1 || true)"
@@ -559,7 +559,7 @@ add_to_dock() {
 remove_from_dock() {
   local index exported
   index="$(dock_index "$APP_PATH")" || { printf 'absent'; return 0; }
-  exported="$(mktemp "${TMPDIR:-/tmp}/granted-dock.XXXXXX")" || { printf 'failed'; return 1; }
+  exported="$(mktemp "${TMPDIR:-/tmp}/treatable-dock.XXXXXX")" || { printf 'failed'; return 1; }
   if ! export_dock "$exported"; then rm -f -- "$exported"; printf 'failed'; return 1; fi
   if ! /usr/libexec/PlistBuddy -c "Delete :persistent-apps:$index" "$exported" >/dev/null 2>&1; then
     rm -f -- "$exported"
@@ -601,7 +601,7 @@ cmd_install() {
 cmd_remove() {
   if [ ! -e "$APP_PATH" ]; then printf '{"removed":false}\n'; return 0; fi
   if ! is_our_bundle "$APP_PATH"; then
-    printf "applications-launcher.sh: %s isn't Granted's launcher -- leaving it alone\n" "$APP_PATH" >&2
+    printf "applications-launcher.sh: %s isn't Treatable's launcher -- leaving it alone\n" "$APP_PATH" >&2
     printf '{"removed":false}\n'
     return 1
   fi

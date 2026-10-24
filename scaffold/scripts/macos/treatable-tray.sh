@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Granted -- run the app in the background on macOS, with a menu-bar icon.
+# Treatable -- run the app in the background on macOS, with a menu-bar icon.
 #
-# The macOS counterpart of scripts/windows/granted-tray.ps1. Two pieces do
+# The macOS counterpart of scripts/windows/treatable-tray.ps1. Two pieces do
 # there what one PowerShell script does on Windows:
 #
 #   * launchd runs the server. A per-user LaunchAgent (label
-#     com.granted.server, plist in ~/Library/LaunchAgents) runs `npm run start`
+#     com.treatable.server, plist in ~/Library/LaunchAgents) runs `npm run start`
 #     -- `next start`, serving the production build in scaffold/.next, which
 #     this script makes sure exists first (see ensure_build below); never
 #     `npm run dev`, which would compile pages on demand in the user's face
 #     and needs a looser CSP to do it --
-#     with no window and no terminal, logging to ~/Library/Logs/Granted. The
+#     with no window and no terminal, logging to ~/Library/Logs/Treatable. The
 #     plist is deliberately written with RunAtLoad false and no KeepAlive, so
-#     it never starts Granted at login: it is bootstrapped and kickstarted
-#     when the user actually opens Granted, and booted out again when they
+#     it never starts Treatable at login: it is bootstrapped and kickstarted
+#     when the user actually opens Treatable, and booted out again when they
 #     quit. That matches Windows, where nothing starts at sign-in either.
 #   * The menu-bar icon is a small native Swift helper (scripts/macos/menubar,
 #     an NSStatusItem app) -- the counterpart of the Windows tray's
@@ -21,67 +21,67 @@
 #     Show log / Restart / Quit. It shells back into this script for every
 #     action, so the launchd and status-file logic lives in exactly one place.
 #     If Swift (Xcode Command Line Tools) is missing, or the helper can't be
-#     built, Granted still runs under launchd -- there is just no menu-bar
+#     built, Treatable still runs under launchd -- there is just no menu-bar
 #     icon, and this script says so in the log.
 #
 # This script is what the GUI installer, the menu-bar helper and the
 # ~/Applications launcher (scripts/macos/applications-launcher.sh, whose
-# Granted.app runs `start --open-browser` on a click) all call:
+# Treatable.app runs `start --open-browser` on a click) all call:
 #
-#   granted-tray.sh start [--open-browser] [--status-path FILE] [--no-helper]
-#   granted-tray.sh stop [--server-only]   quit Granted (and the menu-bar icon)
-#   granted-tray.sh restart                restart the server
-#   granted-tray.sh status                 one JSON line: state, url, log, label
-#   granted-tray.sh open                   open Granted (how the user prefers)
-#   granted-tray.sh open-in                one JSON line: {"openIn":"window"|"browser"}
-#   granted-tray.sh set-open-in --mode window|browser
-#                                          save where Granted opens
-#   granted-tray.sh show-log               open the server log
-#   granted-tray.sh uninstall              start scripts/macos/uninstall.sh,
+#   treatable-tray.sh start [--open-browser] [--status-path FILE] [--no-helper]
+#   treatable-tray.sh stop [--server-only]   quit Treatable (and the menu-bar icon)
+#   treatable-tray.sh restart                restart the server
+#   treatable-tray.sh status                 one JSON line: state, url, log, label
+#   treatable-tray.sh open                   open Treatable (how the user prefers)
+#   treatable-tray.sh open-in                one JSON line: {"openIn":"window"|"browser"}
+#   treatable-tray.sh set-open-in --mode window|browser
+#                                          save where Treatable opens
+#   treatable-tray.sh show-log               open the server log
+#   treatable-tray.sh uninstall              start scripts/macos/uninstall.sh,
 #                                          detached (the menu's "Uninstall
-#                                          Granted...")
-#   granted-tray.sh log-path               the server log for this port
-#   granted-tray.sh plist                  print the LaunchAgent plist
-#   granted-tray.sh build-helper           build the menu-bar helper, print its path
-#   granted-tray.sh helper-path            print the menu-bar helper's path
+#                                          Treatable...")
+#   treatable-tray.sh log-path               the server log for this port
+#   treatable-tray.sh plist                  print the LaunchAgent plist
+#   treatable-tray.sh build-helper           build the menu-bar helper, print its path
+#   treatable-tray.sh helper-path            print the menu-bar helper's path
 #
-# Every subcommand accepts --port N (default: $GRANTED_PORT, else 3000).
+# Every subcommand accepts --port N (default: $TREATABLE_PORT, else 3000).
 #
 # Status reporting is the installer's existing mechanism, unchanged: the
 # {state,message,pid} JSON of install-macos.sh's write_status, plus the
 # `<status>.lock.d` directory lock (installer/src/main/ipcPure.ts's
 # macStatusLockPath). The menu-bar helper holds that lock for its lifetime and
 # writes the status, exactly as the Windows tray holds its own lock file and
-# writes the same JSON -- so a quit before Granted answered reads back as a
-# closed window, through the very same openGranted.ts isStatusWindowAlive.
+# writes the same JSON -- so a quit before Treatable answered reads back as a
+# closed window, through the very same openTreatable.ts isStatusWindowAlive.
 #
 # Test-only overrides, so nothing here ever touches the real install:
-#   GRANTED_LAUNCH_LABEL       the LaunchAgent label (never the real one in tests)
-#   GRANTED_LAUNCH_AGENTS_DIR  where the plist is written
-#   GRANTED_LOG_DIR            the log folder
-#   GRANTED_SETTINGS_PATH      the settings file (its folder holds the pid file)
-#   GRANTED_MENUBAR_HELPER     the helper binary ("none" = don't run one)
-#   GRANTED_NPM                the npm binary to run the server with
-#   GRANTED_OPEN_CMD           what opens Granted and the log (instead of `open`)
-#   GRANTED_APP_BROWSER        the app-mode browser ("none" = pretend there isn't one)
-#   GRANTED_UNINSTALL_LOG      where `uninstall` writes the uninstaller's output
+#   TREATABLE_LAUNCH_LABEL       the LaunchAgent label (never the real one in tests)
+#   TREATABLE_LAUNCH_AGENTS_DIR  where the plist is written
+#   TREATABLE_LOG_DIR            the log folder
+#   TREATABLE_SETTINGS_PATH      the settings file (its folder holds the pid file)
+#   TREATABLE_MENUBAR_HELPER     the helper binary ("none" = don't run one)
+#   TREATABLE_NPM                the npm binary to run the server with
+#   TREATABLE_OPEN_CMD           what opens Treatable and the log (instead of `open`)
+#   TREATABLE_APP_BROWSER        the app-mode browser ("none" = pretend there isn't one)
+#   TREATABLE_UNINSTALL_LOG      where `uninstall` writes the uninstaller's output
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SCAFFOLD_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
 MENUBAR_PKG="$SCRIPT_DIR/menubar"
-OPEN_SCRIPT="$SCRIPT_DIR/open-granted.sh"
+OPEN_SCRIPT="$SCRIPT_DIR/open-treatable.sh"
 UNINSTALL_SCRIPT="$SCRIPT_DIR/uninstall.sh"
 
-LABEL="${GRANTED_LAUNCH_LABEL:-com.granted.server}"
-LAUNCH_AGENTS_DIR="${GRANTED_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
-LOG_DIR="${GRANTED_LOG_DIR:-$HOME/Library/Logs/Granted}"
-SETTINGS_PATH="${GRANTED_SETTINGS_PATH:-$HOME/Library/Application Support/Granted/settings.json}"
+LABEL="${TREATABLE_LAUNCH_LABEL:-com.treatable.server}"
+LAUNCH_AGENTS_DIR="${TREATABLE_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+LOG_DIR="${TREATABLE_LOG_DIR:-$HOME/Library/Logs/Treatable}"
+SETTINGS_PATH="${TREATABLE_SETTINGS_PATH:-$HOME/Library/Application Support/Treatable/settings.json}"
 SUPPORT_DIR="$(dirname -- "$SETTINGS_PATH")"
-STATUS_PATH="${GRANTED_STATUS_FILE:-}"
+STATUS_PATH="${TREATABLE_STATUS_FILE:-}"
 DOMAIN="gui/$(id -u)"
 
-PORT="${GRANTED_PORT:-3000}"
+PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCAFFOLD_DIR/lib/runtime.mjs")}"
 OPEN_BROWSER=0
 NO_HELPER=0
 SERVER_ONLY=0
@@ -93,10 +93,10 @@ MODE=""
 # variable`, which exits 1 with a raw shell diagnostic instead of this script's
 # own message and its own exit 64 for bad input. Exit 1 also means something
 # else entirely here: it is what a failed `stop` or `set-open-in` reports, and
-# what open-granted.sh reserves for "I opened nothing, fall back".
+# what open-treatable.sh reserves for "I opened nothing, fall back".
 need_value() {
   [ "$1" -ge 2 ] && return 0
-  printf 'granted-tray.sh: %s needs a value\n' "$2" >&2
+  printf 'treatable-tray.sh: %s needs a value\n' "$2" >&2
   exit 64
 }
 
@@ -110,12 +110,12 @@ while [ $# -gt 0 ]; do
     --open-browser) OPEN_BROWSER=1; shift ;;
     --no-helper) NO_HELPER=1; shift ;;
     --server-only) SERVER_ONLY=1; shift ;;
-    *) printf 'granted-tray.sh: unknown option %s\n' "$1" >&2; exit 64 ;;
+    *) printf 'treatable-tray.sh: unknown option %s\n' "$1" >&2; exit 64 ;;
   esac
 done
 
 case "$PORT" in
-  ''|*[!0-9]*) printf 'granted-tray.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
+  ''|*[!0-9]*) printf 'treatable-tray.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
 esac
 
 PLIST_PATH="$LAUNCH_AGENTS_DIR/$LABEL.plist"
@@ -142,7 +142,7 @@ BUILD_FAILED_STATUS=3
 # --- status reporting (install-macos.sh's write_status, verbatim shape) -----
 # `pid` is omitted on purpose: this script exits as soon as it has started
 # things, so a recorded pid of its own would read as a dead window the moment
-# it exits (openGranted.ts's resolveTaskStatus only asks about liveness when
+# it exits (openTreatable.ts's resolveTaskStatus only asks about liveness when
 # there IS a pid). The menu-bar helper, which does stay alive, writes the
 # status with its own pid and takes the lock directory.
 write_status() {
@@ -162,14 +162,14 @@ write_status() {
 
 note() {
   mkdir -p -- "$LOG_DIR" 2>/dev/null || true
-  printf '[granted-tray %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_DIR/tray.log" 2>/dev/null || true
+  printf '[treatable-tray %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >> "$LOG_DIR/tray.log" 2>/dev/null || true
 }
 
-# --- probing (scripts/windows/granted-tray.ps1's Test-Granted) -------------
-# "granted" = Granted's own page; "other" = something else answered; "busy" =
+# --- probing (scripts/windows/treatable-tray.ps1's Test-Treatable) -------------
+# "treatable" = Treatable's own page; "other" = something else answered; "busy" =
 # accepted but didn't answer in time (Next still compiling); "down" = nothing
 # listening. Same four outcomes, and the same page marker, as the Windows
-# tray and installer/src/main/openGranted.ts's probeGranted.
+# tray and installer/src/main/openTreatable.ts's probeTreatable.
 probe_server() {
   local timeout="${1:-3}" body rc
   set +e
@@ -177,7 +177,7 @@ probe_server() {
   rc=$?
   set -e
   case "$rc" in
-    0) if printf '%s' "$body" | grep -qi 'federal funding intelligence'; then echo granted; else echo other; fi ;;
+    0) if printf '%s' "$body" | grep -qi 'Treatable'; then echo treatable; else echo other; fi ;;
     28) echo busy ;;
     22|52|56) echo other ;;   # an HTTP error / empty reply from something that IS listening
     *) echo down ;;
@@ -190,7 +190,7 @@ xml_escape() {
 }
 
 npm_bin() {
-  if [ -n "${GRANTED_NPM:-}" ]; then printf '%s' "$GRANTED_NPM"; return 0; fi
+  if [ -n "${TREATABLE_NPM:-}" ]; then printf '%s' "$TREATABLE_NPM"; return 0; fi
   command -v npm 2>/dev/null || true
 }
 
@@ -198,7 +198,7 @@ npm_bin() {
 # this install's own scaffold path, port, log path and npm location.
 #
 # RunAtLoad is false and there is no KeepAlive, so loading the agent does not
-# start Granted -- `launchctl kickstart` does, when the user opens it. That is
+# start Treatable -- `launchctl kickstart` does, when the user opens it. That is
 # what keeps this from becoming a login item: at the next login launchd loads
 # the plist again and, with RunAtLoad false, runs nothing.
 #
@@ -209,7 +209,7 @@ npm_bin() {
 emit_plist() {
   local npm
   npm="$(npm_bin)"
-  [ -n "$npm" ] || { printf 'granted-tray.sh: npm not found on PATH -- install Node.js 22+ first\n' >&2; return 1; }
+  [ -n "$npm" ] || { printf 'treatable-tray.sh: npm not found on PATH -- install Node.js 22+ first\n' >&2; return 1; }
   cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -250,7 +250,7 @@ PLIST
 write_plist() {
   local tmp
   mkdir -p -- "$LAUNCH_AGENTS_DIR"
-  tmp="$(mktemp "${TMPDIR:-/tmp}/granted-plist.XXXXXX")"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/treatable-plist.XXXXXX")"
   if emit_plist > "$tmp"; then
     mv -f "$tmp" "$PLIST_PATH"
   else
@@ -289,9 +289,9 @@ load_agent() {
 # The path for one rotation generation: 0 is the live file, 1 and 2 are
 # "server-$PORT.1.log" and "server-$PORT.2.log" -- the same generation
 # naming scheme as scaffold/lib/errorLog/store.ts's logFileName and
-# scripts/windows/granted-tray.ps1's Get-GrantedLogGeneration, so all three
+# scripts/windows/treatable-tray.ps1's Get-TreatableLogGeneration, so all three
 # implementations agree.
-granted_log_generation() {
+treatable_log_generation() {
   if [ "$1" -eq 0 ]; then printf '%s' "$LOG_FILE"; else printf '%s/server-%s.%s.log' "$LOG_DIR" "$PORT" "$1"; fi
 }
 
@@ -314,17 +314,17 @@ granted_log_generation() {
 # guarded so it can never abort the script under `set -euo pipefail` -- a
 # tray that fails to start because log rotation failed would be a far worse
 # bug than an oversized log file.
-rotate_granted_log() {
+rotate_treatable_log() {
   local size i src dst
   [ -f "$LOG_FILE" ] || return 0
   size="$(stat -f%z -- "$LOG_FILE" 2>/dev/null)" || return 0
   case "$size" in ''|*[!0-9]*) return 0 ;; esac
   [ "$size" -ge "$MAX_LOG_BYTES" ] || return 0
-  rm -f -- "$(granted_log_generation $((KEEP_LOG_FILES - 1)))" 2>/dev/null || true
+  rm -f -- "$(treatable_log_generation $((KEEP_LOG_FILES - 1)))" 2>/dev/null || true
   i=$((KEEP_LOG_FILES - 2))
   while [ "$i" -ge 0 ]; do
-    src="$(granted_log_generation "$i")"
-    dst="$(granted_log_generation $((i + 1)))"
+    src="$(treatable_log_generation "$i")"
+    dst="$(treatable_log_generation $((i + 1)))"
     if [ -f "$src" ]; then mv -f -- "$src" "$dst" 2>/dev/null || true; fi
     i=$((i - 1))
   done
@@ -365,9 +365,9 @@ ensure_build() {
   needs_build || return 0
   mkdir -p -- "$LOG_DIR" 2>/dev/null || true
   npm="$(npm_bin)"
-  [ -n "$npm" ] || { note "npm not found on PATH -- can't build Granted"; return 1; }
-  note "building Granted in $SCAFFOLD_DIR (first start after an install, an update or an .env.local change)"
-  printf '[granted-tray %s] npm run build\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE" 2>/dev/null || true
+  [ -n "$npm" ] || { note "npm not found on PATH -- can't build Treatable"; return 1; }
+  note "building Treatable in $SCAFFOLD_DIR (first start after an install, an update or an .env.local change)"
+  printf '[treatable-tray %s] npm run build\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE" 2>/dev/null || true
   if ! ( cd -- "$SCAFFOLD_DIR" && "$npm" run build ) >> "$LOG_FILE" 2>&1; then
     note "npm run build failed -- see $LOG_FILE"
     return 1
@@ -377,7 +377,7 @@ ensure_build() {
 }
 
 start_server() {
-  rotate_granted_log || true
+  rotate_treatable_log || true
   # Before load_agent, not after: a build takes a minute, and launchd must not
   # be kickstarted into a `next start` that has nothing to serve.
   ensure_build || return "$BUILD_FAILED_STATUS"
@@ -392,9 +392,9 @@ start_server_or_report() {
   start_server || rc=$?
   [ "$rc" = "0" ] && return 0
   if [ "$rc" = "$BUILD_FAILED_STATUS" ]; then
-    write_status "error" "Granted couldn't be built, so it didn't start. Details are in $LOG_FILE"
+    write_status "error" "Treatable couldn't be built, so it didn't start. Details are in $LOG_FILE"
   else
-    write_status "error" "Granted's background service couldn't be started. Details are in $LOG_FILE"
+    write_status "error" "Treatable's background service couldn't be started. Details are in $LOG_FILE"
   fi
   return 1
 }
@@ -407,7 +407,7 @@ SERVER_STOP_WAIT=15
 
 # Stops the server and unloads the agent, so nothing stays registered. Waits
 # for the port to be free afterwards, the way the Windows tray's
-# Stop-GrantedServer does, so a Restart's new server can bind it.
+# Stop-TreatableServer does, so a Restart's new server can bind it.
 stop_server() {
   local deadline
   if agent_loaded; then
@@ -422,14 +422,14 @@ stop_server() {
 
 # One of starting | running | stopped | crashed -- the same four the Windows
 # tray's Get-ServerState reports, from the same two signals (is the server
-# process there, and does Granted answer).
+# process there, and does Treatable answer).
 server_state() {
   if ! agent_loaded; then
-    [ "$(probe_server 1)" = "granted" ] && echo running || echo stopped
+    [ "$(probe_server 1)" = "treatable" ] && echo running || echo stopped
     return 0
   fi
   if agent_running; then
-    [ "$(probe_server 1)" = "granted" ] && echo running || echo starting
+    [ "$(probe_server 1)" = "treatable" ] && echo running || echo starting
     return 0
   fi
   [ "$(agent_runs)" != "0" ] && echo crashed || echo stopped
@@ -437,8 +437,8 @@ server_state() {
 
 # --- the menu-bar helper ---------------------------------------------------
 helper_path() {
-  if [ -n "${GRANTED_MENUBAR_HELPER:-}" ]; then printf '%s' "$GRANTED_MENUBAR_HELPER"; return 0; fi
-  printf '%s' "$MENUBAR_PKG/.build/release/granted-menubar"
+  if [ -n "${TREATABLE_MENUBAR_HELPER:-}" ]; then printf '%s' "$TREATABLE_MENUBAR_HELPER"; return 0; fi
+  printf '%s' "$MENUBAR_PKG/.build/release/treatable-menubar"
 }
 
 # Is $1 really this install's menu-bar helper?
@@ -469,13 +469,13 @@ helper_is_running() {
   comm="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
   args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
   [ -n "$comm$args" ] || return 1
-  # 1) the command name, by basename ("granted-menubar" as well as whatever
-  #    GRANTED_MENUBAR_HELPER points at, so a `stop` run without that override
+  # 1) the command name, by basename ("treatable-menubar" as well as whatever
+  #    TREATABLE_MENUBAR_HELPER points at, so a `stop` run without that override
   #    still recognizes a helper started with one).
-  case "${comm##*/}" in "$name"|granted-menubar) return 0 ;; esac
+  case "${comm##*/}" in "$name"|treatable-menubar) return 0 ;; esac
   # 2) argv[0]'s basename, from the untruncated args field.
   argv0="${args%% *}"
-  case "${argv0##*/}" in "$name"|granted-menubar) return 0 ;; esac
+  case "${argv0##*/}" in "$name"|treatable-menubar) return 0 ;; esac
   # 3) the helper's own path as an argument -- how a #! script shows up. Only
   #    for a real absolute path, never for the "none" sentinel.
   case "$binary" in
@@ -499,7 +499,7 @@ helper_pid() {
 
 # Builds the helper with the Swift toolchain that ships with the Xcode Command
 # Line Tools -- no Xcode project, no Xcode.app. Output goes to the package's
-# own .build (gitignored). Build failures are logged and never fatal: Granted
+# own .build (gitignored). Build failures are logged and never fatal: Treatable
 # runs under launchd regardless, just without a menu-bar icon.
 build_helper() {
   local binary
@@ -510,7 +510,7 @@ build_helper() {
   [ -f "$MENUBAR_PKG/Package.swift" ] || { note "no menu-bar helper package at $MENUBAR_PKG"; return 1; }
   note "building the menu-bar helper (first run only)..."
   if ! swift build -c release --package-path "$MENUBAR_PKG" >> "$LOG_DIR/tray.log" 2>&1; then
-    note "the menu-bar helper didn't build -- Granted still runs in the background, without a menu-bar icon"
+    note "the menu-bar helper didn't build -- Treatable still runs in the background, without a menu-bar icon"
     return 1
   fi
   [ -x "$binary" ] || return 1
@@ -519,21 +519,21 @@ build_helper() {
 
 start_helper() {
   local binary
-  if [ "$NO_HELPER" = "1" ] || [ "${GRANTED_MENUBAR_HELPER:-}" = "none" ]; then return 0; fi
+  if [ "$NO_HELPER" = "1" ] || [ "${TREATABLE_MENUBAR_HELPER:-}" = "none" ]; then return 0; fi
   if helper_pid >/dev/null; then return 0; fi   # already showing
   binary="$(build_helper)" || return 1
   mkdir -p -- "$SUPPORT_DIR"
   # Detached (setsid-less: nohup plus & is enough on macOS) so it outlives
   # whoever called this -- the installer, or a Terminal window.
-  GRANTED_PORT="$PORT" \
-  GRANTED_STATUS_FILE="$STATUS_PATH" \
-  GRANTED_TRAY_SCRIPT="$SCRIPT_DIR/granted-tray.sh" \
-  GRANTED_LOG_FILE="$LOG_FILE" \
-  GRANTED_SETTINGS_PATH="$SETTINGS_PATH" \
-  GRANTED_HELPER_PID_FILE="$HELPER_PID_FILE" \
-  GRANTED_LAUNCH_LABEL="$LABEL" \
-  GRANTED_LAUNCH_AGENTS_DIR="$LAUNCH_AGENTS_DIR" \
-  GRANTED_LOG_DIR="$LOG_DIR" \
+  TREATABLE_PORT="$PORT" \
+  TREATABLE_STATUS_FILE="$STATUS_PATH" \
+  TREATABLE_TRAY_SCRIPT="$SCRIPT_DIR/treatable-tray.sh" \
+  TREATABLE_LOG_FILE="$LOG_FILE" \
+  TREATABLE_SETTINGS_PATH="$SETTINGS_PATH" \
+  TREATABLE_HELPER_PID_FILE="$HELPER_PID_FILE" \
+  TREATABLE_LAUNCH_LABEL="$LABEL" \
+  TREATABLE_LAUNCH_AGENTS_DIR="$LAUNCH_AGENTS_DIR" \
+  TREATABLE_LOG_DIR="$LOG_DIR" \
     nohup "$binary" >> "$LOG_DIR/menubar.log" 2>&1 &
   printf '%s' "$!" > "$HELPER_PID_FILE"
   return 0
@@ -542,7 +542,7 @@ start_helper() {
 # How long to wait for a SIGTERMed helper to finish and exit on its own.
 #
 # This is NOT "long enough to hide an icon". SIGTERM makes the helper run a
-# whole `granted-tray.sh stop --server-only` of its own -- the entire
+# whole `treatable-tray.sh stop --server-only` of its own -- the entire
 # stop_server above, both of its waits -- and only when that returns does it
 # release its `<status>.lock.d` directory and remove its pid file. So the wait
 # here has to outlast a full stop_server, with room for the shell and launchctl
@@ -586,33 +586,33 @@ stop_helper() {
 
 # --- opening things --------------------------------------------------------
 # Both of the menu's "open something" actions go through here, so there is one
-# place to override in tests (GRANTED_OPEN_CMD, a stand-in that just records
+# place to override in tests (TREATABLE_OPEN_CMD, a stand-in that just records
 # what it was asked to open — the counterpart of the Windows tests'
-# GRANTED_APP_BROWSER) and one place where "its own window" is decided.
+# TREATABLE_APP_BROWSER) and one place where "its own window" is decided.
 #
-# In its own window or a browser tab, as the user prefers (open-granted.sh
+# In its own window or a browser tab, as the user prefers (open-treatable.sh
 # does the deciding, the browser-finding and the launching); a plain browser
 # tab if that script is missing or fails. Exactly the shape of the Windows
-# tray's Open-Granted.
+# tray's Open-Treatable.
 #
-# open-granted.sh exits non-zero only when it opened nothing at all, so the
-# fallback below can never open Granted a second time on top of an app window
+# open-treatable.sh exits non-zero only when it opened nothing at all, so the
+# fallback below can never open Treatable a second time on top of an app window
 # it did start.
-open_granted() {
+open_treatable() {
   if [ -f "$OPEN_SCRIPT" ]; then
     if /bin/bash "$OPEN_SCRIPT" --url "$URL" >/dev/null 2>&1; then return 0; fi
   fi
-  "${GRANTED_OPEN_CMD:-open}" "$URL" >/dev/null 2>&1 || true
+  "${TREATABLE_OPEN_CMD:-open}" "$URL" >/dev/null 2>&1 || true
 }
 
 # The saved preference, and saving it — the menu-bar helper's "Open in its own
 # window" tick, which is the counterpart of the Windows tray asking
-# open-granted.ps1 with -GetOpenIn/-SetOpenIn. Routed through this script
-# because the helper is given only GRANTED_TRAY_SCRIPT, not the scripts
+# open-treatable.ps1 with -GetOpenIn/-SetOpenIn. Routed through this script
+# because the helper is given only TREATABLE_TRAY_SCRIPT, not the scripts
 # folder, and so that every settings write still goes through the one place
 # that owns the preference.
 #
-# With no open-granted.sh (an install too old to have it), reading reports the
+# With no open-treatable.sh (an install too old to have it), reading reports the
 # default and saving fails — the helper puts its tick back and says so, the
 # same as when the write itself fails.
 open_in_pref() {
@@ -625,38 +625,38 @@ open_in_pref() {
 set_open_in() {
   case "$1" in
     window|browser) ;;
-    *) printf 'granted-tray.sh: set-open-in needs --mode window or --mode browser\n' >&2; return 64 ;;
+    *) printf 'treatable-tray.sh: set-open-in needs --mode window or --mode browser\n' >&2; return 64 ;;
   esac
-  [ -f "$OPEN_SCRIPT" ] || { printf 'granted-tray.sh: no %s in this install\n' "$OPEN_SCRIPT" >&2; return 1; }
+  [ -f "$OPEN_SCRIPT" ] || { printf 'treatable-tray.sh: no %s in this install\n' "$OPEN_SCRIPT" >&2; return 1; }
   /bin/bash "$OPEN_SCRIPT" --set-open-in "$1"
 }
 
 # The server log, in whatever the user opens .log files with (Console, by
 # default) — the menu's "Show log", the counterpart of the Windows tray
-# opening it in Notepad. With no log yet (Granted has never started here),
+# opening it in Notepad. With no log yet (Treatable has never started here),
 # its folder, so there's something to look at either way.
 show_log() {
   if [ -f "$LOG_FILE" ]; then
-    "${GRANTED_OPEN_CMD:-open}" "$LOG_FILE" >/dev/null 2>&1 || true
+    "${TREATABLE_OPEN_CMD:-open}" "$LOG_FILE" >/dev/null 2>&1 || true
   else
-    "${GRANTED_OPEN_CMD:-open}" "$LOG_DIR" >/dev/null 2>&1 || true
+    "${TREATABLE_OPEN_CMD:-open}" "$LOG_DIR" >/dev/null 2>&1 || true
   fi
 }
 
 # --- uninstalling ----------------------------------------------------------
 # Starts scripts/macos/uninstall.sh for this install and returns at once. This
-# is what the menu-bar helper's "Uninstall Granted..." item runs, and it is
+# is what the menu-bar helper's "Uninstall Treatable..." item runs, and it is
 # routed through this script for the same reason every other menu action is:
-# the helper is given only GRANTED_TRAY_SCRIPT, and the paths of this install's
+# the helper is given only TREATABLE_TRAY_SCRIPT, and the paths of this install's
 # own scripts are known in exactly one place.
 #
 # Detached, and with its output in a file rather than on this script's stdout,
 # because of what the uninstaller does to whoever asked for it. It stops
-# Granted by calling this very script's `stop`, which SIGTERMs the menu-bar
+# Treatable by calling this very script's `stop`, which SIGTERMs the menu-bar
 # helper and waits for it to finish shutting down. A child of the helper would
 # therefore be killed (or have its stdout pipe closed under it) partway through
 # the uninstall it was asked to perform. `nohup`, no inherited stdin, and the
-# log in the temporary folder -- never in GRANTED_LOG_DIR, which the uninstall
+# log in the temporary folder -- never in TREATABLE_LOG_DIR, which the uninstall
 # itself deletes.
 #
 # The uninstaller is given --confirmed: the menu item has already asked, with
@@ -668,7 +668,7 @@ cmd_uninstall() {
     printf '{"started":false,"reason":"no-uninstaller"}\n'
     return 1
   fi
-  log="${GRANTED_UNINSTALL_LOG:-${TMPDIR:-/tmp}/granted-uninstall-$(date '+%Y%m%d-%H%M%S').log}"
+  log="${TREATABLE_UNINSTALL_LOG:-${TMPDIR:-/tmp}/treatable-uninstall-$(date '+%Y%m%d-%H%M%S').log}"
   nohup /bin/bash "$UNINSTALL_SCRIPT" --confirmed --port "$PORT" >> "$log" 2>&1 </dev/null &
   note "started the uninstaller (pid $!, log: $log)"
   printf '{"started":true,"pid":%s,"log":"%s"}\n' "$!" "$(printf '%s' "$log" | sed 's/\\/\\\\/g; s/"/\\"/g')"
@@ -682,21 +682,21 @@ cmd_start() {
 
   before="$(probe_server 10)"
   if [ "$before" = "busy" ]; then
-    # Something is there but slow to answer -- most likely a Granted still
+    # Something is there but slow to answer -- most likely a Treatable still
     # compiling (started from a terminal, say). Wait for it rather than
     # calling it another program, exactly as the Windows tray does.
     local deadline
     deadline=$(( $(date +%s) + 300 ))
     while [ "$before" = "busy" ] && [ "$(date +%s)" -lt "$deadline" ]; do before="$(probe_server 5)"; done
   fi
-  if [ "$before" = "granted" ]; then
+  if [ "$before" = "treatable" ]; then
     # Already running (perhaps started some other way): show the icon, open it, done.
     start_helper || true
-    [ "$OPEN_BROWSER" = "1" ] && open_granted
+    [ "$OPEN_BROWSER" = "1" ] && open_treatable
     return 0
   fi
   if [ "$before" != "down" ]; then
-    local msg="Something else is already using port $PORT, so Granted can't start there. Close it and try again."
+    local msg="Something else is already using port $PORT, so Treatable can't start there. Close it and try again."
     write_status "error" "$msg"
     printf '%s\n' "$msg" >&2
     return 2
@@ -709,17 +709,17 @@ cmd_start() {
   note "started $LABEL on port $PORT (log: $LOG_FILE)"
   start_helper || true
   if [ "$OPEN_BROWSER" = "1" ]; then
-    # Wait for Granted to answer before opening a browser at it (`next start`
+    # Wait for Treatable to answer before opening a browser at it (`next start`
     # answers in a moment, but a start that had to build first takes a
     # minute or two); give up quietly after five minutes.
     local deadline
     deadline=$(( $(date +%s) + 300 ))
     while [ "$(date +%s)" -lt "$deadline" ]; do
       state="$(probe_server 5)"
-      [ "$state" = "granted" ] && break
+      [ "$state" = "treatable" ] && break
       sleep 2
     done
-    open_granted
+    open_treatable
   fi
   return 0
 }
@@ -759,7 +759,7 @@ case "$COMMAND" in
   stop) cmd_stop ;;
   restart) cmd_restart ;;
   status) cmd_status ;;
-  open) open_granted ;;
+  open) open_treatable ;;
   open-in) open_in_pref ;;
   set-open-in) set_open_in "$MODE" ;;
   show-log) show_log ;;
@@ -770,7 +770,7 @@ case "$COMMAND" in
   build-helper) build_helper && printf '\n' ;;
   helper-path) helper_path && printf '\n' ;;
   *)
-    printf 'usage: granted-tray.sh {start|stop|restart|status|open|open-in|set-open-in|show-log|uninstall|log-path|plist|plist-path|build-helper|helper-path} [--port N]\n' >&2
+    printf 'usage: treatable-tray.sh {start|stop|restart|status|open|open-in|set-open-in|show-log|uninstall|log-path|plist|plist-path|build-helper|helper-path} [--port N]\n' >&2
     exit 64
     ;;
 esac

@@ -1,49 +1,49 @@
 #!/usr/bin/env bash
-# Granted -- open Granted in its own window, or in a browser tab (macOS).
+# Treatable -- open Treatable in its own window, or in a browser tab (macOS).
 #
-# The macOS counterpart of scripts/windows/open-granted.ps1, with the same
+# The macOS counterpart of scripts/windows/open-treatable.ps1, with the same
 # subcommands, the same JSON output, and the same preference in the same
 # settings file.
 #
 # "Its own window" is Chrome's (or Edge's) app mode: `<browser> --app=<url>`
 # opens the page in a window with no tabs, no address bar and its own Dock
-# entry, so Granted looks and feels like a desktop app. With neither browser
-# installed (or when the user prefers it) Granted opens in the default
+# entry, so Treatable looks and feels like a desktop app. With neither browser
+# installed (or when the user prefers it) Treatable opens in the default
 # browser, which on a stock Mac is Safari.
 #
-#   open-granted.sh --url http://localhost:3000       open it, the way the user prefers
-#   open-granted.sh --url ... --no-browser-fallback   never open a browser tab itself
+#   open-treatable.sh --url http://localhost:3000       open it, the way the user prefers
+#   open-treatable.sh --url ... --no-browser-fallback   never open a browser tab itself
 #                                                     (the GUI installer does that part)
-#   open-granted.sh --set-open-in window|browser      save the preference
-#   open-granted.sh --get-open-in                     print the preference
-#   open-granted.sh --find-browser                    print the app-mode browser it would
+#   open-treatable.sh --set-open-in window|browser      save the preference
+#   open-treatable.sh --get-open-in                     print the preference
+#   open-treatable.sh --find-browser                    print the app-mode browser it would
 #                                                     use, or nothing (also: which one, when
 #                                                     troubleshooting a Mac with both)
 #
 # Opening prints one JSON line: {"openedIn":"window"|"browser"|"none","browser":<path>|null}
 # ("none" only with --no-browser-fallback, or when nothing could be opened at
 # all), and exits non-zero only when nothing was opened -- so a caller may
-# safely fall back to its own `open` on a failure without ever opening Granted
-# twice (scripts/macos/granted-tray.sh's open_granted does exactly that).
+# safely fall back to its own `open` on a failure without ever opening Treatable
+# twice (scripts/macos/treatable-tray.sh's open_treatable does exactly that).
 #
-# The preference lives in ~/Library/Application Support/Granted/settings.json
+# The preference lives in ~/Library/Application Support/Treatable/settings.json
 # as { "openIn": "window" | "browser" } (default: window) -- the same file,
-# and the same key, Windows keeps in %LOCALAPPDATA%\Granted\settings.json.
+# and the same key, Windows keeps in %LOCALAPPDATA%\Treatable\settings.json.
 # The GUI installer (installer/src/main/ipcPure.ts), the app
 # (scaffold/lib/appUpdate/install.ts settingsPath()) and the menu-bar helper
 # all read and write that one file.
 #
 # Test-only overrides:
-#   GRANTED_SETTINGS_PATH       the settings file
-#   GRANTED_APP_BROWSER         the app-mode browser ("none" = pretend there isn't one)
-#   GRANTED_APP_BROWSER_DIRS    colon-separated folders to look for browsers in,
+#   TREATABLE_SETTINGS_PATH       the settings file
+#   TREATABLE_APP_BROWSER         the app-mode browser ("none" = pretend there isn't one)
+#   TREATABLE_APP_BROWSER_DIRS    colon-separated folders to look for browsers in,
 #                               instead of /Applications and ~/Applications
-#   GRANTED_APP_BROWSER_MDFIND  the mdfind to ask Spotlight with ("none" = don't)
-#   GRANTED_OPEN_CMD            what opens a browser tab (instead of `open`)
-#   GRANTED_NODE                the node binary used to read and write the settings JSON
+#   TREATABLE_APP_BROWSER_MDFIND  the mdfind to ask Spotlight with ("none" = don't)
+#   TREATABLE_OPEN_CMD            what opens a browser tab (instead of `open`)
+#   TREATABLE_NODE                the node binary used to read and write the settings JSON
 set -euo pipefail
 
-SETTINGS_PATH="${GRANTED_SETTINGS_PATH:-$HOME/Library/Application Support/Granted/settings.json}"
+SETTINGS_PATH="${TREATABLE_SETTINGS_PATH:-$HOME/Library/Application Support/Treatable/settings.json}"
 
 URL=""
 NO_BROWSER_FALLBACK=0
@@ -52,8 +52,8 @@ GET_OPEN_IN=0
 FIND_BROWSER=0
 
 usage() {
-  printf 'usage: open-granted.sh --url <http(s) URL> [--no-browser-fallback]\n' >&2
-  printf '       open-granted.sh --set-open-in window|browser | --get-open-in | --find-browser\n' >&2
+  printf 'usage: open-treatable.sh --url <http(s) URL> [--no-browser-fallback]\n' >&2
+  printf '       open-treatable.sh --set-open-in window|browser | --get-open-in | --find-browser\n' >&2
 }
 
 # An option that takes a value must actually have been given one, and must say
@@ -61,13 +61,13 @@ usage() {
 # `shift 2` with only one argument left fails, and under `set -e` that ends the
 # script with exit 1 and no message whatsoever. Exit 1 is the one code this
 # script's contract reserves for "I opened nothing, fall back" (see the header,
-# granted-tray.sh's open_granted and ipc.ts's runOpenGrantedScript), so
+# treatable-tray.sh's open_treatable and ipc.ts's runOpenTreatableScript), so
 # `--url` with the URL left off would be silently treated as a failed open and
 # answered with a browser tab, instead of being reported as the typo it is.
 # Every other bad input here prints a message and exits 64; so does this.
 need_value() {
   [ "$1" -ge 2 ] && return 0
-  printf 'open-granted.sh: %s needs a value\n' "$2" >&2
+  printf 'open-treatable.sh: %s needs a value\n' "$2" >&2
   usage
   exit 64
 }
@@ -79,7 +79,7 @@ while [ $# -gt 0 ]; do
     --set-open-in) need_value "$#" --set-open-in; SET_OPEN_IN="$2"; shift 2 ;;
     --get-open-in) GET_OPEN_IN=1; shift ;;
     --find-browser) FIND_BROWSER=1; shift ;;
-    *) printf 'open-granted.sh: unknown option %s\n' "$1" >&2; usage; exit 64 ;;
+    *) printf 'open-treatable.sh: unknown option %s\n' "$1" >&2; usage; exit 64 ;;
   esac
 done
 
@@ -92,10 +92,10 @@ done
 # nested setting survives a write. (plutil, the only JSON tool guaranteed to
 # be in the base system, parses JSON by its own rules -- close, but not the
 # same program, which is exactly the drift the Windows script's own comment
-# warns about.) Node is always present in a Granted install: the server it
+# warns about.) Node is always present in a Treatable install: the server it
 # opens is `npm run start`.
 node_bin() {
-  if [ -n "${GRANTED_NODE:-}" ]; then printf '%s' "$GRANTED_NODE"; return 0; fi
+  if [ -n "${TREATABLE_NODE:-}" ]; then printf '%s' "$TREATABLE_NODE"; return 0; fi
   command -v node 2>/dev/null || true
 }
 
@@ -147,7 +147,7 @@ write_open_in() {
   local node
   node="$(node_bin)"
   if [ -z "$node" ]; then
-    printf 'open-granted.sh: node is needed to save that setting, and is not on PATH\n' >&2
+    printf 'open-treatable.sh: node is needed to save that setting, and is not on PATH\n' >&2
     return 1
   fi
   "$node" -e "$WRITE_OPEN_IN_JS" "$SETTINGS_PATH" "$1"
@@ -169,8 +169,8 @@ Microsoft Edge.app/Contents/MacOS/Microsoft Edge|com.microsoft.edgemac'
 # rights lands in. Both are standard macOS locations, so a plain path test
 # covers every ordinary install, needs no Spotlight and cannot be slow.
 app_dirs() {
-  if [ -n "${GRANTED_APP_BROWSER_DIRS:-}" ]; then
-    printf '%s' "$GRANTED_APP_BROWSER_DIRS" | tr ':' '\n'
+  if [ -n "${TREATABLE_APP_BROWSER_DIRS:-}" ]; then
+    printf '%s' "$TREATABLE_APP_BROWSER_DIRS" | tr ':' '\n'
   else
     printf '/Applications\n%s\n' "${HOME:-}/Applications"
   fi
@@ -184,7 +184,7 @@ app_dirs() {
 # CoreServices.framework with no stable path or output.
 mdfind_bundle() {
   local md
-  md="${GRANTED_APP_BROWSER_MDFIND:-mdfind}"
+  md="${TREATABLE_APP_BROWSER_MDFIND:-mdfind}"
   [ "$md" = "none" ] && return 1
   command -v "$md" >/dev/null 2>&1 || return 1
   "$md" -0 "kMDItemCFBundleIdentifier == '$1'" 2>/dev/null | tr '\0' '\n' | sed -n '1p'
@@ -193,9 +193,9 @@ mdfind_bundle() {
 # The app-mode browser to use, or failure if there is none.
 find_app_browser() {
   local dirs entry relative bundle dir candidate app
-  if [ -n "${GRANTED_APP_BROWSER:-}" ]; then
-    [ "$GRANTED_APP_BROWSER" = "none" ] && return 1
-    printf '%s' "$GRANTED_APP_BROWSER"
+  if [ -n "${TREATABLE_APP_BROWSER:-}" ]; then
+    [ "$TREATABLE_APP_BROWSER" = "none" ] && return 1
+    printf '%s' "$TREATABLE_APP_BROWSER"
     return 0
   fi
   dirs="$(app_dirs)"
@@ -245,7 +245,7 @@ json_string() {
 if [ -n "$SET_OPEN_IN" ]; then
   case "$SET_OPEN_IN" in
     window|browser) ;;
-    *) printf 'open-granted.sh: --set-open-in must be window or browser\n' >&2; exit 64 ;;
+    *) printf 'open-treatable.sh: --set-open-in must be window or browser\n' >&2; exit 64 ;;
   esac
   write_open_in "$SET_OPEN_IN"
   exit 0
@@ -262,18 +262,19 @@ if [ "$FIND_BROWSER" = "1" ]; then
   exit 0
 fi
 
-# --- opening Granted -------------------------------------------------------
+# --- opening Treatable -------------------------------------------------------
 # A whole, absolute http(s) URL with nothing in it that could become another
 # browser argument or confuse `open`. Exactly what the Windows script refuses:
 # anything that isn't http(s), and anything containing whitespace or a quote.
 if [ -z "$URL" ]; then usage; exit 64; fi
 case "$URL" in
   http://*|https://*) ;;
-  *) printf 'open-granted.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
+  *) printf 'open-treatable.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
 esac
 case "$URL" in
+  # shellcheck disable=SC1003 # Literal quote/backslash characters are intentionally rejected.
   *[[:space:]]*|*'"'*|*"'"*|*'\'*|*'`'*|*'$'*)
-    printf 'open-granted.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
+    printf 'open-treatable.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
 esac
 
 OPENED_IN="none"
@@ -286,7 +287,7 @@ if [ "$(read_open_in)" = "window" ]; then
 fi
 if [ "$OPENED_IN" = "none" ] && [ "$NO_BROWSER_FALLBACK" != "1" ]; then
   # The user's default browser, in an ordinary tab -- Safari on a stock Mac.
-  if "${GRANTED_OPEN_CMD:-open}" "$URL" >/dev/null 2>&1; then OPENED_IN="browser"; fi
+  if "${TREATABLE_OPEN_CMD:-open}" "$URL" >/dev/null 2>&1; then OPENED_IN="browser"; fi
 fi
 
 if [ -n "$BROWSER" ]; then
@@ -296,6 +297,6 @@ else
 fi
 
 # Non-zero only when nothing was opened AND opening something was asked for,
-# so a caller's own fallback never opens Granted a second time.
+# so a caller's own fallback never opens Treatable a second time.
 if [ "$OPENED_IN" = "none" ] && [ "$NO_BROWSER_FALLBACK" != "1" ]; then exit 1; fi
 exit 0

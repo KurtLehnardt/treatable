@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# Granted -- update this install to a release, then start Granted again (macOS).
+# Treatable -- update this install to a release, then start Treatable again (macOS).
 #
 # The macOS counterpart of scripts/windows/update.ps1, with the same steps in
 # the same order, the same refusals and the same status file. Started by the app
-# itself (Settings -> About Granted -> Check for updates -> Update now, or
+# itself (Settings -> About Treatable -> Check for updates -> Update now, or
 # automatic updates; see scaffold/lib/appUpdate/install.ts startUpdater):
 #
 #   /bin/bash update.sh --ref v1.2.3 --port 3000
 #
-# It runs that release's own install-macos.sh with GRANTED_REF set -- the same
-# update path as re-running a newer installer: it stops Granted (the menu-bar
+# It runs that release's own install-macos.sh with TREATABLE_REF set -- the same
+# update path as re-running a newer installer: it stops Treatable (the menu-bar
 # helper and the server under its LaunchAgent, which is why this cannot run
 # inside that server), moves this install to the release (never backwards,
 # never over local changes, never someone's own checkout), runs npm ci and
-# builds the new code (`npm run build` -- Granted is served from that build, so
+# builds the new code (`npm run build` -- Treatable is served from that build, so
 # new code is not live until it is rebuilt) -- and if that fails half-way, puts
 # the previous version back (re-running npm ci and the build for it). Then it starts
-# Granted in the background again, on the same port, and the open page reloads
+# Treatable in the background again, on the same port, and the open page reloads
 # once the new version answers.
 #
 # Progress and the outcome go to update-status.json next to the settings file
-#   ~/Library/Application Support/Granted/update-status.json
+#   ~/Library/Application Support/Treatable/update-status.json
 # which is the file scaffold/lib/appUpdate/install.ts readUpdateStatus() already
 # reads and the page already polls -- the same {state,from,to,message,at} shape
 # update.ps1 writes, deliberately not a new protocol. The install's own output
-# goes to ~/Library/Logs/Granted/update.log.
+# goes to ~/Library/Logs/Treatable/update.log.
 #
 # WHO MAKES THIS DETACHED. The script is started in its own session, with no
 # inherited stdio and a working directory outside the install, by the app's
@@ -58,20 +58,20 @@
 #
 # Options:
 #   --ref vX.Y.Z      the release to update to (required)
-#   --port N          the port Granted was serving on, and is started on again
-#                     (default: $GRANTED_PORT, else 3000)
+#   --port N          the port Treatable was serving on, and is started on again
+#                     (default: $TREATABLE_PORT, else 3000)
 #   --install-dir DIR the install to update (default: the one this script is in)
-#   --no-restart      don't start Granted again afterwards (tests)
+#   --no-restart      don't start Treatable again afterwards (tests)
 #
 # Test-only overrides, so nothing here ever touches a real install:
-#   GRANTED_SETTINGS_PATH   the settings file (its folder holds update-status.json)
-#   GRANTED_LOG_DIR         the log folder
-#   GRANTED_INSTALL_SCRIPT  a local install-macos.sh instead of downloading the
+#   TREATABLE_SETTINGS_PATH   the settings file (its folder holds update-status.json)
+#   TREATABLE_LOG_DIR         the log folder
+#   TREATABLE_INSTALL_SCRIPT  a local install-macos.sh instead of downloading the
 #                           release's own
-#   GRANTED_REPO_URL        passed on to it (a local stand-in repo)
-#   GRANTED_NPM             the npm binary a rollback reinstalls with
-#   plus everything granted-tray.sh itself honours (GRANTED_LAUNCH_LABEL,
-#   GRANTED_LAUNCH_AGENTS_DIR, GRANTED_MENUBAR_HELPER, ...), which this script
+#   TREATABLE_REPO_URL        passed on to it (a local stand-in repo)
+#   TREATABLE_NPM             the npm binary a rollback reinstalls with
+#   plus everything treatable-tray.sh itself honours (TREATABLE_LAUNCH_LABEL,
+#   TREATABLE_LAUNCH_AGENTS_DIR, TREATABLE_MENUBAR_HELPER, ...), which this script
 #   passes through by calling that script rather than reimplementing it.
 set -euo pipefail
 # errtrace, as install-macos.sh and uninstall.sh both set it and for the same
@@ -92,19 +92,19 @@ SELF="$SELF_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 # The install this script sits in: scripts/macos/../../.. -- worked out from
 # the ORIGINAL location and passed on, because the copy that does the work does
 # not sit in the install at all.
-if [ -z "${GRANTED_UPDATE_DEFAULT_DIR:-}" ]; then
-  GRANTED_UPDATE_DEFAULT_DIR="$(cd -- "$SELF_DIR/../../.." && pwd -P)"
-  export GRANTED_UPDATE_DEFAULT_DIR
+if [ -z "${TREATABLE_UPDATE_DEFAULT_DIR:-}" ]; then
+  TREATABLE_UPDATE_DEFAULT_DIR="$(cd -- "$SELF_DIR/../../.." && pwd -P)"
+  export TREATABLE_UPDATE_DEFAULT_DIR
 fi
 
 # Hand over to a copy outside the install folder (see the header). A copy that
 # cannot be made is not fatal: carrying on in place is what every version
 # before this did, and it is still better than refusing to update at all.
-if [ "${GRANTED_UPDATE_REEXEC:-}" != "1" ]; then
-  SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/granted-update.XXXXXX" 2>/dev/null)" || SELF_COPY=""
+if [ "${TREATABLE_UPDATE_REEXEC:-}" != "1" ]; then
+  SELF_COPY="$(mktemp "${TMPDIR:-/tmp}/treatable-update.XXXXXX" 2>/dev/null)" || SELF_COPY=""
   if [ -n "$SELF_COPY" ] && cp -- "$SELF" "$SELF_COPY" 2>/dev/null; then
-    export GRANTED_UPDATE_REEXEC=1
-    export GRANTED_UPDATE_SELF_COPY="$SELF_COPY"
+    export TREATABLE_UPDATE_REEXEC=1
+    export TREATABLE_UPDATE_SELF_COPY="$SELF_COPY"
     exec /bin/bash "$SELF_COPY" "$@"
   fi
   [ -n "$SELF_COPY" ] && rm -f -- "$SELF_COPY" 2>/dev/null || true
@@ -127,18 +127,18 @@ cleanup() {
     rm -f -- "$TEMP_STATUS_FILE" 2>/dev/null || true
     rmdir -- "$TEMP_STATUS_FILE.lock.d" 2>/dev/null || true
   fi
-  [ -n "${GRANTED_UPDATE_SELF_COPY:-}" ] && rm -f -- "$GRANTED_UPDATE_SELF_COPY" 2>/dev/null || true
+  [ -n "${TREATABLE_UPDATE_SELF_COPY:-}" ] && rm -f -- "$TREATABLE_UPDATE_SELF_COPY" 2>/dev/null || true
   return 0
 }
 trap cleanup EXIT
 
 REF=""
-PORT="${GRANTED_PORT:-3000}"
+PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)/lib/runtime.mjs")}"
 INSTALL_DIR=""
 NO_RESTART=0
 
 # An option that takes a value must actually have been given one, and must say
-# so when it wasn't -- the same guard, for the same reason, as granted-tray.sh's
+# so when it wasn't -- the same guard, for the same reason, as treatable-tray.sh's
 # and uninstall.sh's: with `set -u` a bare `--ref` at the end of the line dies
 # on `$2: unbound variable`, which exits 1 with a raw shell diagnostic instead
 # of this script's own message and its own exit 64 for bad input.
@@ -162,7 +162,7 @@ case "$PORT" in
   ''|*[!0-9]*) printf 'update.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
 esac
 
-[ -n "$INSTALL_DIR" ] || INSTALL_DIR="$GRANTED_UPDATE_DEFAULT_DIR"
+[ -n "$INSTALL_DIR" ] || INSTALL_DIR="$TREATABLE_UPDATE_DEFAULT_DIR"
 case "$INSTALL_DIR" in
   /*) ;;
   *) INSTALL_DIR="$PWD/$INSTALL_DIR" ;;
@@ -171,18 +171,18 @@ while [ "${INSTALL_DIR%/}" != "$INSTALL_DIR" ]; do INSTALL_DIR="${INSTALL_DIR%/}
 [ -n "$INSTALL_DIR" ] || INSTALL_DIR="/"
 
 SCAFFOLD_DIR="$INSTALL_DIR/scaffold"
-TRAY_SCRIPT="$SCAFFOLD_DIR/scripts/macos/granted-tray.sh"
-MARKER="$INSTALL_DIR/.git/granted-installer"
+TRAY_SCRIPT="$SCAFFOLD_DIR/scripts/macos/treatable-tray.sh"
+MARKER="$INSTALL_DIR/.git/treatable-installer"
 PARENT_DIR="$(dirname -- "$INSTALL_DIR")"
 INSTALL_NAME="$(basename -- "$INSTALL_DIR")"
 
-SETTINGS_PATH="${GRANTED_SETTINGS_PATH:-$HOME/Library/Application Support/Granted/settings.json}"
+SETTINGS_PATH="${TREATABLE_SETTINGS_PATH:-$HOME/Library/Application Support/Treatable/settings.json}"
 SUPPORT_DIR="$(dirname -- "$SETTINGS_PATH")"
 STATUS_FILE="$SUPPORT_DIR/update-status.json"
-LOG_DIR="${GRANTED_LOG_DIR:-$HOME/Library/Logs/Granted}"
+LOG_DIR="${TREATABLE_LOG_DIR:-$HOME/Library/Logs/Treatable}"
 LOG_FILE="$LOG_DIR/update.log"
 
-NPM_BIN="${GRANTED_NPM:-$(command -v npm 2>/dev/null || true)}"
+NPM_BIN="${TREATABLE_NPM:-$(command -v npm 2>/dev/null || true)}"
 NODE_BIN="$(command -v node 2>/dev/null || true)"
 
 # --- the status file -------------------------------------------------------
@@ -249,25 +249,25 @@ write_update_status() {
   return 0
 }
 
-# --- starting Granted again ------------------------------------------------
+# --- starting Treatable again ------------------------------------------------
 # Whatever happened. An update that failed half-way still leaves the previous
 # version runnable (that is what the rollback below is for), and the app then
 # shows what went wrong -- which it can only do with a server to ask.
 #
-# Through granted-tray.sh, which owns the LaunchAgent and the menu-bar helper,
+# Through treatable-tray.sh, which owns the LaunchAgent and the menu-bar helper,
 # and through the copy in the install as it is NOW: after a successful update
-# that is the new release's own script. GRANTED_STATUS_FILE is cleared for it
+# that is the new release's own script. TREATABLE_STATUS_FILE is cleared for it
 # on purpose -- that variable means the INSTALLER's progress file, and a tray
 # that inherited the one this script hands to install-macos.sh below would
 # report a finished install over it.
-start_granted() {
+start_treatable() {
   [ "$NO_RESTART" = "1" ] && return 0
   [ -f "$TRAY_SCRIPT" ] || return 0
-  ( unset GRANTED_STATUS_FILE; /bin/bash "$TRAY_SCRIPT" start --port "$PORT" ) >> "$LOG_FILE" 2>&1 </dev/null || true
+  ( unset TREATABLE_STATUS_FILE; /bin/bash "$TRAY_SCRIPT" start --port "$PORT" ) >> "$LOG_FILE" 2>&1 </dev/null || true
   return 0
 }
 
-# Anything unexpected: say so, put Granted back up, and stop. This runs with no
+# Anything unexpected: say so, put Treatable back up, and stop. This runs with no
 # terminal at all, so an error that was only printed would look like nothing
 # happened. An explicit `exit` does not re-trigger this (bash runs an ERR trap
 # only for a command whose own non-zero status would trip `set -e`), so none of
@@ -276,7 +276,7 @@ on_error() {
   local line="$1" command="$2"
   write_update_status "error" "The update didn't finish: update.sh failed at line $line: $command"
   printf 'update.sh: failed at line %s: %s\n' "$line" "$command" >&2
-  start_granted
+  start_treatable
   exit 1
 }
 trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
@@ -291,23 +291,23 @@ trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
 if [[ ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   write_update_status "error" "The update didn't finish: --ref must be a release tag like v1.2.3 (got '$REF')."
   printf 'update.sh: --ref must be a release tag like v1.2.3 (got %s)\n' "'$REF'" >&2
-  start_granted
+  start_treatable
   exit 1
 fi
 
 write_update_status "running" ""
 
 # --- what the install script would decline anyway --------------------------
-# Checked BEFORE Granted is stopped, so a declined update doesn't shut Granted
+# Checked BEFORE Treatable is stopped, so a declined update doesn't shut Treatable
 # down and reinstall it for nothing (and, with automatic updates on, every few
 # hours). Both of these are install-macos.sh's own rules, restated here only to
 # decide them early; the script itself still enforces them.
 if [ ! -f "$MARKER" ]; then
-  write_update_status "error" "Granted wasn't updated to $REF: this folder wasn't installed by the Granted installer."
+  write_update_status "error" "Treatable wasn't updated to $REF: this folder wasn't installed by the Treatable installer."
   exit 0
 fi
 if [ -n "$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)" ]; then
-  write_update_status "error" "Granted wasn't updated to $REF: it has local changes in $INSTALL_DIR."
+  write_update_status "error" "Treatable wasn't updated to $REF: it has local changes in $INSTALL_DIR."
   exit 0
 fi
 
@@ -315,12 +315,12 @@ fi
 PREV_HEAD="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
 
 # --- the release's own install script --------------------------------------
-INSTALL_SCRIPT="${GRANTED_INSTALL_SCRIPT:-}"
+INSTALL_SCRIPT="${TREATABLE_INSTALL_SCRIPT:-}"
 if [ -z "$INSTALL_SCRIPT" ]; then
-  TEMP_INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/granted-install-macos.XXXXXX")"
-  if ! curl -fsSL -o "$TEMP_INSTALL_SCRIPT" "https://raw.githubusercontent.com/KurtLehnardt/granted/$REF/install-macos.sh"; then
-    write_update_status "error" "The update to $REF didn't finish: Granted's installer for that release couldn't be downloaded -- check your network connection and try again."
-    start_granted
+  TEMP_INSTALL_SCRIPT="$(mktemp "${TMPDIR:-/tmp}/treatable-install-macos.XXXXXX")"
+  if ! curl -fsSL -o "$TEMP_INSTALL_SCRIPT" "https://raw.githubusercontent.com/KurtLehnardt/treatable/$REF/install-macos.sh"; then
+    write_update_status "error" "The update to $REF didn't finish: Treatable's installer for that release couldn't be downloaded -- check your network connection and try again."
+    start_treatable
     exit 1
   fi
   INSTALL_SCRIPT="$TEMP_INSTALL_SCRIPT"
@@ -333,19 +333,19 @@ mkdir -p -- "$LOG_DIR" 2>/dev/null || true
 [ -f "$LOG_FILE" ] && mv -f -- "$LOG_FILE" "$LOG_FILE.previous" 2>/dev/null || true
 : > "$LOG_FILE" 2>/dev/null || true
 
-# --- stop Granted ----------------------------------------------------------
+# --- stop Treatable ----------------------------------------------------------
 # The menu-bar helper and the server under its LaunchAgent, through the one
 # script that owns all of that -- never reimplemented here. A non-zero exit
 # means there was nothing running, which is not a failure.
 if [ -f "$TRAY_SCRIPT" ]; then
-  ( unset GRANTED_STATUS_FILE; /bin/bash "$TRAY_SCRIPT" stop --port "$PORT" ) >> "$LOG_FILE" 2>&1 || true
+  ( unset TREATABLE_STATUS_FILE; /bin/bash "$TRAY_SCRIPT" stop --port "$PORT" ) >> "$LOG_FILE" 2>&1 || true
 fi
 
 # --- run it ----------------------------------------------------------------
 # In its own process, from the install's parent folder (it installs into
-# ./<GRANTED_INSTALL_DIR>), reporting into its own status file -- never this
+# ./<TREATABLE_INSTALL_DIR>), reporting into its own status file -- never this
 # script's, which belongs to the update as a whole.
-TEMP_STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/granted-update-status.XXXXXX")"
+TEMP_STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/treatable-update-status.XXXXXX")"
 # `|| INSTALL_CODE=$?`, not `set +e` around it: the ERR trap above fires on a
 # failing command whether or not errexit is on (errexit and errtrace govern
 # exiting and inheritance, not the trap), so a non-zero install would be
@@ -354,10 +354,10 @@ TEMP_STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/granted-update-status.XXXXXX")"
 INSTALL_CODE=0
 (
   cd -- "$PARENT_DIR" || exit 1
-  GRANTED_REF="$REF" \
-  GRANTED_INSTALL_DIR="$INSTALL_NAME" \
-  GRANTED_STATUS_FILE="$TEMP_STATUS_FILE" \
-  GRANTED_PORT="$PORT" \
+  TREATABLE_REF="$REF" \
+  TREATABLE_INSTALL_DIR="$INSTALL_NAME" \
+  TREATABLE_STATUS_FILE="$TEMP_STATUS_FILE" \
+  TREATABLE_PORT="$PORT" \
     /bin/bash "$INSTALL_SCRIPT"
 ) >> "$LOG_FILE" 2>&1 || INSTALL_CODE=$?
 
@@ -398,10 +398,10 @@ status_field() {
 # There is deliberately NO fallback to the last warning when there is no "Not
 # changing" line, because that is a reachable state rather than a theoretical
 # one: install-macos.sh also leaves the folder alone with an ok() -- "already
-# includes Granted <ref> -- nothing to update", when the installed HEAD already
+# includes Treatable <ref> -- nothing to update", when the installed HEAD already
 # contains the tag -- and the installed version can still differ from the ref
-# then. A fallback would quote the Ollama warning as the reason Granted wasn't
-# updated, which is not a reason at all. The caller says "Granted wasn't updated
+# then. A fallback would quote the Ollama warning as the reason Treatable wasn't
+# updated, which is not a reason at all. The caller says "Treatable wasn't updated
 # to <ref>." with no reason when this comes back empty, and no stated reason is
 # strictly better than a wrong one.
 last_warning() {
@@ -422,9 +422,9 @@ if [ "$INSTALL_CODE" = "0" ] && [ "$INSTALL_STATE" = "done" ]; then
     # newer, not made by the installer): say why, in its own words.
     WHY="$(last_warning)"
     if [ -n "$WHY" ]; then
-      write_update_status "error" "Granted wasn't updated to $REF: $WHY"
+      write_update_status "error" "Treatable wasn't updated to $REF: $WHY"
     else
-      write_update_status "error" "Granted wasn't updated to $REF."
+      write_update_status "error" "Treatable wasn't updated to $REF."
     fi
   else
     write_update_status "done" ""
@@ -433,25 +433,25 @@ else
   MSG="$INSTALL_MESSAGE"
   [ -n "$MSG" ] || MSG="the install step failed (exit code $INSTALL_CODE)."
   # Failed half-way (say npm ci, after the switch to the new release): put the
-  # previous version back, so Granted still starts and can say what happened.
+  # previous version back, so Treatable still starts and can say what happened.
   RESTORED=""
   NOW_HEAD="$(git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ -n "$PREV_HEAD" ] && [ -n "$NOW_HEAD" ] && [ "$NOW_HEAD" != "$PREV_HEAD" ]; then
     if git -C "$INSTALL_DIR" -c advice.detachedHead=false checkout --quiet "$PREV_HEAD" >> "$LOG_FILE" 2>&1; then
       # npm ci AND npm run build. The build matters as much as the modules
-      # here: Granted is served from scaffold/.next by `npm run start`, and a
+      # here: Treatable is served from scaffold/.next by `npm run start`, and a
       # half-way failure can have left the NEW release's build there (the
       # install script builds right after npm ci). Restoring the old code
       # without rebuilding would leave the tray starting the new version's
       # build against the old version's code -- it would even look current to
-      # granted-tray.sh's needs_build, since BUILD_ID would be newer than
+      # treatable-tray.sh's needs_build, since BUILD_ID would be newer than
       # .env.local. Rebuilding is what makes the two agree again.
       if [ -n "$NPM_BIN" ] \
         && ( cd -- "$SCAFFOLD_DIR" && "$NPM_BIN" ci --no-audit --no-fund ) >> "$LOG_FILE.restore" 2>&1 \
         && ( cd -- "$SCAFFOLD_DIR" && "$NPM_BIN" run build ) >> "$LOG_FILE.restore" 2>&1; then
         # Only once the restore's own npm ci and build succeeded: a
         # half-restored install is not a version that was "put back".
-        RESTORED=" Granted v$FROM was put back."
+        RESTORED=" Treatable v$FROM was put back."
       fi
     fi
   fi
@@ -462,7 +462,7 @@ else
   write_update_status "error" "The update to $REF didn't finish: $MSG$RESTORED Details are in $LOG_FILE."
 fi
 
-# The status file is written before Granted is started again, so the page has
+# The status file is written before Treatable is started again, so the page has
 # something to read the moment the server answers. The temporary files go in the
 # EXIT trap, after this returns.
-start_granted
+start_treatable
