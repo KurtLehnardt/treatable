@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { ollamaWindowsDir, withOllamaOnPath } from "../../scripts/lib/ollamaSetup.mjs";
 
-// Where Ollama is installed, and whether Granted may install / start it for a host.
+// Where Ollama is installed, and whether Treatable may install / start it for a host.
 // No dependencies on the job or status modules (both use this).
 
-/** True when `host` is this machine, so Granted can install / start Ollama for it. */
+/** True when `host` is this machine, so Treatable can install / start Ollama for it. */
 export function isLocalHost(host: string): boolean {
   try {
     const h = new URL(host).hostname.toLowerCase();
@@ -79,7 +79,7 @@ export function isOllamaPort(host: string): boolean {
   }
 }
 
-/** Granted can install / start Ollama for `host`: it's this machine, on Ollama's port. */
+/** Treatable can install / start Ollama for `host`: it's this machine, on Ollama's port. */
 export function canManageHost(host: string): boolean {
   return isLocalHost(host) && isOllamaPort(host);
 }

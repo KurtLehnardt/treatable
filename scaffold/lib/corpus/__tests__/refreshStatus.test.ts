@@ -16,7 +16,7 @@ import {
 } from "../refreshStatus";
 
 function makeBaseDir() {
-  return mkdtempSync(join(tmpdir(), "granted-refresh-status-"));
+  return mkdtempSync(join(tmpdir(), "treatable-refresh-status-"));
 }
 
 describe("refresh lock", () => {
@@ -95,7 +95,7 @@ describe("refresh status", () => {
     // baseDir is a FILE, not a directory: data/local can't be created under it, so the
     // underlying writeFileSync/renameSync must fail — this is a stand-in for a transient
     // Windows EPERM/EBUSY on the tmp-write+rename, which must be cosmetic, not fatal.
-    const parent = mkdtempSync(join(tmpdir(), "granted-refresh-status-"));
+    const parent = mkdtempSync(join(tmpdir(), "treatable-refresh-status-"));
     const baseDir = join(parent, "not-a-directory");
     writeFileSync(baseDir, "not a directory");
     assert.doesNotThrow(() => writeRefreshProgress({ stage: "embedding", pct: 10 }, baseDir));

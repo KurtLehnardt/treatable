@@ -65,7 +65,7 @@ export async function handleOllamaActionPost(
     case "start": {
       if (!status.canManage) {
         return NextResponse.json(
-          { error: `Granted only starts Ollama on this computer, on port 11434. Start the local model server at ${status.host} yourself.` },
+          { error: `Treatable only starts Ollama on this computer, on port 11434. Start the local model server at ${status.host} yourself.` },
           { status: 400 },
         );
       }

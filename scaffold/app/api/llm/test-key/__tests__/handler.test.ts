@@ -93,10 +93,10 @@ describe("POST /api/llm/test-key", () => {
   });
 
   test("env key source: unset variable -> 400 'isn't set', no provider call", async () => {
-    delete process.env.GRANTED_TEST_KEY_UNSET;
+    delete process.env.TREATABLE_TEST_KEY_UNSET;
     let called = false;
     const res = await handleTestKeyPost(
-      fakeReq({ providerId: "openai", keySource: { type: "env", name: "GRANTED_TEST_KEY_UNSET" } }),
+      fakeReq({ providerId: "openai", keySource: { type: "env", name: "TREATABLE_TEST_KEY_UNSET" } }),
       fakeDeps({ probeCloudKey: (async () => { called = true; return { ok: true }; }) as any }),
     );
     const json = await res.json();

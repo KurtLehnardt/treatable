@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-route-test-${process.pid}.json`);
+const CONFIG_PATH = path.join(os.tmpdir(), `treatable-llm-config-route-test-${process.pid}.json`);
 
 let GET: typeof import("../route").GET;
 let dynamic: typeof import("../route").dynamic;
@@ -12,7 +12,7 @@ let writeLlmConfig: typeof import("@/lib/llm/config").writeLlmConfig;
 let resetLlmConfigCache: typeof import("@/lib/llm/config").resetLlmConfigCache;
 
 before(async () => {
-  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
   ({ GET, dynamic } = await import("../route"));
   ({ writeLlmConfig, resetLlmConfigCache } = await import("@/lib/llm/config"));
 });
@@ -93,7 +93,7 @@ describe("GET /api/llm", () => {
       assert.equal(j.cloud.providerId, "anthropic");
       assert.equal(j.search.space, "builtin");
       assert.equal(j.search.label, "Built-in, on this computer");
-      assert.equal(j.search.reason, "No OpenAI key");
+      assert.equal(j.search.reason, "Treatable keeps all patient search embeddings on this computer");
       assert.ok(["ready", "missing", "downloading", "failed"].includes(j.search.builtin.state));
     } finally {
       for (const [k, v] of [["OPENAI_API_KEY", saved.openai], ["EMBEDDINGS_API_KEY", saved.emb], ["SEARCH_EMBEDDINGS", saved.setting]] as const) {
@@ -153,13 +153,13 @@ describe("GET /api/llm", () => {
 
   test("cloud key sourced from an unset env var -> hasKey: false, no hint", async () => {
     delete process.env.LLM_PROVIDER;
-    delete process.env.GRANTED_ROUTE_TEST_UNSET;
-    writeLlmConfig({ provider: "cloud", cloud: { providerId: "groq", keySource: { type: "env", name: "GRANTED_ROUTE_TEST_UNSET" } } });
+    delete process.env.TREATABLE_ROUTE_TEST_UNSET;
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "groq", keySource: { type: "env", name: "TREATABLE_ROUTE_TEST_UNSET" } } });
     const res = await GET(req());
     const j = await res.json();
     assert.equal(j.cloud.hasKey, false);
     assert.equal(j.cloud.keyHint, undefined);
-    assert.deepEqual(j.cloud.keySource, { type: "env", name: "GRANTED_ROUTE_TEST_UNSET" });
+    assert.deepEqual(j.cloud.keySource, { type: "env", name: "TREATABLE_ROUTE_TEST_UNSET" });
   });
 
   test("local -> a saved cloud config still reports its cloud block (so Settings can show/remove it)", async () => {

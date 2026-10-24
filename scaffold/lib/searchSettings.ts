@@ -8,9 +8,9 @@
  * nothing here is sent anywhere except as fields on the user's own
  * /api/match request.
  */
-const MAX_CANDIDATES_KEY = "granted:maxCandidates";
-const MODEL_KEY = "granted:model";
-export const LAST_SEARCH_MS_KEY = "granted:lastSearchMs";
+const MAX_CANDIDATES_KEY = "treatable:maxCandidates";
+const MODEL_KEY = "treatable:model";
+export const LAST_SEARCH_MS_KEY = "treatable:lastSearchMs";
 
 /** The saved candidate cap, or null when unset (→ server default). */
 export function getMaxCandidates(): number | null {
@@ -58,7 +58,7 @@ export function setModel(value: string | null): void {
 }
 
 /** Off by default: no government API calls unless the user opts in. */
-const AUTO_UPDATE_KEY = "granted:autoUpdateCorpus";
+const AUTO_UPDATE_KEY = "treatable:autoUpdateCorpus";
 
 export function getAutoUpdateCorpus(): boolean {
   try {
@@ -77,7 +77,7 @@ export function setAutoUpdateCorpus(value: boolean): void {
   }
 }
 
-const MAX_CORPUS_SIZE_KEY = "granted:maxCorpusSize";
+const MAX_CORPUS_SIZE_KEY = "treatable:maxCorpusSize";
 export const MIN_CORPUS_SIZE = 1000;
 export const MAX_CORPUS_SIZE = 20000;
 export const DEFAULT_CORPUS_SIZE = 1000;
@@ -114,7 +114,7 @@ export function setMaxCorpusSize(value: number): void {
  *  separate reason: meaningfully weaker data (no deadline/eligibility, no stable id,
  *  occasional federal overlap — see scripts/1-fetch-ut-grants.mjs) and a
  *  headless-browser-only source. */
-const STATE_SOURCES_KEY = "granted:selectedStateSources";
+const STATE_SOURCES_KEY = "treatable:selectedStateSources";
 export const DEFAULT_STATE_SOURCES: string[] = [];
 
 export function getSelectedStateSources(): string[] {
@@ -142,7 +142,7 @@ export function setSelectedStateSources(sources: string[]): void {
  *  field happens to still say that state. Persisted (not per-session):
  *  matches every other preference in this file, and the user can always
  *  still enable a state by hand in Settings regardless of a past decline. */
-const DECLINED_STATE_PROMPTS_KEY = "granted:declinedStateEnablePrompts";
+const DECLINED_STATE_PROMPTS_KEY = "treatable:declinedStateEnablePrompts";
 
 export function hasDeclinedStateEnablePrompt(sourceId: string): boolean {
   try {
@@ -167,8 +167,8 @@ export function markStateEnablePromptDeclined(sourceId: string): void {
   }
 }
 
-/** Ollama management: whether Granted should start/stop Ollama automatically */
-const MANAGE_OLLAMA_KEY = "granted:manageOllama";
+/** Ollama management: whether Treatable should start/stop Ollama automatically */
+const MANAGE_OLLAMA_KEY = "treatable:manageOllama";
 
 /** There are three distinguishable states for this preference: never configured
  *  (the key has never been written), explicitly on (stored value "1"), and

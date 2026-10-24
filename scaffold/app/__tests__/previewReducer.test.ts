@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { previewReducer, partitionPreview, isProvisional, type PreviewItem } from "@/lib/ui/previewReducer";
 // The reducer accepts its cap explicitly; keep this behavior test independent of UI.
-const CARD_CAP = 12;
+const CARD_CAP = 8;
 import type { Match, Opportunity } from "@/lib/types";
 
 /**

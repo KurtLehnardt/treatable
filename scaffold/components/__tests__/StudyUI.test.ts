@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { StudySchema } from "../../lib/contracts/study";
 import type { StudyMatch,StudySearchResult } from "../../lib/contracts/studyMatch";
-import StudyCard,{fallbackCallScript} from "../StudyCard";
+import StudyCard,{fallbackCallScript,nearestStudySite} from "../StudyCard";
 import StudyResults,{orderedMatches} from "../StudyResults";
 import StudyMap,{projectUS} from "../StudyMap";
 import MedicalNotice from "../MedicalNotice";
@@ -28,3 +28,5 @@ test("medical advice notice is visible and reused on intake and results",()=>{as
 test("intake is a single short form with story first, required age, and optional plain-language daily activity",()=>{const html=render(React.createElement(PatientIntake,{initial:null,onSearch:()=>{},busy:false}));assert.ok(html.indexOf('id="story"')<html.indexOf('type="number"'));assert.match(html,/type="number"[^>]*required/);assert.match(html,/US ZIP code/);assert.match(html,/How is a usual day/);assert.doesNotMatch(html,/ECOG|inclusion criteria/);});
 test("model choice defaults can remain search only and OpenAI requires explicit consent UI",()=>{const html=render(React.createElement(ModelSettings,{provider:"openai",onProvider:()=>{},consent:false,onConsent:()=>{}}));assert.match(html,/I agree to send this profile to OpenAI/);assert.match(html,/type="password"/);assert.doesNotMatch(html,/Free Claude|Gemini|FCC/);const local=render(React.createElement(ModelSettings,{provider:"local",onProvider:()=>{},consent:false,onConsent:()=>{}}));assert.match(local,/Patient text stays on this computer/);assert.match(local,/npm run setup:local/);});
 test("print view contains top-five limit and print stylesheet hides navigation",()=>{const source=readFileSync(new URL("../../app/summary/page.tsx",import.meta.url),"utf8");assert.match(source,/slice\(0,5\)/);assert.match(source,/m.id/);const css=readFileSync(new URL("../../app/globals.css",import.meta.url),"utf8");assert.match(css,/@media print/);assert.match(css,/\.no-print,nav,button/);});
+
+test("nearest site label uses the same coordinates as the minimum travel distance",()=>{const far={facility:"Far hospital",country:"United States",lat:40.7,lon:-74};const near={facility:"Near hospital",country:"United States",lat:43.6,lon:-116.2};const s={...study,locations:[far,near]};assert.equal(nearestStudySite(s,profile)?.facility,"Near hospital");const html=render(React.createElement(StudyCard,{match:{...match,study:s,distanceMiles:0},index:0,profile}));assert.match(html,/Near hospital/);assert.match(html,/approximate ZIP center/);});

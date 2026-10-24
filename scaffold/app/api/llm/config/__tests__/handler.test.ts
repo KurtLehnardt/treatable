@@ -8,17 +8,17 @@ import { readLlmConfig, resolveCloudConfig, resetLlmConfigCache, type LlmConfigF
 import type { SearchStatus } from "@/lib/embeddings/searchStatus";
 
 async function withRealConfigFile(initial: object, fn: () => Promise<void>) {
-  const p = path.join(os.tmpdir(), `granted-llm-config-handler-${process.pid}-${Date.now()}.json`);
-  const prev = process.env.GRANTED_LLM_CONFIG_PATH;
-  process.env.GRANTED_LLM_CONFIG_PATH = p;
+  const p = path.join(os.tmpdir(), `treatable-llm-config-handler-${process.pid}-${Date.now()}.json`);
+  const prev = process.env.TREATABLE_LLM_CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = p;
   fs.writeFileSync(p, JSON.stringify(initial), "utf8");
   resetLlmConfigCache();
   try {
     await fn();
   } finally {
     fs.rmSync(p, { force: true });
-    if (prev === undefined) delete process.env.GRANTED_LLM_CONFIG_PATH;
-    else process.env.GRANTED_LLM_CONFIG_PATH = prev;
+    if (prev === undefined) delete process.env.TREATABLE_LLM_CONFIG_PATH;
+    else process.env.TREATABLE_LLM_CONFIG_PATH = prev;
     resetLlmConfigCache();
   }
 }
@@ -169,15 +169,15 @@ describe("POST /api/llm/config", () => {
   });
 
   test("env key source: unset variable -> 400 'isn't set'", async () => {
-    delete process.env.GRANTED_CONFIG_TEST_UNSET;
+    delete process.env.TREATABLE_CONFIG_TEST_UNSET;
     const deps = fakeDeps();
     const res = await handleLlmConfigPost(
-      fakeReq({ provider: "cloud", cloud: { providerId: "openai", keySource: { type: "env", name: "GRANTED_CONFIG_TEST_UNSET" } } }),
+      fakeReq({ provider: "cloud", cloud: { providerId: "openai", keySource: { type: "env", name: "TREATABLE_CONFIG_TEST_UNSET" } } }),
       deps,
     );
     const json = await res.json();
     assert.equal(res.status, 400);
-    assert.match(json.error, /GRANTED_CONFIG_TEST_UNSET.*isn't set/);
+    assert.match(json.error, /TREATABLE_CONFIG_TEST_UNSET.*isn't set/);
   });
 
   test("env key source: invalid variable name -> 400", async () => {
@@ -190,17 +190,17 @@ describe("POST /api/llm/config", () => {
   });
 
   test("env key source: set, valid -> saves the reference only, never the value", async () => {
-    process.env.GRANTED_CONFIG_TEST_KEY = "sk-envprovidedkey0000";
+    process.env.TREATABLE_CONFIG_TEST_KEY = "sk-envprovidedkey0000";
     const deps = fakeDeps();
     const res = await handleLlmConfigPost(
-      fakeReq({ provider: "cloud", cloud: { providerId: "openai", keySource: { type: "env", name: "GRANTED_CONFIG_TEST_KEY" } } }),
+      fakeReq({ provider: "cloud", cloud: { providerId: "openai", keySource: { type: "env", name: "TREATABLE_CONFIG_TEST_KEY" } } }),
       deps,
     );
     const json = await res.json();
     assert.equal(res.status, 200);
-    assert.deepEqual(deps._get().cloud?.keySource, { type: "env", name: "GRANTED_CONFIG_TEST_KEY" });
+    assert.deepEqual(deps._get().cloud?.keySource, { type: "env", name: "TREATABLE_CONFIG_TEST_KEY" });
     assert.equal(JSON.stringify(json).includes("sk-envprovidedkey0000"), false);
-    delete process.env.GRANTED_CONFIG_TEST_KEY;
+    delete process.env.TREATABLE_CONFIG_TEST_KEY;
   });
 
   test("file key source: missing file -> 400 \"Couldn't read\"", async () => {
@@ -306,14 +306,14 @@ describe("POST /api/llm/config", () => {
 
   test("a cloud save purges a legacy #210 plaintext key even when switching key source type", async () => {
     const deps = fakeDeps({}, { provider: "anthropic", anthropicApiKey: "sk-ant-legacyplaintext0" });
-    process.env.GRANTED_CONFIG_TEST_ENV_SWITCH = "sk-ant-fromenvvalue0000";
+    process.env.TREATABLE_CONFIG_TEST_ENV_SWITCH = "sk-ant-fromenvvalue0000";
     const res = await handleLlmConfigPost(
-      fakeReq({ provider: "cloud", cloud: { providerId: "anthropic", keySource: { type: "env", name: "GRANTED_CONFIG_TEST_ENV_SWITCH" } } }),
+      fakeReq({ provider: "cloud", cloud: { providerId: "anthropic", keySource: { type: "env", name: "TREATABLE_CONFIG_TEST_ENV_SWITCH" } } }),
       deps,
     );
     assert.equal(res.status, 200);
     assert.equal(deps._get().anthropicApiKey, undefined);
-    delete process.env.GRANTED_CONFIG_TEST_ENV_SWITCH;
+    delete process.env.TREATABLE_CONFIG_TEST_ENV_SWITCH;
   });
 
   test("keySource {type:'saved'} reuses a legacy #210 anthropicApiKey (no cloud object yet)", async () => {

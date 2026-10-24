@@ -104,16 +104,16 @@ describe("validateCloudConfig", () => {
 
 describe("resolveDraftKey", () => {
   test("env source: unset -> error", () => {
-    delete process.env.GRANTED_VALIDATE_TEST_UNSET;
-    const r = resolveDraftKey("openai", { type: "env", name: "GRANTED_VALIDATE_TEST_UNSET" });
+    delete process.env.TREATABLE_VALIDATE_TEST_UNSET;
+    const r = resolveDraftKey("openai", { type: "env", name: "TREATABLE_VALIDATE_TEST_UNSET" });
     assert.match(r.error!, /isn't set/);
   });
 
   test("env source: set but fails the provider's format check -> format error, not the raw resolve error", () => {
-    process.env.GRANTED_VALIDATE_TEST_BAD = "totally-not-openai-shaped-but-long-enough";
-    const r = resolveDraftKey("openai", { type: "env", name: "GRANTED_VALIDATE_TEST_BAD" });
+    process.env.TREATABLE_VALIDATE_TEST_BAD = "totally-not-openai-shaped-but-long-enough";
+    const r = resolveDraftKey("openai", { type: "env", name: "TREATABLE_VALIDATE_TEST_BAD" });
     assert.match(r.error!, /doesn't look like a valid OpenAI/);
-    delete process.env.GRANTED_VALIDATE_TEST_BAD;
+    delete process.env.TREATABLE_VALIDATE_TEST_BAD;
   });
 });
 

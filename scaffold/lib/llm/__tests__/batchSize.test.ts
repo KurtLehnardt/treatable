@@ -5,14 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 // Isolated config path — see cloudClient.test.ts's comment.
-const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-batchsize-test-${process.pid}.json`);
+const CONFIG_PATH = path.join(os.tmpdir(), `treatable-llm-config-batchsize-test-${process.pid}.json`);
 
 let cloudBatchSize: typeof import("../client").cloudBatchSize;
 let writeLlmConfig: typeof import("../config").writeLlmConfig;
 let resetLlmConfigCache: typeof import("../config").resetLlmConfigCache;
 
 before(async () => {
-  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
   ({ cloudBatchSize } = await import("../client"));
   ({ writeLlmConfig, resetLlmConfigCache } = await import("../config"));
 });

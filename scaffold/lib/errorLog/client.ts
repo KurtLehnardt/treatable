@@ -26,7 +26,7 @@ const recent = new Map<string, { id: string; at: number }>();
 let reported = new WeakMap<object, string>();
 
 /** Fired on window whenever an error is logged (or reused), so open views (Settings) can refresh. */
-export const ERROR_LOGGED_EVENT = "granted:error-logged";
+export const ERROR_LOGGED_EVENT = "treatable:error-logged";
 
 function announce(): void {
   try {

@@ -108,14 +108,14 @@ describe("a non-default OpenAI model or size is the custom space, at runtime and
 describe("currentSpaceInputs — operation mode override", () => {
   // isFullyLocal() reads the real config module, so drive it through a saved
   // mode in an isolated config file rather than a module mock.
-  const CONFIG_PATH = path.join(os.tmpdir(), `granted-spaces-mode-test-${process.pid}.json`);
+  const CONFIG_PATH = path.join(os.tmpdir(), `treatable-spaces-mode-test-${process.pid}.json`);
   const saved = {
-    path: process.env.GRANTED_LLM_CONFIG_PATH,
+    path: process.env.TREATABLE_LLM_CONFIG_PATH,
     setting: process.env.SEARCH_EMBEDDINGS,
   };
 
   beforeEach(() => {
-    process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+    process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
     fs.rmSync(CONFIG_PATH, { force: true });
     resetLlmConfigCache();
   });
@@ -123,8 +123,8 @@ describe("currentSpaceInputs — operation mode override", () => {
   afterEach(() => {
     fs.rmSync(CONFIG_PATH, { force: true });
     resetLlmConfigCache();
-    if (saved.path === undefined) delete process.env.GRANTED_LLM_CONFIG_PATH;
-    else process.env.GRANTED_LLM_CONFIG_PATH = saved.path;
+    if (saved.path === undefined) delete process.env.TREATABLE_LLM_CONFIG_PATH;
+    else process.env.TREATABLE_LLM_CONFIG_PATH = saved.path;
     if (saved.setting === undefined) delete process.env.SEARCH_EMBEDDINGS;
     else process.env.SEARCH_EMBEDDINGS = saved.setting;
   });

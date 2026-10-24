@@ -26,14 +26,11 @@
 export type FlagName =
   | "r1_interview"
   | "r8_eligibility"
-  | "r9_0_mockauth"
-  | "r10_analytics"
   | "r4b_cost_debug"
   | "left_sidebar"
   | "b2_enriched_ranking"
   | "c1b_type_groups"
   | "d4_opportunity_graph"
-  | "d3_funding_strategy"
   | "d5_alerts"
   | "r5_deep_analysis"
   | "e3_two_pass"
@@ -71,23 +68,6 @@ export const FLAG_REGISTRY: Record<FlagName, FlagDefinition> = {
     requirement: "R8",
     description: "Hard eligibility screening: eligible / conditionally eligible / excluded buckets.",
     envVar: "NEXT_PUBLIC_FLAG_R8_ELIGIBILITY",
-  },
-  r9_0_mockauth: {
-    name: "r9_0_mockauth",
-    requirement: "R9.0",
-    description:
-      "Mocked Google-style sign-in backed by localStorage. The only auth backend now (a real " +
-      "Supabase + Google OAuth drop-in used to exist behind r9_supabase_auth; removed along " +
-      "with the rest of the Supabase dependency). Gates nothing server-side; UI state machine only.",
-    // Matches the mock-auth drop-in's own env var exactly, so this flag and the drop-in read the
-    // same source of truth instead of two independent switches.
-    envVar: "NEXT_PUBLIC_MOCK_AUTH",
-  },
-  r10_analytics: {
-    name: "r10_analytics",
-    requirement: "R10.1",
-    description: "Funnel event instrumentation emission (landing view, search started, etc).",
-    envVar: "NEXT_PUBLIC_FLAG_R10_ANALYTICS",
   },
   r4b_cost_debug: {
     name: "r4b_cost_debug",
@@ -130,15 +110,6 @@ export const FLAG_REGISTRY: Record<FlagName, FlagDefinition> = {
       "Compact Startup -> Technology -> Agency -> Program -> Award node-link graph on the " +
       "opportunity map, rendered from the existing map/matches/agencyIntelligence data.",
     envVar: "NEXT_PUBLIC_FLAG_D4_OPPORTUNITY_GRAPH",
-  },
-  d3_funding_strategy: {
-    name: "d3_funding_strategy",
-    requirement: "D3",
-    description:
-      "\"Funding strategy\": an ordered 12-month plan of up to 5 programs to investigate, sequenced " +
-      "by fit, real deadlines, and federal registration lead time. Presentation-only; derived from " +
-      "the existing OpportunityMap; promises no award and never invents a deadline.",
-    envVar: "NEXT_PUBLIC_FLAG_D3_FUNDING_STRATEGY",
   },
   d5_alerts: {
     name: "d5_alerts",
@@ -213,8 +184,8 @@ export const FLAG_REGISTRY: Record<FlagName, FlagDefinition> = {
     description:
       "User-facing filter/sort control on the opportunity map: filter by location (state, via the " +
       "new CA/IL/NC sources' geography field; never hides a nationwide/geography-less opportunity) " +
-      "and sort by match %, award amount, or recency (Granted's own first-seen retrieved_at timestamp " +
-      "— 'added to Granted,' not 'posted by the agency'). Graduated: shown unless this is explicitly " +
+      "and sort by match %, award amount, or recency (Treatable's own first-seen retrieved_at timestamp " +
+      "— 'added to Treatable,' not 'posted by the agency'). Graduated: shown unless this is explicitly " +
       "set to false (OpportunityMap checks isFlagExplicitlyDisabled), so it's an off switch now, not an on switch.",
     envVar: "NEXT_PUBLIC_FLAG_MATCH_FILTERS",
   },

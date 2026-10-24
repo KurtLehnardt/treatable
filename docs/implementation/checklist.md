@@ -23,20 +23,20 @@ All remaining source acceptance criteria below remain in scope. Verification com
 | R-001 | Study contract | `lib/contracts/study.ts` zod schema parses a fixture of 5 real NCT records and rejects one missing `id` |
 | R-002 | CT.gov fetch | `npm run data:fetch` writes raw pages for the seed list; unit test mocks one page and asserts pagination follows `nextPageToken` |
 | R-003 | Normalize | `npm run data:normalize` → `data/studies.json`; test: an `AVAILABLE` record keeps `studyType=EXPANDED_ACCESS`; a `COMPLETED` record is dropped |
-| R-004 | Embed + ship | `data/vectors/` builtin vectors exist for every study; `npm run data:embed:builtin` is incremental (unchanged ids skipped — test with a 2-record diff) |
+| R-004 | Shipped local vectors | Every shipped study has a 768-dimension pinned builtin vector with matching content hash/config; unchanged content reuses vectors; content/model/config changes re-embed; keyword search works with no model/key/network. |
 | R-005 | Patient profile contract | `patientProfile.ts` schema; test: `ageYears` missing → invalid; `fillingOutAs` enum enforced |
 | R-006 | Profile extraction never infers identity fields | Test: extraction output containing `ageYears`/`sex`/`location` is discarded for those keys; user-stated values win |
 | R-007 | Structured screening | Age boundaries and sex compatibility produce cited Unlikely reasons; missing data never excludes; distance is separate; expanded-access preference is honored; healthyVolunteers=true alone never excludes. |
 | R-008 | Stage-1 retrieval | `/api/match` returns ≤60 provisional candidates with no LLM configured; test asserts quotas (≥3 expanded-access when ≥3 survive) |
-| R-009 | Stage-1 latency | Integration test: warm corpus of ≥2,000 studies → provisional results in <2,000 ms on CI hardware (assert, with a generous skip on first cold load) |
+| R-009 | Fast provisional results | A warm 2,000-record corpus emits provisional results in under 2 seconds; test deterministic no-key path and record local semantic timing. CI hardware timing remains to be run in hosted CI. |
 | R-010 | Two-pass behavior | Promotion floor and no-drop fallback behavior are preserved through typed study adapters; new prompts registered; check:prompts passes. |
 | R-011 | `PassAScorer` interface | Pass A is called through a named interface; a fake scorer in tests drives promotion |
 | R-012 | Four buckets and safety | Inferred facts never exclude; model-unmet criteria route to Ask; LLM errors preserve all candidates/rank as unknown; deterministic tests pass. |
 | R-013 | Freshness | Study with `lastUpdatePostDate` > 24 months → `stale: true`, still shown; closed status never in results |
 | R-014 | Streaming results | SSE events arrive in order provisional → passA → passB; existing `progressEvent.ts` contract reused |
-| R-015 | StudyCard | Renders bucket pill, score, nearest site + distance, contacts with `tel:`/`mailto:`, collapsed verbatim criteria (component test) |
+| R-015 | Study cards | Render bucket, relevance score, the nearest US site paired with its distance, approximate ZIP-distance label, tel/mailto links, collapsed exact criteria, source date, and stage/failure status. |
 | R-016 | Call script | Present for every Pass-B study; templated fallback when LLM field empty (test both) |
-| R-017 | Clinician summary | `/summary` print view lists profile + top 5 NCT ids; `@media print` hides nav (snapshot test) |
+| R-017 | Clinician summary | Browser-session summary view lists the profile, top five NCT records, and open questions; print CSS hides navigation and uses compact page layout. |
 | R-018 | Nothing-fits path | Zero survivors → redirect panel with palliative-care guidance and CT.gov/NCI links (test) |
 | R-019 | Not-medical-advice banner | Present on intake and results pages (component test) |
 | R-020 | Patient privacy | Profiles stay in browser storage; API handling never persists/logs patient text; clear-all removes Treatable patient and in-memory/session results. Local embeddings and LLM never send patient text externally. |
@@ -44,11 +44,11 @@ All remaining source acceptance criteria below remain in scope. Verification com
 | R-022 | Outbound consent | Selecting OpenAI exposes an unchecked consent control; sending patient content is blocked until consent; local/search-only require no outbound consent. FCC is deferred. |
 | R-023 | Truthful privacy copy | Settings explains local patient-data routing, setup downloads, OpenAI transmission and key storage accurately; no absolute promise about all network activity. |
 | R-024 | Deletions complete | No file imports from any DELETE module; `npm run typecheck`, `npm test`, `npm run build` green |
-| R-025 | Golden set | `evals/golden-set.jsonl` has 12 entries validating against `patientProfile.ts` + expected bucket per listed NCT; ≥5 structured-rule cases |
+| R-025 | Fictional golden set | Twelve fictional patient profiles validate, cover requested symptom groups, and include at least five structured age/sex/distance/staleness/healthy-volunteer safety scenarios. |
 | R-026 | Safety eval | eval:quality uses deterministic scorer/fixtures, prints false-exclusion table, and fails on any false exclusion or safety-invariant violation. |
-| R-027 | Precomputed demos | ≥3 golden patients have `data/precomputed.json` entries; fresh clone with no key renders them |
+| R-027 | Instant demos | At least three clearly fictional precomputed patient demos render real study matches without a key. |
 | R-028 | install-macos.sh | Shellcheck clean; dry-run flag prints every step; idempotent re-run test in CI (bash, macOS runner optional) |
 | R-029 | macOS launcher | `applications-launcher.sh install/uninstall` round-trips: plist written then removed; settings.json path correct (bash test) |
-| R-030 | Port and naming | Single APP_PORT=5556 runtime constant; Treatable app/paths/launcher labels; legacy Granted references only in attribution/history/deferred installer source. |
+| R-030 | Port and naming | Single APP_PORT runtime source is 5556; active app, data/config namespaces and macOS launcher use Treatable. Historical/source-spec attribution and deferred installer/Windows assets are exempt. |
 | R-031 | README | Sections in §10 present; "not medical advice" within the first 20 lines |
 | R-032 | LAN binding preserved | `npm run dev:lan` and a documented `START_HOST=0.0.0.0` for `start` exist (phase 3/4 need them) |

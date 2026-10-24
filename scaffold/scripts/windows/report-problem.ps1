@@ -32,7 +32,7 @@ $ErrorActionPreference = "Stop"
 $IssueNewUrl = "https://github.com/KurtLehnardt/granted/issues/new"
 
 # --- the rules (MIRROR of scaffold/lib/errorLog/sanitize-rules.json, all but $comment) --
-$GrantedSanitizeRulesJson = @'
+$TreatableSanitizeRulesJson = @'
 {
   "secretEnvName": "(^|_)(API_?KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)$",
   "settingEnvName": "(_URL|_MODEL|_PROVIDER|_MODE|_DIMENSIONS|_PORT|_HOST)$|^(SEARCH|NEXT_PUBLIC|LLM|LOCAL|OLLAMA)_",
@@ -64,12 +64,12 @@ $GrantedSanitizeRulesJson = @'
   ]
 }
 '@
-$GrantedSanitize = ConvertFrom-Json $GrantedSanitizeRulesJson
+$TreatableSanitize = ConvertFrom-Json $TreatableSanitizeRulesJson
 
 # Same as lib/errorLog/server.ts (the patterns come from the shared settings above).
-$SecretName = $GrantedSanitize.secretEnvName
-$SettingName = $GrantedSanitize.settingEnvName
-$TokenLike = $GrantedSanitize.tokenLikeValue
+$SecretName = $TreatableSanitize.secretEnvName
+$SettingName = $TreatableSanitize.settingEnvName
+$TokenLike = $TreatableSanitize.tokenLikeValue
 $FccDefaultKeyFile = "~/.fcc/proxy_auth_token"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
@@ -124,13 +124,13 @@ function Get-PrivateHosts([string[]]$Urls) {
     $h = $uri.Host.ToLowerInvariant().Trim('[', ']')
     if (-not $h -or (Test-LoopbackHost $h)) { continue }
     $public = $false
-    foreach ($p in $GrantedSanitize.publicHosts) { if ($h -eq $p -or $h.EndsWith(".$p")) { $public = $true; break } }
+    foreach ($p in $TreatableSanitize.publicHosts) { if ($h -eq $p -or $h.EndsWith(".$p")) { $public = $true; break } }
     if (-not $public -and $out -notcontains $h) { $out += $h }
   }
   return $out
 }
 
-function ConvertTo-GrantedSanitized {
+function ConvertTo-TreatableSanitized {
   param([string]$Text, [string]$HomeDir, [string]$UserName, [string[]]$Secrets, [string[]]$Hosts)
   if (-not $Text) { return "" }
   try {
@@ -143,7 +143,7 @@ function ConvertTo-GrantedSanitized {
     }
     $homePattern = Get-HomePattern $HomeDir
     if ($homePattern) { $out = [regex]::Replace($out, $homePattern, "~", 'IgnoreCase') }
-    foreach ($r in $GrantedSanitize.rules) {
+    foreach ($r in $TreatableSanitize.rules) {
       $opts = if ($r.flags -match "i") { [System.Text.RegularExpressions.RegexOptions]::IgnoreCase } else { [System.Text.RegularExpressions.RegexOptions]::None }
       $out = [regex]::Replace($out, $r.pattern, $r.replacement, $opts)
     }
@@ -188,7 +188,7 @@ function Get-LlmConfig([string]$ScaffoldDir) {
 # Same sources as serverSanitizeContext() in lib/errorLog/server.ts: .env.local,
 # secret-named environment variables, the cloud key WHATEVER its source (inline,
 # any env var, a key file), fcc's default key file, and private base-URL hosts.
-function Get-GrantedSanitizeContext([string]$ScaffoldDir) {
+function Get-TreatableSanitizeContext([string]$ScaffoldDir) {
   $secrets = @()
   $urls = @()
   $entries = @(Get-EnvFileEntries (Read-TextOrNull (Join-Path $ScaffoldDir ".env.local")))
@@ -229,12 +229,12 @@ function Get-GrantedSanitizeContext([string]$ScaffoldDir) {
 }
 
 function ConvertTo-ReportText([string]$Text, [hashtable]$Ctx) {
-  return ConvertTo-GrantedSanitized -Text $Text -HomeDir $HomeDir -UserName $UserName -Secrets $Ctx.secrets -Hosts $Ctx.hosts
+  return ConvertTo-TreatableSanitized -Text $Text -HomeDir $HomeDir -UserName $UserName -Secrets $Ctx.secrets -Hosts $Ctx.hosts
 }
 
 # --- test entry point: sanitize a file ----------------------------------------
 if ($SanitizeFile) {
-  $ctx = Get-GrantedSanitizeContext $ScaffoldDir
+  $ctx = Get-TreatableSanitizeContext $ScaffoldDir
   $clean = ConvertTo-ReportText ([System.IO.File]::ReadAllText($SanitizeFile, [System.Text.Encoding]::UTF8)) $ctx
   [System.IO.File]::WriteAllText($OutFile, $clean, $Utf8NoBom)
   exit 0
@@ -327,7 +327,7 @@ function New-GrantedIssueUrl([hashtable]$Context, [string[]]$Lines, [int]$MaxLen
   return $base
 }
 
-$ctx = Get-GrantedSanitizeContext $ScaffoldDir
+$ctx = Get-TreatableSanitizeContext $ScaffoldDir
 $tail = @()
 if ($LogPath -and (Test-Path -LiteralPath $LogPath)) {
   try { $tail = @(Get-Content -LiteralPath $LogPath -Tail $TailLines -Encoding UTF8 -ErrorAction Stop) } catch { $tail = @() }

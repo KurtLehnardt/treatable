@@ -9,7 +9,7 @@ import { textHash, writeVectorFile } from "../../../scripts/lib/vectorFile.mjs";
 import { spaceDocumentText } from "../../../scripts/lib/spaceVectors.mjs";
 
 function makeBaseDir() {
-  return mkdtempSync(join(tmpdir(), "granted-corpus-store-"));
+  return mkdtempSync(join(tmpdir(), "treatable-corpus-store-"));
 }
 
 function writeCommitted(baseDir: string, opps: unknown[], meta: object = {}) {

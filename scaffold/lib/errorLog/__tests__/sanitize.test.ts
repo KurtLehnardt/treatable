@@ -126,7 +126,7 @@ describe("sanitize: private hosts and folder names (review of #286)", () => {
     assert.equal(s(text), text);
   });
   test("a OneDrive folder named after an employer becomes just OneDrive", () => {
-    assert.equal(s("C:\\Users\\jane\\OneDrive - Contoso Ltd\\Documents\\granted"), "~\\OneDrive\\Documents\\granted");
+    assert.equal(s("C:\\Users\\jane\\OneDrive - Contoso Ltd\\Documents\\treatable"), "~\\OneDrive\\Documents\\treatable");
     assert.equal(s("~/OneDrive - Fabrikam, Inc./x"), "~/OneDrive/x");
     assert.equal(s("saved to OneDrive - Contoso"), "saved to OneDrive");
   });
@@ -153,7 +153,7 @@ describe("sanitize: private hosts and folder names (review of #286)", () => {
 
 describe("sanitize: email addresses", () => {
   test("plain, dotted, plus-addressed and subdomain addresses", () => {
-    assert.equal(s("from jane.doe+granted@mail.example.co.uk to ops@example.com"), "from [email] to [email]");
+    assert.equal(s("from jane.doe+treatable@mail.example.co.uk to ops@example.com"), "from [email] to [email]");
   });
   test("an address inside a message", () => {
     assert.equal(s("User <kurt@example.org> not found"), "User <[email]> not found");
@@ -165,19 +165,19 @@ describe("sanitize: email addresses", () => {
 
 describe("sanitize: home folder and user name", () => {
   test("any Windows profile path, with either slash or doubled backslashes (JSON)", () => {
-    assert.equal(s("at C:\\Users\\Jane Doe\\granted\\scaffold\\x.ts:1"), "at ~\\granted\\scaffold\\x.ts:1");
-    assert.equal(s("file:///C:/Users/jane/granted/x.ts"), "file:///~/granted/x.ts");
-    assert.equal(s('{"path":"C:\\\\Users\\\\jane\\\\granted"}'), '{"path":"~\\\\granted"}');
+    assert.equal(s("at C:\\Users\\Jane Doe\\treatable\\scaffold\\x.ts:1"), "at ~\\treatable\\scaffold\\x.ts:1");
+    assert.equal(s("file:///C:/Users/jane/treatable/x.ts"), "file:///~/treatable/x.ts");
+    assert.equal(s('{"path":"C:\\\\Users\\\\jane\\\\treatable"}'), '{"path":"~\\\\treatable"}');
     assert.equal(s("c:\\users\\jane\\x"), "~\\x");
   });
   test("macOS and Linux homes", () => {
-    assert.equal(s("open /Users/jane/granted/data failed"), "open ~/granted/data failed");
-    assert.equal(s("ENOENT: /home/jane/.granted/settings.json"), "ENOENT: ~/.granted/settings.json");
+    assert.equal(s("open /Users/jane/treatable/data failed"), "open ~/treatable/data failed");
+    assert.equal(s("ENOENT: /home/jane/.treatable/settings.json"), "ENOENT: ~/.treatable/settings.json");
   });
   test("a home folder somewhere unusual, from the context", () => {
     const ctx = { home: "D:\\Profiles\\jane" };
-    assert.equal(s("at D:\\Profiles\\jane\\granted\\x.ts", ctx), "at ~\\granted\\x.ts");
-    assert.equal(s("at d:/profiles/JANE/granted/x.ts", ctx), "at ~/granted/x.ts");
+    assert.equal(s("at D:\\Profiles\\jane\\treatable\\x.ts", ctx), "at ~\\treatable\\x.ts");
+    assert.equal(s("at d:/profiles/JANE/treatable/x.ts", ctx), "at ~/treatable/x.ts");
     // A longer name that only starts with it is someone else's folder.
     assert.equal(s("D:\\Profiles\\janet\\x", ctx), "D:\\Profiles\\janet\\x");
   });

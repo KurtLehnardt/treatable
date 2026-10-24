@@ -103,7 +103,7 @@ test("detectUnselectedSupportedState: already-selected -> null, nothing to promp
   assert.equal(detectUnselectedSupportedState("Utah", ["ut-grants"]), null);
 });
 
-test("detectUnselectedSupportedState: a real state Granted has no source for -> null", () => {
+test("detectUnselectedSupportedState: a real state Treatable has no source for -> null", () => {
   assert.equal(detectUnselectedSupportedState("Austin, TX", []), null);
 });
 

@@ -36,8 +36,8 @@ type JobState = {
   controllers: Partial<Record<OllamaJobKind, AbortController>>;
 };
 
-const G = globalThis as typeof globalThis & { __grantedOllamaJobs?: JobState };
-const state: JobState = (G.__grantedOllamaJobs ??= { jobs: {}, controllers: {} });
+const G = globalThis as typeof globalThis & { __treatableOllamaJobs?: JobState };
+const state: JobState = (G.__treatableOllamaJobs ??= { jobs: {}, controllers: {} });
 state.controllers ??= {};
 
 export function getOllamaJobs(): Jobs {
@@ -536,7 +536,7 @@ export function installOllama(deps: Partial<OllamaJobDeps> = {}): OllamaJob {
         );
         update({ message: "Checking the installer's signature…" });
         if (!(await d.verifySignature(dest))) {
-          failure = "The downloaded installer isn't signed by Ollama, so Granted didn't run it.";
+          failure = "The downloaded installer isn't signed by Ollama, so Treatable didn't run it.";
         } else {
           update({ message: "Running the Ollama installer…" });
           installed = (await d.runCommand(dest, ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-"], () => {}, signal)) === 0;

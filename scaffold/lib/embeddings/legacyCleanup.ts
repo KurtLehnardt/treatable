@@ -24,7 +24,7 @@ export function removeLegacyLocalEmbeddings(baseDir: string): void {
   }
 }
 
-const KEY = Symbol.for("granted.legacyLocalEmbeddingsRemoved");
+const KEY = Symbol.for("treatable.legacyLocalEmbeddingsRemoved");
 
 /** removeLegacyLocalEmbeddings for the app's own folder, once per process (never under tests). */
 export function removeLegacyLocalEmbeddingsOnce(baseDir: string = process.cwd()): void {

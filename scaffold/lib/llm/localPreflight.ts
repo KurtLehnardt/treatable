@@ -13,7 +13,7 @@ export type LocalPreflightDeps = {
   /** The configured default (LOCAL_LLM_MODEL, else gemma4:latest). */
   defaultModel: string;
   detectInstalled: () => boolean;
-  /** Granted may start Ollama for this host (default: this machine, port 11434). */
+  /** Treatable may start Ollama for this host (default: this machine, port 11434). */
   canManage: (host: string) => boolean;
   /** Start the daemon and wait for it; true once it answers. */
   start: () => Promise<boolean>;

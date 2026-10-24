@@ -1,7 +1,7 @@
 /**
  * "Report a problem": a pre-filled GitHub "new issue" link the user opens in
  * their own browser, reviews, and submits with their own GitHub account.
- * Granted itself never holds a GitHub token (one shipped in the app could be
+ * Treatable itself never holds a GitHub token (one shipped in the app could be
  * extracted and abused), and nothing is sent anywhere until the user clicks
  * Submit on GitHub.
  *
@@ -16,7 +16,7 @@
  */
 import { sanitize, type SanitizeContext } from "./sanitize";
 
-export const ISSUE_NEW_URL = "https://github.com/KurtLehnardt/granted/issues/new";
+export const ISSUE_NEW_URL = "https://github.com/KurtLehnardt/treatable/issues/new";
 /** The issue form the link opens, and the ids of the fields it fills (they must match bug_report.yml). */
 export const ISSUE_TEMPLATE = "bug_report.yml";
 export const ISSUE_FIELDS = { errorId: "error-id", environment: "environment", recentErrors: "recent-errors" } as const;
@@ -112,7 +112,7 @@ export function issueFields(
   const c = input.context;
   const s = (v: string | undefined): string => (v ? sanitize(v, ctx) : "unknown");
   const environment = [
-    `- Granted version: ${s(c.version)}`,
+    `- Treatable version: ${s(c.version)}`,
     `- Operating system: ${s(c.os)}`,
     `- Model provider: ${s(c.provider)}`,
     `- Search mode: ${s(c.searchMode)}`,

@@ -39,7 +39,7 @@ describe("half-precision encoding", () => {
 
 describe("writeVectorFile / readVectorFile", () => {
   test("round-trips ids, hashes and vectors; the .bin is count x dims x 2 bytes", () => {
-    const dir = mkdtempSync(join(tmpdir(), "granted-vectors-"));
+    const dir = mkdtempSync(join(tmpdir(), "treatable-vectors-"));
     try {
       const meta = writeVectorFile(dir, "space", { space: "builtin", model: "m", revision: "r1", dims: 2 }, [
         { id: "a", vector: [0.5, -0.25], textHash: "h1" },
@@ -60,7 +60,7 @@ describe("writeVectorFile / readVectorFile", () => {
   });
 
   test("missing, mismatched or foreign files read as null, never as wrong vectors", () => {
-    const dir = mkdtempSync(join(tmpdir(), "granted-vectors-"));
+    const dir = mkdtempSync(join(tmpdir(), "treatable-vectors-"));
     try {
       assert.equal(readVectorFile(dir, "none"), null);
       writeVectorFile(dir, "s", { space: "builtin", model: "m", dims: 2 }, [{ id: "a", vector: [1, 0], textHash: "h" }]);
@@ -76,7 +76,7 @@ describe("writeVectorFile / readVectorFile", () => {
   });
 
   test("refuses a vector of the wrong size", () => {
-    const dir = mkdtempSync(join(tmpdir(), "granted-vectors-"));
+    const dir = mkdtempSync(join(tmpdir(), "treatable-vectors-"));
     try {
       assert.throws(() => writeVectorFile(dir, "s", { space: "x", model: "m", dims: 3 }, [{ id: "a", vector: [1, 0], textHash: "h" }]), /2 dims, expected 3/);
     } finally {

@@ -116,7 +116,7 @@ export function describeErrorForLog(err: unknown): { status?: number; message: s
   return { status, message: sanitizeProviderMessage(raw) };
 }
 
-const CHAT_CLIENT_ERROR = Symbol.for("granted.chatClientError");
+const CHAT_CLIENT_ERROR = Symbol.for("treatable.chatClientError");
 
 /** Marks an error as thrown by the chat client (makeLlmClient), so search errors are only
  * blamed on the chat provider when its call really failed — not an embeddings or other call. */

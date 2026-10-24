@@ -56,13 +56,13 @@ describe("modelBaseUrl / modelsDir", () => {
     assert.match(BUILTIN_MODEL.revision, /^[0-9a-f]{40}$/, "a full commit hash, not a branch");
   });
 
-  test("GRANTED_MODEL_URL points the download at a mirror (trailing slashes ignored)", () => {
-    assert.equal(modelBaseUrl({ GRANTED_MODEL_URL: "https://mirror.example.org/nomic//" }), "https://mirror.example.org/nomic");
+  test("TREATABLE_MODEL_URL points the download at a mirror (trailing slashes ignored)", () => {
+    assert.equal(modelBaseUrl({ TREATABLE_MODEL_URL: "https://mirror.example.org/nomic//" }), "https://mirror.example.org/nomic");
   });
 
-  test("GRANTED_MODELS_DIR moves the folder; under tests it never defaults to the real one", () => {
-    assert.equal(modelsDir({ GRANTED_MODELS_DIR: "/x" }), "/x");
-    assert.match(modelsDir({ NODE_TEST_CONTEXT: "child" }), /granted-models-unset-/);
+  test("TREATABLE_MODELS_DIR moves the folder; under tests it never defaults to the real one", () => {
+    assert.equal(modelsDir({ TREATABLE_MODELS_DIR: "/x" }), "/x");
+    assert.match(modelsDir({ NODE_TEST_CONTEXT: "child" }), /treatable-models-unset-/);
   });
 
   test("every pinned file has a SHA-256 and the fp16 ONNX is the model", () => {
@@ -74,7 +74,7 @@ describe("modelBaseUrl / modelsDir", () => {
 describe("downloadBuiltinModel", () => {
   test("downloads and verifies every file from the mirror, then counts as present; a second run fetches nothing", async () => {
     await withFakeManifest(async (files) => {
-      const dir = mkdtempSync(join(tmpdir(), "granted-model-"));
+      const dir = mkdtempSync(join(tmpdir(), "treatable-model-"));
       try {
         const seen: string[] = [];
         const pcts: number[] = [];
@@ -96,7 +96,7 @@ describe("downloadBuiltinModel", () => {
 
   test("a file that fails its checksum is rejected and never left in place", async () => {
     await withFakeManifest(async (files) => {
-      const dir = mkdtempSync(join(tmpdir(), "granted-model-"));
+      const dir = mkdtempSync(join(tmpdir(), "treatable-model-"));
       try {
         await assert.rejects(
           () => downloadBuiltinModel({ dir, baseUrl: "https://m", fetchFn: fakeFetch(files, { corrupt: "onnx/model_fp16.onnx" }) }),
@@ -113,7 +113,7 @@ describe("downloadBuiltinModel", () => {
 
   test("an HTTP error names the file and the URL", async () => {
     await withFakeManifest(async () => {
-      const dir = mkdtempSync(join(tmpdir(), "granted-model-"));
+      const dir = mkdtempSync(join(tmpdir(), "treatable-model-"));
       try {
         await assert.rejects(() => downloadBuiltinModel({ dir, baseUrl: "https://m", fetchFn: fakeFetch(new Map()) }), /HTTP 404/);
       } finally {

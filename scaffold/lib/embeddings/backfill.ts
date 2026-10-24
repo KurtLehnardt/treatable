@@ -36,7 +36,7 @@ interface BackfillState {
   error: string | null;
 }
 
-const KEY = Symbol.for("granted.builtinVectorBackfill");
+const KEY = Symbol.for("treatable.builtinVectorBackfill");
 function state(): BackfillState {
   const g = globalThis as unknown as Record<symbol, BackfillState | undefined>;
   return (g[KEY] ??= { run: null, done: 0, total: 0, error: null });

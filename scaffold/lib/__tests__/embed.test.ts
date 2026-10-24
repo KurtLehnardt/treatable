@@ -20,7 +20,7 @@ import { resetBuiltinRuntime } from "../embeddings/builtin";
  * reaches the network.
  */
 
-const ENV_KEYS = ["LLM_PROVIDER", "OPENAI_API_KEY", "EMBEDDINGS_API_KEY", "SEARCH_EMBEDDINGS", "EMBEDDINGS_BASE_URL", "GRANTED_MODELS_DIR"] as const;
+const ENV_KEYS = ["LLM_PROVIDER", "OPENAI_API_KEY", "EMBEDDINGS_API_KEY", "SEARCH_EMBEDDINGS", "EMBEDDINGS_BASE_URL", "TREATABLE_MODELS_DIR"] as const;
 const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const realFetch = globalThis.fetch;
 

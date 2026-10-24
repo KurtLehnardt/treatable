@@ -11,20 +11,20 @@ import { isErrorId } from "../errorId";
 import { readErrorEntries } from "../store";
 
 let dir: string;
-const saved = process.env["GRANTED_LOG_DIR"];
+const saved = process.env["TREATABLE_LOG_DIR"];
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "granted-logerror-"));
-  process.env["GRANTED_LOG_DIR"] = dir;
+  dir = mkdtempSync(join(tmpdir(), "treatable-logerror-"));
+  process.env["TREATABLE_LOG_DIR"] = dir;
 });
 afterEach(() => {
-  if (saved === undefined) delete process.env["GRANTED_LOG_DIR"];
-  else process.env["GRANTED_LOG_DIR"] = saved;
+  if (saved === undefined) delete process.env["TREATABLE_LOG_DIR"];
+  else process.env["TREATABLE_LOG_DIR"] = saved;
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe("logError", () => {
   test("writes a sanitized entry and returns its correlation id", () => {
-    const err = new Error(`provider said: key sk-ant-api03-AAAAAAAAAAAAAAAAAAAA invalid for jane@example.com in ${join(homedir(), "granted")}`);
+    const err = new Error(`provider said: key sk-ant-api03-AAAAAAAAAAAAAAAAAAAA invalid for jane@example.com in ${join(homedir(), "treatable")}`);
     const id = logError("search", err, { status: 500, path: "/api/match" });
     assert.ok(isErrorId(id), id);
     const [e] = readErrorEntries();
@@ -87,7 +87,7 @@ describe("logError", () => {
   test("never throws, whatever it's given, even when the log can't be written", () => {
     const file = join(dir, "a-file");
     writeFileSync(file, "x");
-    process.env["GRANTED_LOG_DIR"] = join(file, "logs");
+    process.env["TREATABLE_LOG_DIR"] = join(file, "logs");
     const weird: unknown[] = [undefined, null, 42, Symbol("s"), { toString() { throw new Error("nope"); } }, Object.create(null)];
     for (const w of weird) assert.doesNotThrow(() => assert.ok(isErrorId(logError("search", w))));
     const circular: Record<string, unknown> = {};
@@ -155,16 +155,16 @@ describe("helpers", () => {
   });
 
   describe("serverSanitizeContext", () => {
-    const savedCfg = process.env["GRANTED_LLM_CONFIG_PATH"];
+    const savedCfg = process.env["TREATABLE_LLM_CONFIG_PATH"];
     let cwd: string;
     beforeEach(() => {
-      cwd = mkdtempSync(join(tmpdir(), "granted-ctx-"));
-      process.env["GRANTED_LLM_CONFIG_PATH"] = join(cwd, "llm-config.json");
+      cwd = mkdtempSync(join(tmpdir(), "treatable-ctx-"));
+      process.env["TREATABLE_LLM_CONFIG_PATH"] = join(cwd, "llm-config.json");
       resetLlmConfigCache();
     });
     afterEach(() => {
-      if (savedCfg === undefined) delete process.env["GRANTED_LLM_CONFIG_PATH"];
-      else process.env["GRANTED_LLM_CONFIG_PATH"] = savedCfg;
+      if (savedCfg === undefined) delete process.env["TREATABLE_LLM_CONFIG_PATH"];
+      else process.env["TREATABLE_LLM_CONFIG_PATH"] = savedCfg;
       resetLlmConfigCache();
       rmSync(cwd, { recursive: true, force: true });
     });

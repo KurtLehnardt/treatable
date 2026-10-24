@@ -69,14 +69,14 @@ describe("isFlagEnabled — env override", () => {
   }
 
   test("an unrecognized override value falls back to the default instead of throwing or guessing", () => {
-    process.env[FLAG_REGISTRY.d3_funding_strategy.envVar] = "banana";
-    assert.equal(isFlagEnabled("d3_funding_strategy"), FLAG_DEFAULT);
+    process.env[FLAG_REGISTRY.hybrid_scorer.envVar] = "banana";
+    assert.equal(isFlagEnabled("hybrid_scorer"), FLAG_DEFAULT);
   });
 
-  test("r9_0_mockauth reads the mock-auth drop-in's own env var (NEXT_PUBLIC_MOCK_AUTH)", () => {
-    assert.equal(FLAG_REGISTRY.r9_0_mockauth.envVar, "NEXT_PUBLIC_MOCK_AUTH");
-    process.env.NEXT_PUBLIC_MOCK_AUTH = "true";
-    assert.equal(isFlagEnabled("r9_0_mockauth"), true);
+  test("eligibility reads its declared environment override", () => {
+    assert.equal(FLAG_REGISTRY.r8_eligibility.envVar, "NEXT_PUBLIC_FLAG_R8_ELIGIBILITY");
+    process.env.NEXT_PUBLIC_FLAG_R8_ELIGIBILITY = "true";
+    assert.equal(isFlagEnabled("r8_eligibility"), true);
   });
 
   test("each flag's own env var is independent of the others", () => {
@@ -96,7 +96,7 @@ describe("isFlagEnabled — config override", () => {
   });
 
   test("a config override of an unset env var still works", () => {
-    assert.equal(isFlagEnabled("r10_analytics", { r10_analytics: "true" }), true);
+    assert.equal(isFlagEnabled("r8_eligibility", { r8_eligibility: "true" }), true);
   });
 
   test("an explicit undefined config value falls through to the default, not the env var", () => {

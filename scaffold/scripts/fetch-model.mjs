@@ -10,9 +10,9 @@
  * Idempotent: files already present and verified are kept, so re-running it
  * (the in-app updater runs the installer script again) is quick.
  *
- * Env: GRANTED_MODEL_URL  a mirror holding the same files, e.g.
+ * Env: TREATABLE_MODEL_URL  a mirror holding the same files, e.g.
  *        https://mirror.example.org/nomic-embed-text-v1.5  (fetches <url>/onnx/model_fp16.onnx, ...)
- *      GRANTED_MODELS_DIR  a different models folder (default scaffold/models)
+ *      TREATABLE_MODELS_DIR  a different models folder (default scaffold/models)
  */
 import { BUILTIN_MODEL, BUILTIN_MODEL_TOTAL_BYTES, builtinModelPresent, downloadBuiltinModel, modelBaseUrl, modelsDir } from "./lib/builtinModel.mjs";
 
@@ -39,7 +39,7 @@ if (builtinModelPresent(dir)) {
   } catch (e) {
     if (isTty) process.stdout.write("\n");
     console.error(`Couldn't download the search model: ${e.message}`);
-    console.error("Granted will try again the first time you search. To retry now: npm run model:fetch");
+    console.error("Treatable will try again the first time you search. To retry now: npm run model:fetch");
     process.exitCode = 1;
   }
 }

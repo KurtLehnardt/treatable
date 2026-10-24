@@ -13,7 +13,8 @@ import { dropExpiredOpportunities } from "./corpus/expiry";
 import type { EligibilityDetermination } from "./contracts/eligibilityDetermination";
 import { scoreOnlyAssessment } from "./scoring/twoPass";
 import { mergeHybridResults, mergeNarrativeIntoAssessment } from "./scoring/hybridMerge";
-import awards from "@/data/awards.json";
+// Funding history is not part of Treatable. Retained pure adapter helpers use no live award data.
+const awards: Record<string,AwardRow[]> = {};
 import { createCostMeter, type CostMeter } from "./metering/meter";
 import { CURRENT_OPPORTUNITY_MAP_VERSION } from "./contracts/opportunityMap";
 import { isFlagEnabled, isFlagExplicitlyDisabled } from "./flags";

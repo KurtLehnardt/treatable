@@ -21,7 +21,7 @@ import {
   type LatestRelease,
 } from "@/lib/appUpdate/releases";
 
-/** How often an automatic check runs at most (each time Granted is opened, but not more often than this). */
+/** How often an automatic check runs at most (each time Treatable is opened, but not more often than this). */
 export const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** A "running" update older than this is treated as dead (its window was closed, the PC restarted…). */
 const RUNNING_STALE_MS = 20 * 60 * 1000;
@@ -55,7 +55,7 @@ export type UpdateDeps = {
   /** `script` is installInfo().script — the updater this install may run. */
   startUpdater: (ref: string, port: number, script: string) => Promise<void>;
   now: () => number;
-  /** The port Granted is serving on — where the updater starts it again. */
+  /** The port Treatable is serving on — where the updater starts it again. */
   port: (req: Req) => number;
 };
 
@@ -79,7 +79,7 @@ const REAL_DEPS: UpdateDeps = {
   writeUpdateSettings: (changes) => writeUpdateSettings(changes),
   readUpdateStatus: () => readUpdateStatus(),
   writeUpdateStatus: (status) => writeUpdateStatus(status),
-  fetchLatest: () => fetchLatestRelease(process.env["GRANTED_RELEASES_API"] || LATEST_RELEASE_API),
+  fetchLatest: () => fetchLatestRelease(process.env["TREATABLE_RELEASES_API"] || LATEST_RELEASE_API),
   startUpdater: (ref, port, script) => startUpdater(ref, port, script),
   now: () => Date.now(),
   port: (req) => requestPort(req),
@@ -166,7 +166,7 @@ export async function handleUpdateGet(req: Req & { url: string }, deps: Partial<
  * POST /api/app/update:
  *   { action: "install" }               update to the newest release now
  *   { action: "settings", autoUpdate }  turn automatic updates on/off
- *   { action: "auto" }                  sent when Granted opens: update now
+ *   { action: "auto" }                  sent when Treatable opens: update now
  *                                       if automatic updates are on, a check
  *                                       is due, and a newer release exists
  * A started update answers 202 { started, from, to, startedAt }: the page
@@ -180,7 +180,7 @@ export async function handleUpdatePost(req: Req & { json?: () => Promise<unknown
 
   if (body.action === "settings") {
     if (typeof body.autoUpdate !== "boolean") return NextResponse.json({ error: "autoUpdate must be true or false" }, { status: 400 });
-    if (!install.canUpdate) return NextResponse.json({ error: "This copy of Granted can't update itself" }, { status: 409 });
+    if (!install.canUpdate) return NextResponse.json({ error: "This copy of Treatable can't update itself" }, { status: 409 });
     d.writeUpdateSettings({ autoUpdate: body.autoUpdate });
     return NextResponse.json({ autoUpdate: body.autoUpdate });
   }
@@ -196,7 +196,7 @@ export async function handleUpdatePost(req: Req & { json?: () => Promise<unknown
   if (!install.canUpdate || !install.script) {
     return auto
       ? NextResponse.json({ started: false })
-      : NextResponse.json({ error: "This copy of Granted can't update itself", started: false }, { status: 409 });
+      : NextResponse.json({ error: "This copy of Treatable can't update itself", started: false }, { status: 409 });
   }
   if (starting || isRunning(d.readUpdateStatus(), d.now())) {
     return auto
@@ -228,7 +228,7 @@ export async function handleUpdatePost(req: Req & { json?: () => Promise<unknown
       return NextResponse.json({ started: false, upToDate: true, version });
     }
     // Automatic updates don't retry a release that already failed here — that
-    // would stop and restart Granted every few hours for the same error. The
+    // would stop and restart Treatable every few hours for the same error. The
     // button still retries; a newer release is tried again.
     const last = d.readUpdateStatus();
     if (auto && last?.state === "error" && last.to === latest.tag) {

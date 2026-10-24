@@ -228,7 +228,7 @@ describe("REGRESSION (review): starting an update", () => {
     assert.equal(w.calls.statuses.at(-1)?.state, "error");
   });
 
-  test("restarts Granted on the port this page uses (Host), else PORT, else 3000", () => {
+  test("restarts Treatable on the port this page uses (Host), else PORT, else 3000", () => {
     const req = (host: string | null) => ({ headers: { get: (n: string) => (n === "host" ? host : null) } });
     assert.equal(requestPort(req("127.0.0.1:3001"), {}), 3001);
     assert.equal(requestPort(req("localhost"), { PORT: "3987" }), 3987);

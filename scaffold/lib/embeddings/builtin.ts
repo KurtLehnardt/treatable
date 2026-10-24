@@ -36,7 +36,7 @@ export interface BuiltinModelStatus {
   doneBytes?: number;
   totalBytes: number;
   error?: string;
-  /** Set when GRANTED_MODEL_URL points the download at a mirror. */
+  /** Set when TREATABLE_MODEL_URL points the download at a mirror. */
   mirror?: string;
 }
 
@@ -53,7 +53,7 @@ interface RuntimeState {
   listeners: Set<(pct: number) => void>;
 }
 
-const KEY = Symbol.for("granted.builtinSearchModel");
+const KEY = Symbol.for("treatable.builtinSearchModel");
 function state(): RuntimeState {
   const g = globalThis as unknown as Record<symbol, RuntimeState | undefined>;
   return (g[KEY] ??= { embedder: null, download: null, progress: null, lastError: null, lastLoadError: null, queue: Promise.resolve(), listeners: new Set() });
@@ -87,7 +87,7 @@ function realDeps(): BuiltinDeps {
 export function builtinModelStatus(deps: Partial<BuiltinDeps> = {}): BuiltinModelStatus {
   const d = { ...realDeps(), ...deps };
   const s = state();
-  const mirror = process.env.GRANTED_MODEL_URL?.trim() ? modelBaseUrl() : undefined;
+  const mirror = process.env.TREATABLE_MODEL_URL?.trim() ? modelBaseUrl() : undefined;
   const base = { model: BUILTIN_MODEL.repo.split("/")[1], totalBytes: BUILTIN_MODEL_TOTAL_BYTES, ...(mirror ? { mirror } : {}) };
   if (s.download) return { ...base, state: "downloading", pct: s.progress?.pct ?? 0, doneBytes: s.progress?.doneBytes ?? 0 };
   if (d.present(d.dir)) return s.lastLoadError ? { ...base, state: "failed", error: s.lastLoadError } : { ...base, state: "ready" };
@@ -215,7 +215,7 @@ export function explainModelLoadError(err: unknown, platform: NodeJS.Platform = 
   if (platform === "win32" && /specified module could not be found|onnxruntime|\.node\b|\.dll\b|dlopen/i.test(detail)) {
     return (
       "the search model couldn't start because the Microsoft Visual C++ runtime is missing on this computer. " +
-      "Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe (or run the Granted installer again), then restart Granted"
+      "Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe (or run the Treatable installer again), then restart Treatable"
     );
   }
   return `the search model couldn't start (${detail.length > 200 ? `${detail.slice(0, 197)}...` : detail})`;

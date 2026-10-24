@@ -30,7 +30,7 @@ export class LocalSetupError extends Error {
 }
 
 export const OLLAMA_UNREACHABLE =
-  "Granted couldn't reach Ollama, which runs your Local model — start it in Settings → Model (or switch to Cloud there).";
+  "Treatable couldn't reach Ollama, which runs your Local model — start it in Settings → Model (or switch to Cloud there).";
 
 export const NO_CHAT_MODELS =
   "Ollama has no chat model installed (embedding models like nomic-embed-text can't run searches) — download one in Settings → Model.";
@@ -52,7 +52,7 @@ export function keyRejected(provider: string): string {
 }
 
 export function providerUnreachable(provider: string): string {
-  return `Granted couldn't reach ${provider} — check your internet connection and try again, or switch to Local in Settings → Model.`;
+  return `Treatable couldn't reach ${provider} — check your internet connection and try again, or switch to Local in Settings → Model.`;
 }
 
 const BILLING =
@@ -98,7 +98,7 @@ function providerFailure(err: unknown): { status: number; message: string } | un
 }
 
 export function proxyUnreachable(baseUrl: string): string {
-  return `Granted couldn't reach the proxy at ${baseUrl} — is it running? (Or switch providers in Settings → Model.)`;
+  return `Treatable couldn't reach the proxy at ${baseUrl} — is it running? (Or switch providers in Settings → Model.)`;
 }
 
 export type SearchErrorContext = {

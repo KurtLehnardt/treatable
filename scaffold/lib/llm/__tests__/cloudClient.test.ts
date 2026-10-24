@@ -5,14 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 // Isolated config path — see config.test.ts's comment.
-const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-cloudclient-test-${process.pid}.json`);
+const CONFIG_PATH = path.join(os.tmpdir(), `treatable-llm-config-cloudclient-test-${process.pid}.json`);
 
 let makeLlmClient: typeof import("../client").makeLlmClient;
 let writeLlmConfig: typeof import("../config").writeLlmConfig;
 let resetLlmConfigCache: typeof import("../config").resetLlmConfigCache;
 
 before(async () => {
-  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
   ({ makeLlmClient } = await import("../client"));
   ({ writeLlmConfig, resetLlmConfigCache } = await import("../config"));
 });
@@ -95,8 +95,8 @@ describe("makeLlmClient — cloud provider routing (non-anthropic, OpenAI-compat
 
   test("env-sourced key: the resolved value (not the var name) is sent as the bearer token", async () => {
     delete process.env.LLM_PROVIDER;
-    process.env.GRANTED_CLOUD_CLIENT_TEST_KEY = "sk-fromenvvaluevalu00";
-    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openai", model: "gpt-4o", keySource: { type: "env", name: "GRANTED_CLOUD_CLIENT_TEST_KEY" } } });
+    process.env.TREATABLE_CLOUD_CLIENT_TEST_KEY = "sk-fromenvvaluevalu00";
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openai", model: "gpt-4o", keySource: { type: "env", name: "TREATABLE_CLOUD_CLIENT_TEST_KEY" } } });
     let sentAuth = "";
     globalThis.fetch = (async (_url: string, init: any) => {
       sentAuth = init.headers.Authorization;
@@ -105,7 +105,7 @@ describe("makeLlmClient — cloud provider routing (non-anthropic, OpenAI-compat
 
     await makeLlmClient({ timeout: 5000 }).messages.create({ model: "ignored", max_tokens: 10, messages: [{ role: "user", content: "hi" }] });
     assert.equal(sentAuth, "Bearer sk-fromenvvaluevalu00");
-    delete process.env.GRANTED_CLOUD_CLIENT_TEST_KEY;
+    delete process.env.TREATABLE_CLOUD_CLIENT_TEST_KEY;
   });
 
   test("openai reasoning models: retries with max_completion_tokens and no temperature when rejected", async () => {
@@ -163,8 +163,8 @@ describe("makeLlmClient — cloud provider routing (non-anthropic, OpenAI-compat
 
   test("missing key -> throws the resolver's specific error, no fetch made", async () => {
     delete process.env.LLM_PROVIDER;
-    delete process.env.GRANTED_CLOUD_CLIENT_TEST_UNSET;
-    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openai", model: "gpt-4o", keySource: { type: "env", name: "GRANTED_CLOUD_CLIENT_TEST_UNSET" } } });
+    delete process.env.TREATABLE_CLOUD_CLIENT_TEST_UNSET;
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openai", model: "gpt-4o", keySource: { type: "env", name: "TREATABLE_CLOUD_CLIENT_TEST_UNSET" } } });
     let fetched = false;
     globalThis.fetch = (async () => { fetched = true; return { ok: true, json: async () => ({}) }; }) as unknown as typeof fetch;
 

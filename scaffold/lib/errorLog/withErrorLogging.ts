@@ -57,7 +57,7 @@ export function withErrorLogging<A extends unknown[]>(
     } catch (err) {
       const errorId = log(area, err, { status: 500, path });
       console.error(`${area} failed [${errorId}]:`, describeErrorForLog(err).message);
-      return NextResponse.json({ error: "Something went wrong inside Granted. Please try again.", errorId }, { status: 500 });
+      return NextResponse.json({ error: "Something went wrong inside Treatable. Please try again.", errorId }, { status: 500 });
     }
     try {
       return await withIdOnFailure(area, res, path, log);

@@ -24,7 +24,7 @@ const opp = (id: string) => ({ id, program: `P ${id}`, agency: "A", description:
 const vec = (x: number) => Array.from({ length: 768 }, (_, i) => (i === 0 ? x : 0));
 
 function setup() {
-  const baseDir = mkdtempSync(join(tmpdir(), "granted-backfill-"));
+  const baseDir = mkdtempSync(join(tmpdir(), "treatable-backfill-"));
   const [a, b, c] = [opp("a"), opp("b"), opp("c")];
   mkdirSync(join(baseDir, "data", "local"), { recursive: true });
   writeFileSync(join(baseDir, "data", "opportunities.json"), JSON.stringify([a]));

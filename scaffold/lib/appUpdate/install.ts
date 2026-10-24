@@ -1,19 +1,19 @@
 /**
- * Granted updating itself: what this install is, whether it can update
+ * Treatable updating itself: what this install is, whether it can update
  * itself, the per-user settings (auto-update), and starting the updater.
  *
  * Only an install one of the installers made can update itself: it has the
- * installer's marker (.git/granted-installer) and the updater for its platform
+ * installer's marker (.git/treatable-installer) and the updater for its platform
  * — scripts/windows/update.ps1 or scripts/macos/update.sh. A developer's own
  * checkout is never touched (it's told what's available and to `git pull`), and
  * neither is a platform with no installer of its own.
  *
  * This file also owns the other thing an install can do to itself:
  * uninstalling (uninstallInfo/startUninstaller, below). That is macOS-only and
- * on purpose — on Windows, Granted is uninstalled from Windows' own "Installed
+ * on purpose — on Windows, Treatable is uninstalled from Windows' own "Installed
  * apps" list, which scripts/windows/uninstall.ps1 registers it in. macOS has no
  * such list, so the work order puts uninstall in the menu-bar menu and in
- * Settings → About Granted, which is what this half serves.
+ * Settings → About Treatable, which is what this half serves.
  */
 import { execFile, spawn } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -78,11 +78,11 @@ const UPDATERS: Partial<Record<NodeJS.Platform, Updater>> = {
 };
 
 /**
- * Whether this install can update itself from Settings → About Granted, and
+ * Whether this install can update itself from Settings → About Treatable, and
  * with what.
  *
  * The same three-part test uninstallInfo() makes below, for the same reasons:
- * the platform has an updater at all, the installer's `.git/granted-installer`
+ * the platform has an updater at all, the installer's `.git/treatable-installer`
  * marker is there (so a developer's own checkout is never switched to another
  * release under them), and the script itself is present (an install made before
  * that platform had one).
@@ -101,32 +101,32 @@ export function installInfo(
   const script = relative ? p.join(dir, ...relative) : null;
   let reason: CannotUpdateReason | null = null;
   if (!script) reason = "unsupported-platform";
-  else if (!exists(p.join(installDir, ".git", "granted-installer"))) reason = "not-installer-made";
+  else if (!exists(p.join(installDir, ".git", "treatable-installer"))) reason = "not-installer-made";
   else if (!exists(script)) reason = "no-updater";
   return { installDir, canUpdate: reason === null, reason, script: reason === null ? script : null };
 }
 
 /**
- * The per-user settings file the trays, open-granted.ps1 and the installer
+ * The per-user settings file the trays, open-treatable.ps1 and the installer
  * all share:
- *   %LOCALAPPDATA%\Granted\settings.json                        (Windows)
- *   ~/Library/Application Support/Granted/settings.json         (macOS)
- *   ~/.granted/settings.json                                    (elsewhere)
+ *   %LOCALAPPDATA%\Treatable\settings.json                        (Windows)
+ *   ~/Library/Application Support/Treatable/settings.json         (macOS)
+ *   ~/.treatable/settings.json                                    (elsewhere)
  *
  * macOS uses the platform's own per-user application-support folder, which is
- * also what scaffold/scripts/macos/granted-tray.sh and the Swift menu-bar
+ * also what scaffold/scripts/macos/treatable-tray.sh and the Swift menu-bar
  * helper read and write — so the same `openIn` / `autoUpdate` /
  * `lastAutoCheck` keys Windows uses are shared there too, rather than living
- * in a second file under ~/.granted.
+ * in a second file under ~/.treatable.
  *
- * GRANTED_SETTINGS_PATH overrides all of them (tests). LOCALAPPDATA is
+ * TREATABLE_SETTINGS_PATH overrides all of them (tests). LOCALAPPDATA is
  * checked before the platform so a Windows-path test can run on any OS.
  * `home` is injectable for the same reason.
  *
  * Each branch joins with the separator of the platform it describes, never the
  * ambient `join` (which is whichever platform this process happens to be
  * running on). The same mistake in installer/src/main/ipcPure.ts's
- * grantedSettingsPath did fail CI on the windows-latest runner; here it stayed
+ * treatableSettingsPath did fail CI on the windows-latest runner; here it stayed
  * hidden because the test re-derived its expected value with the same ambient
  * `join`, which cannot catch a separator bug. The tests now assert literal
  * paths instead.
@@ -136,10 +136,10 @@ export function settingsPath(
   platform: NodeJS.Platform = process.platform,
   home: string = homedir(),
 ): string {
-  if (env["GRANTED_SETTINGS_PATH"]) return env["GRANTED_SETTINGS_PATH"];
-  if (env["LOCALAPPDATA"]) return path.win32.join(env["LOCALAPPDATA"], "Granted", "settings.json");
-  if (platform === "darwin") return path.posix.join(home, "Library", "Application Support", "Granted", "settings.json");
-  return (platform === "win32" ? path.win32 : path.posix).join(home, ".granted", "settings.json");
+  if (env["TREATABLE_SETTINGS_PATH"]) return env["TREATABLE_SETTINGS_PATH"];
+  if (env["LOCALAPPDATA"]) return path.win32.join(env["LOCALAPPDATA"], "Treatable", "settings.json");
+  if (platform === "darwin") return path.posix.join(home, "Library", "Application Support", "Treatable", "settings.json");
+  return (platform === "win32" ? path.win32 : path.posix).join(home, ".treatable", "settings.json");
 }
 
 function readSettings(path: string): Record<string, unknown> {
@@ -152,7 +152,7 @@ function readSettings(path: string): Record<string, unknown> {
 }
 
 export interface UpdateSettings {
-  /** Install new releases automatically (when Granted is opened). Off unless turned on. */
+  /** Install new releases automatically (when Treatable is opened). Off unless turned on. */
   autoUpdate: boolean;
   /** When an automatic check last ran (ms since epoch), so it isn't every page load. */
   lastAutoCheck: number | null;
@@ -267,7 +267,7 @@ export function startProcessCommand(file: string, args: string[]): string {
 
 /** Where a started updater's own output goes: the temporary folder, as the uninstaller's does. */
 export function updateLogPath(now: Date = new Date(), dir: string = tmpdir()): string {
-  return join(dir, `granted-update-${now.toISOString().replace(/[:.]/g, "-")}.log`);
+  return join(dir, `treatable-update-${now.toISOString().replace(/[:.]/g, "-")}.log`);
 }
 
 export type StartUpdaterDeps = {
@@ -307,7 +307,7 @@ export type StartUpdaterDeps = {
 export function startUpdater(ref: string, port: number, script: string, deps: StartUpdaterDeps = {}): Promise<void> {
   const platform = deps.platform ?? process.platform;
   const updater = UPDATERS[platform];
-  if (!updater) return Promise.reject(new Error(`Granted can't update itself on ${platform}.`));
+  if (!updater) return Promise.reject(new Error(`Treatable can't update itself on ${platform}.`));
   return updater.start(ref, port, script, deps);
 }
 
@@ -384,17 +384,17 @@ export interface UninstallInfo {
 }
 
 /**
- * Whether this install can uninstall itself from Settings → About Granted, and
+ * Whether this install can uninstall itself from Settings → About Treatable, and
  * with what.
  *
  * The same three-part test installInfo() makes for updating, for the same
- * reasons: the platform, the installer's `.git/granted-installer` marker (so a
+ * reasons: the platform, the installer's `.git/treatable-installer` marker (so a
  * developer's own checkout is never offered a button that would delete it), and
  * the script itself being present (an install made before this existed).
  *
  * macOS only. Windows installs are uninstalled from Windows' "Installed apps"
  * list, which is where a Windows user looks and which scripts/windows/
- * uninstall.ps1 already registers Granted in; putting a second, different
+ * uninstall.ps1 already registers Treatable in; putting a second, different
  * uninstall button inside the app there would be two mechanisms for one job.
  */
 export function uninstallInfo(
@@ -410,7 +410,7 @@ export function uninstallInfo(
   const script = p.join(dir, "scripts", "macos", "uninstall.sh");
   let reason: CannotUninstallReason | null = null;
   if (platform !== "darwin") reason = "not-macos";
-  else if (!exists(p.join(installDir, ".git", "granted-installer"))) reason = "not-installer-made";
+  else if (!exists(p.join(installDir, ".git", "treatable-installer"))) reason = "not-installer-made";
   else if (!exists(script)) reason = "no-uninstaller";
   return { installDir, canUninstall: reason === null, reason, script: reason === null ? script : null };
 }
@@ -444,7 +444,7 @@ export function uninstallCheckArgs(script: string): string[] {
 
 export interface UninstallCheck {
   installDir: string;
-  grantedInstall: boolean;
+  treatableInstall: boolean;
   installerMade: boolean;
   /** Work in the folder that isn't on GitHub, in the script's own words. */
   unsaved: string[];
@@ -464,7 +464,7 @@ export function parseUninstallCheck(stdout: string): UninstallCheck | null {
       Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
     return {
       installDir: typeof parsed["installDir"] === "string" ? parsed["installDir"] : "",
-      grantedInstall: parsed["grantedInstall"] === true,
+      treatableInstall: parsed["treatableInstall"] === true,
       installerMade: parsed["installerMade"] === true,
       unsaved: strings(parsed["unsaved"]),
       keyFiles: strings(parsed["keyFiles"]),
@@ -490,7 +490,7 @@ export async function readUninstallCheck(
 
 /** Where a started uninstaller's output goes: the temporary folder, never a folder it deletes. */
 export function uninstallLogPath(now: Date = new Date(), dir: string = tmpdir()): string {
-  return join(dir, `granted-uninstall-${now.toISOString().replace(/[:.]/g, "-")}.log`);
+  return join(dir, `treatable-uninstall-${now.toISOString().replace(/[:.]/g, "-")}.log`);
 }
 
 /**
@@ -501,7 +501,7 @@ export function uninstallLogPath(now: Date = new Date(), dir: string = tmpdir())
  * script outlives this server by design — it stops it), but it means "started"
  * is all the POST can report. The script can still refuse afterwards: exit 3
  * when the install's parent folder can't be written to, or exit 1 when the copy
- * of the API keys couldn't be made — and both of those leave Granted running,
+ * of the API keys couldn't be made — and both of those leave Treatable running,
  * whole and uninstallable again. Its one JSON line in the log is what says so.
  */
 export interface UninstallOutcome {

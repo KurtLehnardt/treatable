@@ -196,7 +196,7 @@ export interface LogErrorOptions {
  * a page polling every few seconds doesn't re-read the whole log each time.
  * (On globalThis, so every Next route bundle shares one.)
  */
-const ONCE = Symbol.for("granted.errorLog.once");
+const ONCE = Symbol.for("treatable.errorLog.once");
 type OnceCache = { loadedFrom: string | null; keys: Map<string, string> };
 function onceCache(): OnceCache {
   const g = globalThis as unknown as Record<symbol, OnceCache | undefined>;

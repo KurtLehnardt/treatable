@@ -155,21 +155,21 @@ describe("ensureBuiltinModel / status", () => {
     assert.equal(st.totalBytes, 274574153);
   });
 
-  test("names the mirror when GRANTED_MODEL_URL is set", () => {
-    const saved = process.env.GRANTED_MODEL_URL;
-    process.env.GRANTED_MODEL_URL = "https://mirror.example.org/nomic/";
+  test("names the mirror when TREATABLE_MODEL_URL is set", () => {
+    const saved = process.env.TREATABLE_MODEL_URL;
+    process.env.TREATABLE_MODEL_URL = "https://mirror.example.org/nomic/";
     try {
       assert.equal(builtinModelStatus(fakeDeps().deps).mirror, "https://mirror.example.org/nomic");
     } finally {
-      if (saved === undefined) delete process.env.GRANTED_MODEL_URL;
-      else process.env.GRANTED_MODEL_URL = saved;
+      if (saved === undefined) delete process.env.TREATABLE_MODEL_URL;
+      else process.env.TREATABLE_MODEL_URL = saved;
     }
   });
 });
 
 describe("a model that won't load (e.g. no Visual C++ runtime on Windows)", () => {
   test("on Windows, a native-module load failure names the VC++ runtime and where to get it", () => {
-    const msg = explainModelLoadError(new Error("\\?\C:\granted\node_modules\onnxruntime-node\bin\napi-v6\win32\x64\onnxruntime_binding.node: The specified module could not be found."), "win32");
+    const msg = explainModelLoadError(new Error("\\?\C:\treatable\node_modules\onnxruntime-node\bin\napi-v6\win32\x64\onnxruntime_binding.node: The specified module could not be found."), "win32");
     assert.match(msg, /Microsoft Visual C\+\+ runtime is missing/);
     assert.match(msg, /aka\.ms\/vs\/17\/release\/vc_redist\.x64\.exe/);
   });

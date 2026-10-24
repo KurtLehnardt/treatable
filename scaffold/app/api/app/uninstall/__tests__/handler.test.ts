@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { handleUninstallGet, handleUninstallPost, resetUninstallStateForTests, type UninstallDeps } from "../handler";
 import type { UninstallCheck, UninstallChoice, UninstallOutcome } from "@/lib/appUpdate/install";
 
-const SCRIPT = "/Users/a/granted/scaffold/scripts/macos/uninstall.sh";
+const SCRIPT = "/Users/a/treatable/scaffold/scripts/macos/uninstall.sh";
 
 /** A world for the handler: everything it touches, recorded. */
 function world(
@@ -26,7 +26,7 @@ function world(
   const deps: Partial<UninstallDeps> = {
     isLoopbackRequest: () => over.loopback ?? true,
     uninstallInfo: () => ({
-      installDir: "/Users/a/granted",
+      installDir: "/Users/a/treatable",
       canUninstall: can,
       reason: can ? null : (over.reason ?? "not-macos"),
       script: can ? SCRIPT : null,
@@ -35,19 +35,19 @@ function world(
       calls.checks++;
       return over.check === undefined
         ? {
-            installDir: "/Users/a/granted",
-            grantedInstall: true,
+            installDir: "/Users/a/treatable",
+            treatableInstall: true,
             installerMade: true,
             unsaved: [],
-            keyFiles: ["/Users/a/granted/scaffold/.env.local"],
-            backupDir: "/Users/a/Documents/Granted backup 2026-10-06 1200",
+            keyFiles: ["/Users/a/treatable/scaffold/.env.local"],
+            backupDir: "/Users/a/Documents/Treatable backup 2026-10-06 1200",
           }
         : over.check;
     },
     startUninstaller: async (script, choice) => {
       calls.started.push([script, choice]);
       if (over.startFails) throw new Error("no bash");
-      return "/tmp/granted-uninstall.log";
+      return "/tmp/treatable-uninstall.log";
     },
     readUninstallOutcome: () => {
       calls.outcomes++;
@@ -62,7 +62,7 @@ function world(
 const refusal = (reason: string): UninstallOutcome => ({
   removed: false,
   reason,
-  detail: "mv: rename /Users/a/granted: Permission denied",
+  detail: "mv: rename /Users/a/treatable: Permission denied",
   keptKeys: null,
   leftover: null,
 });
@@ -76,20 +76,20 @@ describe("GET /api/app/uninstall", () => {
   test("what would be deleted, and what the page has to warn about", async () => {
     const w = world({
       check: {
-        installDir: "/Users/a/granted",
-        grantedInstall: true,
+        installDir: "/Users/a/treatable",
+        treatableInstall: true,
         installerMade: true,
         unsaved: ["changed or new files (3)"],
-        keyFiles: ["/Users/a/granted/scaffold/.env.local"],
-        backupDir: "/Users/a/Documents/Granted backup 2026-10-06 1200",
+        keyFiles: ["/Users/a/treatable/scaffold/.env.local"],
+        backupDir: "/Users/a/Documents/Treatable backup 2026-10-06 1200",
       },
     });
     const info = await (await handleUninstallGet(getReq(), w.deps)).json();
     assert.equal(info.canUninstall, true);
-    assert.equal(info.installDir, "/Users/a/granted");
+    assert.equal(info.installDir, "/Users/a/treatable");
     assert.deepEqual(info.unsaved, ["changed or new files (3)"]);
-    assert.deepEqual(info.keyFiles, ["/Users/a/granted/scaffold/.env.local"]);
-    assert.match(info.backupDir, /Granted backup/);
+    assert.deepEqual(info.keyFiles, ["/Users/a/treatable/scaffold/.env.local"]);
+    assert.match(info.backupDir, /Treatable backup/);
     assert.equal(w.calls.checks, 1, "the script is asked, not second-guessed here");
   });
 
@@ -114,7 +114,7 @@ describe("GET /api/app/uninstall", () => {
     const w = world({
       check: {
         installDir: "/Users/a/own-checkout",
-        grantedInstall: true,
+        treatableInstall: true,
         installerMade: false,
         unsaved: [],
         keyFiles: [],
@@ -138,7 +138,7 @@ describe("POST /api/app/uninstall", () => {
     assert.equal(res.status, 202);
     const body = await res.json();
     assert.equal(body.started, true);
-    assert.match(body.keptKeys, /Granted backup/);
+    assert.match(body.keptKeys, /Treatable backup/);
     assert.deepEqual(w.calls.started, [[SCRIPT, { keepKeys: true, force: false }]]);
   });
 
@@ -160,8 +160,8 @@ describe("POST /api/app/uninstall", () => {
   // because the page is the thing doing the asking.
   test("unsaved work is refused (409, and what it is) unless force says it was shown and accepted", async () => {
     const dirty = {
-      installDir: "/Users/a/granted",
-      grantedInstall: true,
+      installDir: "/Users/a/treatable",
+      treatableInstall: true,
       installerMade: true,
       unsaved: ["changed or new files (2)", "commits that aren't pushed (1)"],
       keyFiles: [],
@@ -186,8 +186,8 @@ describe("POST /api/app/uninstall", () => {
     // was pressed it wasn't.
     const w = world({
       check: {
-        installDir: "/Users/a/granted",
-        grantedInstall: true,
+        installDir: "/Users/a/treatable",
+        treatableInstall: true,
         installerMade: true,
         unsaved: ["changed or new files (1)"],
         keyFiles: [],
@@ -208,7 +208,7 @@ describe("POST /api/app/uninstall", () => {
     assert.deepEqual(cannot.calls.started, []);
 
     const notOurs = world({
-      check: { installDir: "/Users/a/own", grantedInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
+      check: { installDir: "/Users/a/own", treatableInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
     });
     const second = await handleUninstallPost(postReq({ action: "uninstall" }), notOurs.deps);
     assert.equal(second.status, 409);
@@ -232,7 +232,7 @@ describe("POST /api/app/uninstall", () => {
   // rename; the other's retry loop exhausts and it exits 3 "files-in-use"
   // claiming "nothing was deleted" — which is false, because the install is
   // gone. Whichever log is written last is what the page polls, so the user
-  // could be shown "couldn't delete, try again" after Granted had been removed.
+  // could be shown "couldn't delete, try again" after Treatable had been removed.
   // Reachable from two browser tabs, a reload-and-reclick, or any client of the
   // loopback endpoint.
   test("two uninstalls started at the same time: exactly one 202, the other 409, and only one uninstaller spawned", async () => {
@@ -245,7 +245,7 @@ describe("POST /api/app/uninstall", () => {
         // race needs unmistakable instead of a single microtask wide.
         readUninstallCheck: async () => {
           await new Promise((r) => setTimeout(r, 20));
-          return { installDir: "/Users/a/granted", grantedInstall: true, installerMade: true, unsaved: [], keyFiles: [], backupDir: "/b" };
+          return { installDir: "/Users/a/treatable", treatableInstall: true, installerMade: true, unsaved: [], keyFiles: [], backupDir: "/b" };
         },
       },
     });
@@ -265,8 +265,8 @@ describe("POST /api/app/uninstall", () => {
   // the feature out for the whole staleness window.
   test("a refusal that happens after the latch is taken releases it, so the next attempt is not 'already running'", async () => {
     const dirty = {
-      installDir: "/Users/a/granted",
-      grantedInstall: true,
+      installDir: "/Users/a/treatable",
+      treatableInstall: true,
       installerMade: true,
       unsaved: ["changed or new files (2)"],
       keyFiles: [],
@@ -282,7 +282,7 @@ describe("POST /api/app/uninstall", () => {
     // And a folder the installer didn't make: also 409, also retryable.
     resetUninstallStateForTests();
     const notOurs = world({
-      check: { installDir: "/Users/a/own", grantedInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
+      check: { installDir: "/Users/a/own", treatableInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
     });
     assert.equal((await handleUninstallPost(postReq({ action: "uninstall" }), notOurs.deps)).status, 409);
     assert.equal((await (await handleUninstallGet(getReq("?check=0"), notOurs.deps)).json()).running, false, "no latch left behind");
@@ -301,7 +301,7 @@ describe("POST /api/app/uninstall", () => {
 
     // Now an attempt that is refused here, before any script runs.
     const notOurs = world({
-      check: { installDir: "/Users/a/own", grantedInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
+      check: { installDir: "/Users/a/own", treatableInstall: true, installerMade: false, unsaved: [], keyFiles: [], backupDir: "/b" },
     });
     assert.equal((await handleUninstallPost(postReq({ action: "uninstall" }), notOurs.deps)).status, 409);
     const after = await (await handleUninstallGet(getReq("?check=0"), world().deps)).json();
@@ -311,7 +311,7 @@ describe("POST /api/app/uninstall", () => {
 
   // REGRESSION (review): the script is only SPAWNED when this answers 202, and
   // it can still refuse afterwards — exit 3 for a parent folder it can't write
-  // to leaves the install whole and Granted running. The latch used to be
+  // to leaves the install whole and Treatable running. The latch used to be
   // cleared only by an immediate spawn error, so every later attempt got
   // "already running" until the whole server was restarted: no way to retry.
   test("an uninstaller that refused can be retried at once: its log says so, and the latch goes", async () => {

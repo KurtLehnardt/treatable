@@ -21,7 +21,7 @@ const local = { local: true, model: "gemma4:latest", host: "http://localhost:114
 describe("describeSearchError — Local", () => {
   test("Ollama unreachable (preflight)", () => {
     const msg = describeSearchError(new LocalSetupError("ollama_unreachable"), local)!;
-    assert.match(msg, /^Granted couldn't reach Ollama/);
+    assert.match(msg, /^Treatable couldn't reach Ollama/);
     assert.match(msg, /start it in Settings → Model/);
   });
   test("Ollama unreachable mid-search: a refused connection, even wrapped as a batch failure's cause", () => {

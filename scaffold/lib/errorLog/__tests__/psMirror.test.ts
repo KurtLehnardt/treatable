@@ -13,8 +13,8 @@ import { SANITIZE_SETTINGS } from "../sanitize";
 const PS = join(process.cwd(), "scripts", "windows", "report-problem.ps1");
 
 export function settingsInPowerShell(script: string): unknown {
-  const m = /\$GrantedSanitizeRulesJson = @'\r?\n([\s\S]*?)\r?\n'@/.exec(script);
-  assert.ok(m, "report-problem.ps1 has a $GrantedSanitizeRulesJson here-string");
+  const m = /\$TreatableSanitizeRulesJson = @'\r?\n([\s\S]*?)\r?\n'@/.exec(script);
+  assert.ok(m, "report-problem.ps1 has a $TreatableSanitizeRulesJson here-string");
   return JSON.parse(m[1]);
 }
 
@@ -25,10 +25,10 @@ test("report-problem.ps1's settings are sanitize-rules.json's (same rules in the
 
 test("report-problem.ps1 uses the shared env-name rules and the same home / user / host patterns as sanitize.ts", () => {
   const ps = readFileSync(PS, "utf8");
-  assert.ok(ps.includes("$GrantedSanitize.secretEnvName"));
-  assert.ok(ps.includes("$GrantedSanitize.settingEnvName"));
-  assert.ok(ps.includes("$GrantedSanitize.tokenLikeValue"));
-  assert.ok(ps.includes("$GrantedSanitize.publicHosts"));
+  assert.ok(ps.includes("$TreatableSanitize.secretEnvName"));
+  assert.ok(ps.includes("$TreatableSanitize.settingEnvName"));
+  assert.ok(ps.includes("$TreatableSanitize.tokenLikeValue"));
+  assert.ok(ps.includes("$TreatableSanitize.publicHosts"));
   assert.ok(ps.includes(`'(?![A-Za-z0-9_\\-])'`), "home pattern");
   assert.ok(ps.includes(`'(^|[^A-Za-z0-9_])'`), "user pattern");
   assert.ok(ps.includes(`'$1[user]'`));

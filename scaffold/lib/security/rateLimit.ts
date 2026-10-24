@@ -4,7 +4,7 @@
  * `/api/interview`). These routes drive real Anthropic/OpenAI spend, so an
  * unthrottled caller is a denial-of-wallet exposure (security review MEDIUM).
  *
- * SCOPE: this counter lives in one process's memory. Granted runs locally as a
+ * SCOPE: this counter lives in one process's memory. Treatable runs locally as a
  * single instance, so that is the whole population and the cap holds. It stays a
  * deliberate soft cap — it blunts a naive burst / accidental retry loop from one
  * client cheaply and with zero infra. If this is ever fronted by more than one

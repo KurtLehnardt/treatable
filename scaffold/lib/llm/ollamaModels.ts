@@ -39,7 +39,7 @@ export type OllamaStatus = {
   /** What answers at `host` is Ollama (its /api/tags works). */
   isOllama: boolean;
   host: string;
-  /** The host is this machine, so Granted can install / start Ollama itself. */
+  /** The host is this machine, so Treatable can install / start Ollama itself. */
   canManage: boolean;
   platform: string;
   chatModels: OllamaModel[];

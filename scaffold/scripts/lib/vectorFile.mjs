@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const VECTOR_FILE_FORMAT = "granted-vectors/1";
+export const VECTOR_FILE_FORMAT = "treatable-vectors/1";
 
 /** Short, stable hash of an embedded text. */
 export function textHash(text) {

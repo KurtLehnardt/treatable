@@ -21,7 +21,7 @@ const DEAD_PID = 2 ** 30;
 const dirs: string[] = [];
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 function tmp() {
-  const d = mkdtempSync(join(tmpdir(), "granted-pidlock-"));
+  const d = mkdtempSync(join(tmpdir(), "treatable-pidlock-"));
   dirs.push(d);
   return d;
 }

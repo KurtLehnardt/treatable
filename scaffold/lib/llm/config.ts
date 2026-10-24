@@ -47,10 +47,10 @@ export interface LlmConfigFile {
   operationMode?: OperationMode;
 }
 
-// Lazy so tests can isolate via GRANTED_LLM_CONFIG_PATH; under node:test with no override, treat the file as absent (never leak a real saved key into tests).
+// Lazy so tests can isolate via TREATABLE_LLM_CONFIG_PATH; under node:test with no override, treat the file as absent (never leak a real saved key into tests).
 function configPath(): string {
-  if (process.env.GRANTED_LLM_CONFIG_PATH) return process.env.GRANTED_LLM_CONFIG_PATH;
-  if (process.env.NODE_TEST_CONTEXT) return path.join(os.tmpdir(), `granted-llm-config-unset-${process.pid}.json`);
+  if (process.env.TREATABLE_LLM_CONFIG_PATH) return process.env.TREATABLE_LLM_CONFIG_PATH;
+  if (process.env.NODE_TEST_CONTEXT) return path.join(os.tmpdir(), `treatable-llm-config-unset-${process.pid}.json`);
   return path.join(process.cwd(), "data", "local", "llm-config.json");
 }
 

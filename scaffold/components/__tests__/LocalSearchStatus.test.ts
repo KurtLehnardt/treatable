@@ -37,10 +37,10 @@ describe("describeLocalSearchStatus — the Search line", () => {
     assert.match(v.detail!, /about 275 MB/);
   });
 
-  test("built-in, not downloaded -> offers Download now and says the first search fetches it", () => {
+  test("built-in, not downloaded -> offers an explicit model download and truthful keyword fallback", () => {
     const v = describeLocalSearchStatus(status({ state: "missing" }))!;
     assert.equal(v.action, "Download now");
-    assert.match(v.detail!, /first search/);
+    assert.match(v.detail!, /Keyword search works now/);
   });
 
   test("built-in, download failed -> the error and a Retry", () => {

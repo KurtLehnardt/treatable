@@ -44,7 +44,7 @@ describe("the issue link", () => {
     assert.equal(p.labels, null, "labels= only works for people with triage rights");
     assert.match(p.title, /^Problem: The search didn't complete \(1\) \[E-BBBBBB\]$/);
     assert.equal(p.errorId, "E-BBBBBB");
-    assert.match(p.environment, /Granted version: 0\.2\.3/);
+    assert.match(p.environment, /Treatable version: 0\.2\.3/);
     assert.match(p.environment, /Operating system: win32 10\.0\.26200 x64/);
     assert.match(p.environment, /Model provider: cloud \(anthropic\)/);
     assert.match(p.environment, /Search mode: builtin/);
@@ -131,7 +131,7 @@ describe("no secrets leave in the link", () => {
     const errors = [
       err(1, {
         message: "401 from provider: sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZ for kurt@example.com at https://llm.acme-corp.example/v1",
-        stack: "at C:\\Users\\kurt\\granted\\scaffold\\lib\\llm\\client.ts:1:1",
+        stack: "at C:\\Users\\kurt\\treatable\\scaffold\\lib\\llm\\client.ts:1:1",
       }),
       err(2, { message: "GET https://x.example/v1?key=AIzaSyA1234567890abcdefghijkl failed; my-own-secret-xyz" }),
     ];

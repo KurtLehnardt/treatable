@@ -26,7 +26,7 @@ import {
   writeUpdateSettings,
 } from "../install";
 
-const dir = mkdtempSync(join(tmpdir(), "granted-appupdate-"));
+const dir = mkdtempSync(join(tmpdir(), "treatable-appupdate-"));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("releases", () => {
@@ -69,21 +69,21 @@ describe("this install", () => {
     const d = join(dir, "pkg");
     rmSync(d, { recursive: true, force: true });
     mkdirSync(d, { recursive: true });
-    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "granted", version: "0.4.2" }));
+    writeFileSync(join(d, "package.json"), JSON.stringify({ name: "treatable", version: "0.4.2" }));
     assert.equal(appVersion(d), "0.4.2");
     assert.equal(appVersion(join(dir, "nowhere")), "0.0.0");
   });
 
   test("only an installer-made Windows install with the updater can update itself", () => {
-    const scaffold = "C:\\x\\granted\\scaffold";
+    const scaffold = "C:\\x\\treatable\\scaffold";
     const has = (...paths: string[]) => (p: string) => paths.some((q) => p.toLowerCase().endsWith(q));
-    const marker = "\\.git\\granted-installer";
+    const marker = "\\.git\\treatable-installer";
     const updater = "\\scripts\\windows\\update.ps1";
     assert.deepEqual(installInfo(scaffold, "win32", has(marker, updater)), {
-      installDir: "C:\\x\\granted",
+      installDir: "C:\\x\\treatable",
       canUpdate: true,
       reason: null,
-      script: "C:\\x\\granted\\scaffold\\scripts\\windows\\update.ps1",
+      script: "C:\\x\\treatable\\scaffold\\scripts\\windows\\update.ps1",
     });
     assert.equal(installInfo(scaffold, "win32", has(updater)).reason, "not-installer-made", "a developer's own checkout");
     assert.equal(installInfo(scaffold, "win32", has(marker)).reason, "no-updater");
@@ -96,15 +96,15 @@ describe("this install", () => {
   // The same question on macOS, which has its own updater since the installer
   // came to it: scripts/macos/update.sh, gated on the very same marker.
   test("an installer-made macOS install with scripts/macos/update.sh can update itself too", () => {
-    const scaffold = "/Users/a/granted/scaffold";
+    const scaffold = "/Users/a/treatable/scaffold";
     const has = (...paths: string[]) => (p: string) => paths.some((q) => p.endsWith(q));
-    const marker = "/.git/granted-installer";
+    const marker = "/.git/treatable-installer";
     const updater = "/scripts/macos/update.sh";
     assert.deepEqual(installInfo(scaffold, "darwin", has(marker, updater)), {
-      installDir: "/Users/a/granted",
+      installDir: "/Users/a/treatable",
       canUpdate: true,
       reason: null,
-      script: "/Users/a/granted/scaffold/scripts/macos/update.sh",
+      script: "/Users/a/treatable/scaffold/scripts/macos/update.sh",
     });
     // BOTH halves are required, each with its own reason.
     assert.equal(installInfo(scaffold, "darwin", has(updater)).reason, "not-installer-made", "a developer's own checkout");
@@ -126,9 +126,9 @@ describe("this install", () => {
   // each gates on its own script: an install with one but not the other can do
   // exactly the one it has.
   test("the marker is shared; each script gates only its own feature", () => {
-    const scaffold = "/Users/a/granted/scaffold";
+    const scaffold = "/Users/a/treatable/scaffold";
     const has = (...paths: string[]) => (p: string) => paths.some((q) => p.endsWith(q));
-    const marker = "/.git/granted-installer";
+    const marker = "/.git/treatable-installer";
     const onlyUpdate = has(marker, "/scripts/macos/update.sh");
     const onlyUninstall = has(marker, "/scripts/macos/uninstall.sh");
     assert.equal(installInfo(scaffold, "darwin", onlyUpdate).canUpdate, true);
@@ -140,16 +140,16 @@ describe("this install", () => {
   // The uninstall half of the same question, and macOS-only on purpose: a
   // Windows install is uninstalled from Windows' own "Installed apps" list.
   test("only an installer-made macOS install with the uninstaller can uninstall itself", () => {
-    const scaffold = "/Users/a/granted/scaffold";
+    const scaffold = "/Users/a/treatable/scaffold";
     const has = (...paths: string[]) => (p: string) => paths.some((q) => p.endsWith(q));
-    const marker = "/.git/granted-installer";
+    const marker = "/.git/treatable-installer";
     const script = "/scripts/macos/uninstall.sh";
     const both = uninstallInfo(scaffold, "darwin", has(marker, script));
     assert.deepEqual(both, {
-      installDir: "/Users/a/granted",
+      installDir: "/Users/a/treatable",
       canUninstall: true,
       reason: null,
-      script: "/Users/a/granted/scaffold/scripts/macos/uninstall.sh",
+      script: "/Users/a/treatable/scaffold/scripts/macos/uninstall.sh",
     });
     assert.equal(uninstallInfo(scaffold, "win32", has(marker, script)).reason, "not-macos");
     assert.equal(uninstallInfo(scaffold, "linux", has(marker, script)).reason, "not-macos");
@@ -169,33 +169,33 @@ describe("this install", () => {
 // test picks up the very same platform-dependent separator the code under test
 // did, so a branch that joins a macOS path with Windows separators (or the
 // reverse) still "passes" on every runner. That exact bug in the installer's
-// own grantedSettingsPath only surfaced on the windows-latest CI runner, where
+// own treatableSettingsPath only surfaced on the windows-latest CI runner, where
 // its test did assert a literal.
 describe("settings and status (the file the tray and installer share)", () => {
-  test("lives in %LOCALAPPDATA%\\Granted unless a test overrides it", () => {
-    assert.equal(settingsPath({ LOCALAPPDATA: "C:\\L" }), "C:\\L\\Granted\\settings.json");
-    assert.equal(settingsPath({ GRANTED_SETTINGS_PATH: "C:\\t\\s.json", LOCALAPPDATA: "C:\\L" }), "C:\\t\\s.json");
-    assert.equal(updateStatusPath({ GRANTED_SETTINGS_PATH: join("C:\\t", "s.json") }), join("C:\\t", "update-status.json"));
+  test("lives in %LOCALAPPDATA%\\Treatable unless a test overrides it", () => {
+    assert.equal(settingsPath({ LOCALAPPDATA: "C:\\L" }), "C:\\L\\Treatable\\settings.json");
+    assert.equal(settingsPath({ TREATABLE_SETTINGS_PATH: "C:\\t\\s.json", LOCALAPPDATA: "C:\\L" }), "C:\\t\\s.json");
+    assert.equal(updateStatusPath({ TREATABLE_SETTINGS_PATH: join("C:\\t", "s.json") }), join("C:\\t", "update-status.json"));
   });
 
-  // macOS's own per-user location, shared with scripts/macos/granted-tray.sh
+  // macOS's own per-user location, shared with scripts/macos/treatable-tray.sh
   // and the Swift menu-bar helper (which read and write the same openIn /
-  // autoUpdate / lastAutoCheck keys Windows uses) — not ~/.granted, which is
+  // autoUpdate / lastAutoCheck keys Windows uses) — not ~/.treatable, which is
   // what every non-Windows platform used before background running on macOS.
-  test("macOS: ~/Library/Application Support/Granted/settings.json; elsewhere ~/.granted", () => {
-    assert.equal(settingsPath({}, "darwin", "/Users/a"), "/Users/a/Library/Application Support/Granted/settings.json");
-    assert.equal(settingsPath({}, "linux", "/home/a"), "/home/a/.granted/settings.json");
+  test("macOS: ~/Library/Application Support/Treatable/settings.json; elsewhere ~/.treatable", () => {
+    assert.equal(settingsPath({}, "darwin", "/Users/a"), "/Users/a/Library/Application Support/Treatable/settings.json");
+    assert.equal(settingsPath({}, "linux", "/home/a"), "/home/a/.treatable/settings.json");
     // The overrides still win on macOS, in the same order.
-    assert.equal(settingsPath({ GRANTED_SETTINGS_PATH: "/t/s.json" }, "darwin", "/Users/a"), "/t/s.json");
-    assert.equal(settingsPath({ LOCALAPPDATA: "C:\\L" }, "darwin", "/Users/a"), "C:\\L\\Granted\\settings.json");
+    assert.equal(settingsPath({ TREATABLE_SETTINGS_PATH: "/t/s.json" }, "darwin", "/Users/a"), "/t/s.json");
+    assert.equal(settingsPath({ LOCALAPPDATA: "C:\\L" }, "darwin", "/Users/a"), "C:\\L\\Treatable\\settings.json");
     // Nothing above may depend on the OS this test runs under: the macOS path
     // must never gain a backslash, and the Windows one never a forward slash.
     assert.ok(!settingsPath({}, "darwin", "/Users/a").includes("\\"), "the macOS path is POSIX on every runner");
     assert.ok(!settingsPath({ LOCALAPPDATA: "C:\\L" }).includes("/"), "the Windows path is win32 on every runner");
     // update-status.json follows the settings file, so it lands there too.
     assert.equal(
-      updateStatusPath({ GRANTED_SETTINGS_PATH: join("/Users/a/Library/Application Support/Granted", "settings.json") }),
-      join("/Users/a/Library/Application Support/Granted", "update-status.json"),
+      updateStatusPath({ TREATABLE_SETTINGS_PATH: join("/Users/a/Library/Application Support/Treatable", "settings.json") }),
+      join("/Users/a/Library/Application Support/Treatable", "update-status.json"),
     );
   });
 
@@ -267,8 +267,8 @@ describe("starting the updater", () => {
     }) as unknown as typeof import("node:child_process").spawn;
     // The updater it runs is the one installInfo() reported, handed over as an
     // argument — never a path rebuilt here.
-    const script = installInfo("/Users/a/granted/scaffold", "darwin", () => true).script as string;
-    assert.equal(script, "/Users/a/granted/scaffold/scripts/macos/update.sh");
+    const script = installInfo("/Users/a/treatable/scaffold", "darwin", () => true).script as string;
+    assert.equal(script, "/Users/a/treatable/scaffold/scripts/macos/update.sh");
     await startUpdater("v0.2.0", 3123, script, {
       platform: "darwin",
       spawnImpl,
@@ -279,7 +279,7 @@ describe("starting the updater", () => {
     assert.equal(calls.length, 1);
     const { file, args, options } = calls[0];
     assert.equal(file, "/bin/bash");
-    assert.deepEqual(args, ["/Users/a/granted/scaffold/scripts/macos/update.sh", "--ref", "v0.2.0", "--port", "3123"]);
+    assert.deepEqual(args, ["/Users/a/treatable/scaffold/scripts/macos/update.sh", "--ref", "v0.2.0", "--port", "3123"]);
     // The three things that keep the updater alive while it stops the very
     // server that started it: its own session, a working directory outside the
     // install being replaced, and no pipe back to this process.
@@ -311,7 +311,7 @@ describe("starting the updater", () => {
     }) as unknown as typeof import("node:child_process").spawn;
 
     await startUpdater("v0.2.0", 3123, "/somewhere/else/my-update.sh", {
-      dir: "/Users/a/granted/scaffold",
+      dir: "/Users/a/treatable/scaffold",
       platform: "darwin",
       spawnImpl,
       logPath: join(dir, "up.log"),
@@ -362,7 +362,7 @@ describe("starting the updater", () => {
   });
 
   test("the updater's own log goes in the temporary folder, next to the uninstaller's", () => {
-    assert.equal(updateLogPath(new Date("2026-10-06T12:34:56.000Z"), "/tmp"), "/tmp/granted-update-2026-10-06T12-34-56-000Z.log");
+    assert.equal(updateLogPath(new Date("2026-10-06T12:34:56.000Z"), "/tmp"), "/tmp/treatable-update-2026-10-06T12-34-56-000Z.log");
   });
 });
 
@@ -377,12 +377,12 @@ describe("starting the uninstaller (macOS)", () => {
 
   test("parseUninstallCheck reads the script's own line, and nothing it doesn't recognize", () => {
     const line =
-      '{"check":true,"installDir":"/g","exists":true,"isLink":false,"grantedInstall":true,"installerMade":true,' +
+      '{"check":true,"installDir":"/g","exists":true,"isLink":false,"treatableInstall":true,"installerMade":true,' +
       '"unsaved":["changed or new files (2)"],"keyFiles":["/g/scaffold/.env.local"],"launchAgent":"own","launcher":"none",' +
       '"settingsPath":"/s","logDir":"/l","backupDir":"/b"}';
     assert.deepEqual(parseUninstallCheck(`something a shell printed\n${line}\n`), {
       installDir: "/g",
-      grantedInstall: true,
+      treatableInstall: true,
       installerMade: true,
       unsaved: ["changed or new files (2)"],
       keyFiles: ["/g/scaffold/.env.local"],
@@ -400,7 +400,7 @@ describe("starting the uninstaller (macOS)", () => {
     const calls: Array<{ file: string; args: string[] }> = [];
     const execFileImpl = ((file: string, args: string[], _options: unknown, cb: (e: null, out: string) => void) => {
       calls.push({ file, args });
-      cb(null, '{"check":true,"installDir":"/g","grantedInstall":true,"installerMade":true,"unsaved":[],"keyFiles":[],"backupDir":"/b"}');
+      cb(null, '{"check":true,"installDir":"/g","treatableInstall":true,"installerMade":true,"unsaved":[],"keyFiles":[],"backupDir":"/b"}');
     }) as unknown as typeof import("node:child_process").execFile;
     const check = await readUninstallCheck("/g/scaffold/scripts/macos/uninstall.sh", { execFileImpl });
     assert.deepEqual(calls, [{ file: "/bin/bash", args: ["/g/scaffold/scripts/macos/uninstall.sh", "--check"] }]);
@@ -457,7 +457,7 @@ describe("starting the uninstaller (macOS)", () => {
   });
 
   test("the log goes in the temporary folder, never one the uninstall deletes", () => {
-    assert.equal(uninstallLogPath(new Date("2026-10-06T12:34:56.000Z"), "/tmp"), "/tmp/granted-uninstall-2026-10-06T12-34-56-000Z.log");
+    assert.equal(uninstallLogPath(new Date("2026-10-06T12:34:56.000Z"), "/tmp"), "/tmp/treatable-uninstall-2026-10-06T12-34-56-000Z.log");
   });
 
   // That log is the only way the server can learn what a started uninstaller

@@ -9,7 +9,7 @@ import type { Opportunity, StartupProfile } from "../types";
 // split-on-413 recovery. Routed through the OpenAI-compat shim (groq/openai
 // presets) so the fetch stub can inspect/control batch sizes directly.
 
-const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-freetier-batching-test-${process.pid}.json`);
+const CONFIG_PATH = path.join(os.tmpdir(), `treatable-llm-config-freetier-batching-test-${process.pid}.json`);
 
 let explainMatches: typeof import("../claude").explainMatches;
 let explainMatchesTwoPass: typeof import("../claude").explainMatchesTwoPass;
@@ -18,7 +18,7 @@ let resetLlmConfigCache: typeof import("../llm/config").resetLlmConfigCache;
 let withHostedFetch: typeof import("../llm/client").withHostedFetch;
 
 before(async () => {
-  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
   ({ explainMatches, explainMatchesTwoPass } = await import("../claude"));
   ({ writeLlmConfig, resetLlmConfigCache } = await import("../llm/config"));
   ({ withHostedFetch } = await import("../llm/client"));

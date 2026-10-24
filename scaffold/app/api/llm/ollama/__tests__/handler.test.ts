@@ -234,7 +234,7 @@ describe("POST /api/llm/ollama — install", () => {
         }
         return fetch(url, init);
       }) as typeof fetch,
-      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "granted-ollama-install-test-")),
+      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "treatable-ollama-install-test-")),
       verifySignature: async (file) => {
         commands.push(`verify ${path.basename(file)}`);
         return true;
@@ -332,7 +332,7 @@ describe("jobs never get stuck running", () => {
       platform: "win32",
       hasWinget: () => false,
       idleMs: 100,
-      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "granted-ollama-install-test-")),
+      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "treatable-ollama-install-test-")),
       fetch: (async () => new Response(new ReadableStream({ start() {} }), { status: 200 })) as typeof fetch,
       verifySignature: async () => assert.fail("nothing to verify"),
     });
@@ -346,7 +346,7 @@ describe("jobs never get stuck running", () => {
     installOllama({
       platform: "win32",
       hasWinget: () => false,
-      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "granted-ollama-install-test-")),
+      tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "treatable-ollama-install-test-")),
       fetch: (async () => new Response(new Uint8Array(16), { status: 200, headers: { "content-length": "16" } })) as typeof fetch,
       verifySignature: async () => false,
       runCommand: async (cmd) => (ran.push(cmd), 0),
@@ -365,7 +365,7 @@ describe("jobs never get stuck running", () => {
 });
 
 describe("a local server that isn't Ollama (LM Studio, vLLM)", () => {
-  test("is never started or installed by Granted", async () => {
+  test("is never started or installed by Treatable", async () => {
     await useMock([], { listening: false });
     process.env.LLM_BASE_URL = `${mock!.host}/v1`; // a random port, not 11434
     const j = await (await handleOllamaStatusGet(deps({ getStatus: () => getOllamaStatus({ hasWinget: () => true, platform: "win32" }) }))).json();

@@ -70,7 +70,7 @@ function describeSpace(s: SearchStatus): LocalSearchView {
     return {
       tone: "info",
       title,
-      detail: `The search model (about ${mb(b.totalBytes)}) isn't downloaded yet. It downloads by itself on your first search, or now.`,
+      detail: `The search model (about ${mb(b.totalBytes)}) isn't downloaded yet. Keyword search works now. Choose Download now to enable local semantic matching.`,
       action: "Download now",
     };
   }

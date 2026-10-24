@@ -65,7 +65,7 @@ describe("getSelectedStateSources / setSelectedStateSources", () => {
   });
 
   test("malformed stored JSON falls back to the default, not a crash", () => {
-    mem.set("granted:selectedStateSources", "{not json");
+    mem.set("treatable:selectedStateSources", "{not json");
     assert.deepEqual(getSelectedStateSources(), DEFAULT_STATE_SOURCES);
   });
 });
@@ -84,11 +84,11 @@ describe("hasDeclinedStateEnablePrompt / markStateEnablePromptDeclined", () => {
   test("marking the same state declined twice doesn't duplicate it", () => {
     markStateEnablePromptDeclined("ca-grants");
     markStateEnablePromptDeclined("ca-grants");
-    assert.deepEqual(JSON.parse(mem.get("granted:declinedStateEnablePrompts")!), ["ca-grants"]);
+    assert.deepEqual(JSON.parse(mem.get("treatable:declinedStateEnablePrompts")!), ["ca-grants"]);
   });
 
   test("malformed stored JSON reads as nothing declined, not a crash", () => {
-    mem.set("granted:declinedStateEnablePrompts", "{not json");
+    mem.set("treatable:declinedStateEnablePrompts", "{not json");
     assert.equal(hasDeclinedStateEnablePrompt("ut-grants"), false);
   });
 });
@@ -101,13 +101,13 @@ describe("getManageOllama / setManageOllama", () => {
   test("explicitly on round-trips to true", () => {
     setManageOllama(true);
     assert.equal(getManageOllama(), true);
-    assert.equal(mem.get("granted:manageOllama"), "1");
+    assert.equal(mem.get("treatable:manageOllama"), "1");
   });
 
   test("explicitly off round-trips to false, and stores \"0\" rather than removing the key", () => {
     setManageOllama(false);
     assert.equal(getManageOllama(), false);
-    assert.equal(mem.get("granted:manageOllama"), "0");
-    assert.equal(mem.has("granted:manageOllama"), true);
+    assert.equal(mem.get("treatable:manageOllama"), "0");
+    assert.equal(mem.has("treatable:manageOllama"), true);
   });
 });

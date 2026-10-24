@@ -10,8 +10,8 @@
  * The model files are pinned to one Hugging Face revision and verified by
  * SHA-256, then kept in scaffold/models/ (gitignored). At runtime the app only
  * loads from that folder (remote loading is switched off), so search works
- * offline once the files are there. GRANTED_MODEL_URL points the download at a
- * mirror: files are fetched from `${GRANTED_MODEL_URL}/<file path>`.
+ * offline once the files are there. TREATABLE_MODEL_URL points the download at a
+ * mirror: files are fetched from `${TREATABLE_MODEL_URL}/<file path>`.
  */
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -40,16 +40,16 @@ export const BUILTIN_MODEL_TOTAL_BYTES = BUILTIN_MODEL.files.reduce((n, f) => n 
 const SCAFFOLD_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
- * Where model files live: GRANTED_MODELS_DIR, else <working directory>/models when that is
+ * Where model files live: TREATABLE_MODELS_DIR, else <working directory>/models when that is
  * scaffold/ (as it is for the app and the scripts), else scaffold/models next to this file. Under node:test with no
  * override, a folder that never exists, so a developer's downloaded model never leaks into
- * unit tests (the integration test points GRANTED_MODELS_DIR at the real one).
+ * unit tests (the integration test points TREATABLE_MODELS_DIR at the real one).
  *
  * @param {Record<string, string | undefined>} [env]
  */
 export function modelsDir(env = process.env) {
-  if (env.GRANTED_MODELS_DIR) return env.GRANTED_MODELS_DIR;
-  if (env.NODE_TEST_CONTEXT) return join(tmpdir(), `granted-models-unset-${process.pid}`);
+  if (env.TREATABLE_MODELS_DIR) return env.TREATABLE_MODELS_DIR;
+  if (env.NODE_TEST_CONTEXT) return join(tmpdir(), `treatable-models-unset-${process.pid}`);
   // The app and every script run from scaffold/. Prefer that over this file's own location,
   // which a bundler may have frozen to the path of the machine that built the app.
   const cwd = process.cwd();
@@ -63,12 +63,12 @@ export function builtinModelDir(dir = modelsDir()) {
 }
 
 /**
- * Download base: GRANTED_MODEL_URL (a mirror holding the same file layout), else the pinned Hugging Face revision.
+ * Download base: TREATABLE_MODEL_URL (a mirror holding the same file layout), else the pinned Hugging Face revision.
  *
  * @param {Record<string, string | undefined>} [env]
  */
 export function modelBaseUrl(env = process.env) {
-  const mirror = (env.GRANTED_MODEL_URL || "").trim().replace(/\/+$/, "");
+  const mirror = (env.TREATABLE_MODEL_URL || "").trim().replace(/\/+$/, "");
   return mirror || `https://huggingface.co/${BUILTIN_MODEL.repo}/resolve/${BUILTIN_MODEL.revision}`;
 }
 
@@ -184,7 +184,7 @@ export async function downloadBuiltinModel({
       done = before;
       throw new ModelDownloadError(
         `${f.path} failed its checksum (expected ${f.sha256.slice(0, 12)}..., got ${digest.slice(0, 12)}...). ` +
-          "The download may be corrupt, or GRANTED_MODEL_URL points at a different revision.",
+          "The download may be corrupt, or TREATABLE_MODEL_URL points at a different revision.",
       );
     }
     rmSync(dest, { force: true });

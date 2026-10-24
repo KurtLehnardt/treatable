@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { removeLegacyLocalEmbeddings } from "../legacyCleanup";
 
 test("the retired Ollama index and its job files are removed on upgrade, and nothing else", () => {
-  const base = mkdtempSync(join(tmpdir(), "granted-legacy-"));
+  const base = mkdtempSync(join(tmpdir(), "treatable-legacy-"));
   try {
     const local = join(base, "data", "local");
     mkdirSync(join(local, "local-embeddings"), { recursive: true });

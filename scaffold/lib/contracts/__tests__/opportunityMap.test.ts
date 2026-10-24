@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import {StudySearchResultSchema} from "../studyMatch";
 import {
   OpportunityMapSchema,
   CURRENT_OPPORTUNITY_MAP_VERSION,
@@ -81,7 +82,7 @@ function baseLiveMap() {
 const here = dirname(fileURLToPath(import.meta.url));
 const precomputed = JSON.parse(
   readFileSync(join(here, "../../../data/precomputed.json"), "utf8"),
-) as Array<{ key: string; id: string; map: unknown }>;
+) as {demos:Array<{name:string;result:unknown}>};
 
 /**
  * §3.6 — the OpportunityMap version tag must be ADDITIVE: every cached response
@@ -93,13 +94,13 @@ const precomputed = JSON.parse(
  */
 
 test("every cached precomputed map validates against the formalized schema", () => {
-  assert.ok(precomputed.length >= 4, "expected the 4 judged cases");
-  for (const entry of precomputed) {
-    const res = OpportunityMapSchema.safeParse(entry.map);
+  assert.ok(precomputed.demos.length >= 3, "expected at least three fictional clinical demos");
+  for (const entry of precomputed.demos) {
+    const res = StudySearchResultSchema.safeParse(entry.result);
     assert.equal(
       res.success,
       true,
-      `cached map '${entry.key}' failed: ${res.success ? "" : JSON.stringify(res.error.issues.slice(0, 3))}`,
+      `cached study result '${entry.name}' failed: ${res.success ? "" : JSON.stringify(res.error.issues.slice(0, 3))}`,
     );
   }
 });
@@ -109,14 +110,14 @@ test("a cached map with no version tag validates (version is optional / additive
   // `version === undefined`. Derive an explicitly-unstamped map by stripping any
   // version the current builder now stamps, so this asserts schema optionality
   // rather than depending on whether the frozen fixture predates the tag.
-  const { version: _drop, ...unstamped } = precomputed[0].map as { version?: unknown };
-  const parsed = OpportunityMapSchema.parse(unstamped);
+  const { version: _drop, ...unstamped } = precomputed.demos[0].result as { version?: unknown };
+  const parsed = StudySearchResultSchema.parse(unstamped);
   assert.equal(parsed.version, undefined);
 });
 
 test("a producer can stamp the current version without breaking the schema", () => {
-  const stamped = { ...(precomputed[0].map as object), version: CURRENT_OPPORTUNITY_MAP_VERSION };
-  const parsed = OpportunityMapSchema.parse(stamped);
+  const stamped = { ...(precomputed.demos[0].result as object), version: CURRENT_OPPORTUNITY_MAP_VERSION };
+  const parsed = StudySearchResultSchema.parse(stamped);
   assert.equal(parsed.version, CURRENT_OPPORTUNITY_MAP_VERSION);
 });
 

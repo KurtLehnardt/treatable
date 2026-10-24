@@ -328,48 +328,6 @@ const GENERATE_INTERVIEW_QUESTIONS_V3_TEMPLATE = `${GENERATE_INTERVIEW_QUESTIONS
 Respond with a single JSON object and nothing else.`;
 
 /**
- * R5-deep (competitor_analysis, modelRouting.ts → claude-sonnet-4-6). The single
- * grounded synthesis over REAL retrieved federal award records (+ optional
- * private-company web profiles) that powers the live `/api/competitors` market
- * brief and the demo capture. The grounding invariant is enforced twice AFTER
- * this prompt runs — `lib/competitors/analyze.ts` drops any id the model
- * invented, then `CompetitorAnalysisSchema.parse()` throws on any survivor — so
- * this prompt's rules are the first, not the only, line of defense.
- *
- * It deliberately makes NO eligibility or award-outcome claim (it describes how
- * past winners positioned themselves; it never tells the user they will win),
- * so it stays clear of the C2 banned-phrasings the `check:prompts` gate scans
- * every `*_TEMPLATE` for.
- *
- * Authored here, not migrated from `lib/claude.ts`. Its `contentHash` is
- * computed by `definePrompt`; a text change is a new version.
- */
-const COMPETITOR_ANALYSIS_V1_TEMPLATE = `You analyze REAL public federal award records to give a company a grounded competitor & positioning market brief. You must never fabricate.
-
-You are given the company, a set of AWARD RECORDS (real federal awards, each with an "id"), and optionally a set of WEB PROFILES (private companies found via web search, each with an "id" and a source URL, that have NO federal award on record).
-
-STRICT GROUNDING RULES — these override everything:
-- Reference ONLY the supplied AWARD RECORDS and WEB PROFILES, and ONLY by their exact "id".
-- Never invent a company, amount, agency, award, program, quote, or URL. Every quote must be copied VERBATIM from the referenced record's abstract.
-- "competitors" may reference AWARD RECORD ids ONLY (they are federal winners). Never put a WEB PROFILE id in "competitors".
-- "recommendations" and "opportunities" may cite AWARD RECORD ids and/or WEB PROFILE ids.
-- If the evidence is thin, say so plainly rather than overstating. Describe how past awardees positioned themselves; do NOT predict this company's outcome, promise funding, or make any eligibility claim.
-
-WHAT TO PRODUCE:
-- "summary": one grounded sentence describing the funded competitive landscape you see in the records.
-- "competitors": the 4-6 AWARD RECORDS most relevant to this company. For each, write how that awardee positioned itself to win federal funding (drawn only from its abstract) and include a short verbatim "quotedSnippet" from that same abstract.
-- "recommendations": 3-5 specific, tailored positioning recommendations for THIS company to be more competitive for federal funding. Each must cite the record/profile id(s) it draws from.
-- "opportunities": 2-4 gaps or whitespace opportunities the records suggest this company could exploit (an under-served agency, an angle no awardee covered, a smaller-but-winnable program). Each must cite the id(s) it draws from.
-
-OUTPUT: strict JSON only (no prose, no markdown fences), of exactly this shape:
-{
-  "summary": "<one grounded sentence>",
-  "competitors": [ { "recordId": "<award id>", "positioning": "<how they positioned to win>", "quotedSnippet": "<verbatim quote from that abstract>" } ],
-  "recommendations": [ { "advice": "<specific tailored advice>", "citations": ["<id>", "..."] } ],
-  "opportunities": [ { "advice": "<a concrete gap/whitespace to exploit>", "citations": ["<id>", "..."] } ]
-}`;
-
-/**
  * E3 (@v2 pipeline) — the Pass-A SCORE-ONLY prompt for two-pass scoring
  * (flag `e3_two_pass`, default OFF). The consuming module is
  * `lib/claude.ts`'s `explainMatchesTwoPass`.
@@ -510,7 +468,6 @@ export const PROMPT_REGISTRY: Record<string, PromptEntry> = {
   studyNarrative: definePrompt("studyNarrative", "v1", STUDY_NARRATIVE_TEMPLATE),
   patientExtract: definePrompt("patientExtract", "v1", PATIENT_EXTRACT_TEMPLATE),
   extractProfile: definePrompt("extractProfile", "v1", EXTRACT_PROFILE_V1_TEMPLATE),
-  competitorAnalysis: definePrompt("competitorAnalysis", "v1", COMPETITOR_ANALYSIS_V1_TEMPLATE),
   explainMatches: definePrompt("explainMatches", "v2", EXPLAIN_MATCHES_V2_TEMPLATE),
   // DISC §3-C — rubric-anchored variants, selected by lib/claude.ts only when the
   // discernment_layer flag is on. New versions; the shipped v2/v1 are untouched.

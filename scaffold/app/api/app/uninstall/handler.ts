@@ -1,8 +1,8 @@
 /**
- * Settings → About Granted → Uninstall Granted (macOS).
+ * Settings → About Treatable → Uninstall Treatable (macOS).
  *
  * The counterpart of Windows' "Installed apps" entry, which is where a Windows
- * user uninstalls Granted and which scripts/windows/uninstall.ps1 registers.
+ * user uninstalls Treatable and which scripts/windows/uninstall.ps1 registers.
  * macOS has no such list, so the work order puts uninstall in two places
  * instead: the menu-bar menu (which runs the script directly, with its own
  * alert) and here.
@@ -100,7 +100,7 @@ export function resetUninstallStateForTests(): void {
  * Whether an uninstall is still running, and what the last one said.
  *
  * Three ways a latch is let go, in this order: the uninstaller reported that it
- * did NOT remove anything (Granted is still here and can be asked again — the
+ * did NOT remove anything (Treatable is still here and can be asked again — the
  * case the whole log-reading is for), the uninstaller reported that it DID
  * (nothing more is coming; the server is about to stop), or nothing was
  * reported at all for longer than an uninstall can take.
@@ -145,8 +145,8 @@ async function info(d: UninstallDeps, check: boolean): Promise<AppUninstallInfo>
     return { canUninstall: false, reason: "no-uninstaller", installDir: install.installDir, ...NOTHING_FOUND, ...state };
   }
   return {
-    canUninstall: found.grantedInstall && found.installerMade,
-    reason: found.grantedInstall && found.installerMade ? null : "not-installer-made",
+    canUninstall: found.treatableInstall && found.installerMade,
+    reason: found.treatableInstall && found.installerMade ? null : "not-installer-made",
     installDir: found.installDir || install.installDir,
     unsaved: found.unsaved,
     keyFiles: found.keyFiles,
@@ -180,10 +180,10 @@ export async function handleUninstallGet(req: Req, deps: Partial<UninstallDeps> 
  *
  * Answers 202 { started: true, log } once the uninstaller has been STARTED,
  * which is all that can be promised: it quits this very server, so there is no
- * later reply to wait for. What it is not is a promise that Granted has gone —
+ * later reply to wait for. What it is not is a promise that Treatable has gone —
  * the script makes its own decisions afterwards and can still refuse (exit 3, a
  * parent folder it can't write to; exit 1, a copy of the keys it couldn't
- * make), leaving Granted running. Both of those print a line to `log`, which
+ * make), leaving Treatable running. Both of those print a line to `log`, which
  * GET ?check=0 reads back, and the page polls it rather than announcing
  * success. `keptKeys` here is likewise where the copy is MEANT to go; the
  * outcome in that log is what says where it went.
@@ -201,7 +201,7 @@ export async function handleUninstallPost(req: Req & { json?: () => Promise<unkn
 
   const install = d.uninstallInfo();
   if (!install.canUninstall || !install.script) {
-    return NextResponse.json({ error: "This copy of Granted can't uninstall itself", started: false, reason: install.reason }, { status: 409 });
+    return NextResponse.json({ error: "This copy of Treatable can't uninstall itself", started: false, reason: install.reason }, { status: 409 });
   }
   if (uninstallState(d).running) return NextResponse.json({ error: "An uninstall is already running", started: false }, { status: 409 });
   // Taken HERE, in the same synchronous run as the check above it, with no
@@ -213,7 +213,7 @@ export async function handleUninstallPost(req: Req & { json?: () => Promise<unkn
   // exhausted its retry loop and reported exit 3 "files-in-use, nothing was
   // deleted" — false, because the install was gone. Whichever log was written
   // last is what the page polls, so the user could be told the uninstall
-  // failed and to try again after Granted had already been removed. Two
+  // failed and to try again after Treatable had already been removed. Two
   // browser tabs, a reload-and-reclick, or any client of this loopback
   // endpoint is enough to do it.
   //
@@ -233,9 +233,9 @@ export async function handleUninstallPost(req: Req & { json?: () => Promise<unkn
   };
 
   const check = await d.readUninstallCheck(install.script);
-  if (!check || !check.grantedInstall || !check.installerMade) {
+  if (!check || !check.treatableInstall || !check.installerMade) {
     release();
-    return NextResponse.json({ error: "This folder isn't an install Granted's installer made, so it wasn't deleted", started: false }, { status: 409 });
+    return NextResponse.json({ error: "This folder isn't an install Treatable's installer made, so it wasn't deleted", started: false }, { status: 409 });
   }
   const force = body.force === true;
   if (check.unsaved.length > 0 && !force) {

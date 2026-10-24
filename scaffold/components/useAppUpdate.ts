@@ -1,6 +1,6 @@
 /**
  * Waiting through an update: the updater (update.ps1 on Windows, update.sh on
- * macOS) stops this server, installs the new release and starts Granted again,
+ * macOS) stops this server, installs the new release and starts Treatable again,
  * so for a minute or two every request fails. Polls the (GitHub-free) version
  * endpoint until the server answers with the new version — or the updater
  * reports an error.
@@ -39,5 +39,5 @@ export async function waitForUpdate(
     }
     await sleep(intervalMs);
   }
-  return { ok: false, message: "The update is taking much longer than expected. Check Granted's icon by the clock, or restart Granted." };
+  return { ok: false, message: "The update is taking much longer than expected. Check Treatable's icon by the clock, or restart Treatable." };
 }

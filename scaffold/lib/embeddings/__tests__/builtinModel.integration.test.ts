@@ -33,8 +33,8 @@ import { getSpace } from "../spaces";
 const SCAFFOLD = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const MODELS = join(SCAFFOLD, "models");
 const present = builtinModelPresent(MODELS);
-// CI's Windows model job sets GRANTED_REQUIRE_MODEL so a missing model fails instead of skipping.
-const skip = present || process.env.GRANTED_REQUIRE_MODEL ? false : "model files not in scaffold/models (npm run model:fetch)";
+// CI's Windows model job sets TREATABLE_REQUIRE_MODEL so a missing model fails instead of skipping.
+const skip = present || process.env.TREATABLE_REQUIRE_MODEL ? false : "model files not in scaffold/models (npm run model:fetch)";
 
 const QUERY = "search_query: Community health clinic expanding mental health services for rural veterans";
 
@@ -197,16 +197,18 @@ describe("built-in search model (integration)", { skip }, () => {
     assert.ok(cos(v, QUERY_REF_VECTOR) > 0.999, `cos ${cos(v, QUERY_REF_VECTOR)}`);
   });
 
-  test("the shipped corpus vectors match what the model produces for those records", async () => {
-    const space = getSpace("builtin");
-    const file = readVectorFile(join(SCAFFOLD, "data", "vectors"), "nomic-embed-text-v1.5");
-    assert.ok(file, "data/vectors/nomic-embed-text-v1.5 is committed");
-    const opps = JSON.parse(readFileSync(join(SCAFFOLD, "data", "opportunities.json"), "utf8")) as Array<{ id: string; program: string; agency: string; description: string }>;
-    for (const o of [opps[0], opps[Math.floor(opps.length / 2)], opps[opps.length - 1]]) {
-      const shipped = file!.vectors.get(o.id);
-      assert.ok(shipped, `${o.id} has a shipped vector`);
-      const [fresh] = await embedder.embed([spaceDocumentText(space, o)]);
-      assert.ok(cos(fresh, shipped!.vector) > 0.999, `${o.id}: cos ${cos(fresh, shipped!.vector)}`);
+  test("the shipped study vectors match the clinical128token model for current source records", async () => {
+    const {loadStudyEmbedder}=await import("../../../scripts/lib/studyEmbedder.mjs");
+    const {studyEmbedText}=await import("../../../scripts/lib/ctgov.mjs");
+    const previousModelsDir=process.env.TREATABLE_MODELS_DIR;process.env.TREATABLE_MODELS_DIR=MODELS;
+    const clinical=await loadStudyEmbedder();
+    if(previousModelsDir===undefined)delete process.env.TREATABLE_MODELS_DIR;else process.env.TREATABLE_MODELS_DIR=previousModelsDir;
+    const vectors=JSON.parse(readFileSync(join(SCAFFOLD,"data/vectors/builtin.json"),"utf8"));
+    const studies=JSON.parse(readFileSync(join(SCAFFOLD,"data/studies.json"),"utf8"));
+    for(const s of [studies[0],studies[Math.floor(studies.length/2)],studies.at(-1)]){
+      const shipped=vectors.vectors[s.id];assert.ok(shipped,`${s.id} has a shipped vector`);
+      const [fresh]=await clinical.embed([`search_document: ${studyEmbedText(s)}`]);
+      assert.equal(fresh.length,768);assert.ok(cos(fresh,shipped)>.999,`${s.id}: cosine ${cos(fresh,shipped)}`);
     }
   });
 

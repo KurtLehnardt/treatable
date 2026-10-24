@@ -19,7 +19,7 @@ import Swal from "sweetalert2";
 export async function confirmEnableState(stateLabel: string): Promise<boolean> {
   const result = await Swal.fire({
     title: `Enable grants for ${stateLabel}?`,
-    text: `Granted can fetch ${stateLabel}'s own grant programs alongside the federal ones, and pull them in now before you search.`,
+    text: `Treatable can fetch ${stateLabel}'s own grant programs alongside the federal ones, and pull them in now before you search.`,
     showCancelButton: true,
     confirmButtonText: "Enable",
     cancelButtonText: "Not now",

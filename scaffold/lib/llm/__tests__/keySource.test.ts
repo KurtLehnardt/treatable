@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { resolveKeySource, resetKeySourceCache } from "../keySource";
 
-const TMP_DIR = path.join(os.tmpdir(), `granted-keysource-test-${process.pid}`);
+const TMP_DIR = path.join(os.tmpdir(), `treatable-keysource-test-${process.pid}`);
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
 function writeTemp(name: string, content: string): string {
@@ -28,7 +28,7 @@ describe("resolveKeySource — inline", () => {
 });
 
 describe("resolveKeySource — env", () => {
-  const VAR = "GRANTED_KEYSOURCE_TEST_VAR";
+  const VAR = "TREATABLE_KEYSOURCE_TEST_VAR";
   afterEach(() => delete process.env[VAR]);
 
   test("reads process.env at use time", () => {
@@ -59,7 +59,7 @@ describe("resolveKeySource — file", () => {
 
   function withTempHome(fn: (home: string) => void): void {
     const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "granted-keysource-home-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "treatable-keysource-home-"));
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     try {

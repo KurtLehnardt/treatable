@@ -13,16 +13,16 @@ import { readErrorEntries } from "../../errorLog/store";
 import { isErrorId } from "../../errorLog/errorId";
 
 let dir: string;
-const saved = process.env["GRANTED_LOG_DIR"];
+const saved = process.env["TREATABLE_LOG_DIR"];
 beforeEach(() => {
   resetOllamaJobs();
-  dir = mkdtempSync(join(tmpdir(), "granted-ollama-log-"));
-  process.env["GRANTED_LOG_DIR"] = dir;
+  dir = mkdtempSync(join(tmpdir(), "treatable-ollama-log-"));
+  process.env["TREATABLE_LOG_DIR"] = dir;
 });
 afterEach(() => {
   resetOllamaJobs();
-  if (saved === undefined) delete process.env["GRANTED_LOG_DIR"];
-  else process.env["GRANTED_LOG_DIR"] = saved;
+  if (saved === undefined) delete process.env["TREATABLE_LOG_DIR"];
+  else process.env["TREATABLE_LOG_DIR"] = saved;
   rmSync(dir, { recursive: true, force: true });
 });
 

@@ -71,7 +71,7 @@ export type StatusDeps = {
   platform: NodeJS.Platform;
   fetch: typeof fetch;
   detectInstalled: () => boolean;
-  /** Granted may install / start Ollama for this host (default: this machine, port 11434). */
+  /** Treatable may install / start Ollama for this host (default: this machine, port 11434). */
   canManage: (host: string) => boolean;
   hasWinget: () => boolean;
   memGB: () => number | null;

@@ -6,7 +6,7 @@ import type { CanonOpportunity } from "./CanonOpportunity";
 
 /**
  * Used to live in lib/canon/rules.ts (CAN-04's per-NOFO extractor), relocated
- * here when the Supabase-backed Canon ingestion pipeline was retired (Granted
+ * here when the Supabase-backed Canon ingestion pipeline was retired (Treatable
  * is local-only now) -- this schema itself has no DB dependency, it's just a
  * stricter citation shape than the base CitationSchema (source_url + quote
  * both required, not optional) for a rule that's curated in code rather than

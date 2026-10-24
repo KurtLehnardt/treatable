@@ -4,7 +4,7 @@ import type { EligibilityDetermination } from "../contracts/eligibilityDetermina
 /**
  * These shapes and the cadence constant used to live in lib/canon/{version,
  * freshness}.ts, alongside the Supabase-backed corpus-sync pipeline that
- * would have populated them. That pipeline was retired (Granted is local-
+ * would have populated them. That pipeline was retired (Treatable is local-
  * only now) — but `lib/match.ts` has only ever called `annotateFreshness()`
  * with NO options (`m.eligibility = annotateFreshness(determination)`,
  * `annotateFreshness(known)`), so `snapshot`/`syncHealth`/`freshness` below

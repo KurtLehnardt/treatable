@@ -6,9 +6,9 @@ import path from "node:path";
 
 // Isolated per-process path so this suite's writes never race the real
 // data/local/llm-config.json that other suites in the full run assume is
-// absent (see GRANTED_LLM_CONFIG_PATH in ../config). Set BEFORE the module is
+// absent (see TREATABLE_LLM_CONFIG_PATH in ../config). Set BEFORE the module is
 // imported (in `before`, below) so it takes effect at first read.
-const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-test-${process.pid}.json`);
+const CONFIG_PATH = path.join(os.tmpdir(), `treatable-llm-config-test-${process.pid}.json`);
 
 let readLlmConfig: typeof import("../config").readLlmConfig;
 let writeLlmConfig: typeof import("../config").writeLlmConfig;
@@ -26,7 +26,7 @@ let isFullyLocal: typeof import("../config").isFullyLocal;
 let isLocalLlm: typeof import("../client").isLocalLlm;
 
 before(async () => {
-  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  process.env.TREATABLE_LLM_CONFIG_PATH = CONFIG_PATH;
   const config = await import("../config");
   const client = await import("../client");
   ({

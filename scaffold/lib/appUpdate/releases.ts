@@ -1,11 +1,11 @@
 /**
- * Granted's releases on GitHub, and comparing versions. The same rules as
+ * Treatable's releases on GitHub, and comparing versions. The same rules as
  * the installer's (installer/src/main/ipcPure.ts): only a published, stable
  * vMAJOR.MINOR.PATCH release counts, and "newer" is numeric.
  */
 
-export const LATEST_RELEASE_API = "https://api.github.com/repos/KurtLehnardt/granted/releases/latest";
-export const RELEASES_PAGE = "https://github.com/KurtLehnardt/granted/releases/latest";
+export const LATEST_RELEASE_API = "https://api.github.com/repos/KurtLehnardt/treatable/releases/latest";
+export const RELEASES_PAGE = "https://github.com/KurtLehnardt/treatable/releases/latest";
 
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
@@ -51,7 +51,7 @@ export async function fetchLatestRelease(
 ): Promise<LatestRelease> {
   try {
     const res = await fetchImpl(url, {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "granted-app" },
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "treatable-app" },
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });

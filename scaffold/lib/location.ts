@@ -148,7 +148,7 @@ export function statesMatch(a?: string | null, b?: string | null): boolean {
   return na !== undefined && na === normalizeStateName(b);
 }
 
-/** The states Granted has a real grant-data source for (mirrors
+/** The states Treatable has a real grant-data source for (mirrors
  *  components/StateSourcesSection.tsx's STATE_SOURCE_OPTIONS ids) --
  *  duplicated by hand, like TOGGLEABLE_STATE_SOURCES in
  *  app/api/corpus/refresh/handler.ts, rather than importing a component
@@ -165,7 +165,7 @@ export const SUPPORTED_STATE_SOURCES: Readonly<Record<string, string>> = {
  * supported, not-yet-selected state source -- the trigger for Settings'
  * "Enable grants for <state>?" prompt. `null` when the location doesn't
  * resolve to a state at all (normalizeStateName's own conservative rules),
- * resolves to a state Granted has no source for, or resolves to one already
+ * resolves to a state Treatable has no source for, or resolves to one already
  * in `selectedSources` (nothing to prompt about).
  */
 export function detectUnselectedSupportedState(

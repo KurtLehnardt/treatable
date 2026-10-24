@@ -101,9 +101,9 @@ function byScoreThenId(a: FilterableMatch, b: FilterableMatch): number {
  * descending, with no-data matches pinned LAST regardless of direction (an
  * unknown amount is never shown as more or less promising than a real one).
  * `"recency"` sorts by `retrieved_at` descending (newest first), with
- * missing-timestamp matches last — this is Granted's own first-seen
+ * missing-timestamp matches last — this is Treatable's own first-seen
  * timestamp (`refresh-corpus.mjs`'s `retrieved_at` stamp), i.e. "added to
- * Granted," never "posted by the agency" (that date isn't reliably available
+ * Treatable," never "posted by the agency" (that date isn't reliably available
  * from any source).
  */
 export function sortMatches<M extends FilterableMatch>(matches: M[] | null | undefined, key: SortKey): M[] {
