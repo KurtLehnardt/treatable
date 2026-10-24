@@ -66,6 +66,8 @@ const securityHeaders = [
 
 export default {
   reactStrictMode: true,
+  // This local app renders no remote images; do not expose the unused optimizer.
+  images: { unoptimized: true },
   experimental: {
     // The built-in search model (lib/embeddings/builtin.ts) runs on onnxruntime-node, a native
     // addon: Next.js 14 must load these from node_modules at runtime rather than bundle them.
