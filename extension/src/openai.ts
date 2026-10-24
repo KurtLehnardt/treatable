@@ -29,7 +29,7 @@ export const FAILURE_MESSAGES: Record<FailureKind, string> = {
   server: 'OpenAI had a server error. Try again shortly.',
   bad_request: 'OpenAI rejected the request (400).',
   agent_failed: 'The OpenAI agent task did not complete.',
-  agents_disabled: 'The OpenAI Agents API checklist is turned off in organization (HIPAA gate) mode: OpenAI does not list /v1/agents as eligible for Zero Data Retention or Private Retention. Use Local LLM for the checklist.',
+  agents_disabled: 'The OpenAI Agents API checklist is turned off in organization policy gate mode: OpenAI does not list /v1/agents as eligible for Zero Data Retention or Private Retention. Use Local LLM for the checklist.',
 };
 
 export class ProviderError extends Error {
@@ -200,7 +200,7 @@ export async function readAgentStream(response: Response, deadlineMs = 90000, si
 
 async function consume(reader: ReadableStreamDefaultReader<Uint8Array>, holder: {sessionId?: string}): Promise<{text: string; sessionId?: string}> {
   const decoder = new TextDecoder();
-  let buffer = '', finalText = '', lastText = '', outcome: 'completed' | 'failed' | undefined;
+  let buffer = '', pendingCR = '', finalText = '', lastText = '', outcome: 'completed' | 'failed' | undefined;
   const handle = (data: string) => {
     let event: any;
     try { event = JSON.parse(data); } catch { return; }
@@ -225,8 +225,12 @@ async function consume(reader: ReadableStreamDefaultReader<Uint8Array>, holder: 
   };
   while (!outcome) {
     const {value, done} = await reader.read();
-    if (done) { flush(buffer.replace(/\r\n?/g, '\n')); buffer = ''; break; }
-    buffer = (buffer + decoder.decode(value, {stream: true})).replace(/\r\n?/g, '\n');
+    if (done) { flush((buffer + pendingCR).replace(/\r\n?/g, '\n')); buffer = ''; break; }
+    let text = pendingCR + decoder.decode(value, {stream: true});
+    // Hold a trailing \r until the next chunk so a split \r\n is not read as two line breaks.
+    pendingCR = text.endsWith('\r') ? '\r' : '';
+    if (pendingCR) text = text.slice(0, -1);
+    buffer = (buffer + text).replace(/\r\n?/g, '\n');
     let cut;
     while (!outcome && (cut = buffer.indexOf('\n\n')) >= 0) {
       const chunk = buffer.slice(0, cut);

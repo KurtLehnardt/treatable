@@ -54,7 +54,7 @@ test('gate fails closed: no policy, bad schema, missing attestation, missing key
   const offline = await evaluateGate({policyRaw: POLICY, attested: true, apiKey: KEY, verify: verify('throw')});
   assert.equal(offline.open, false);
   assert.match((offline as {reason: string}).reason, /stays locked/);
-  assert.deepEqual(await evaluateGate({policyRaw: POLICY, attested: true, apiKey: KEY, verify: verify('match')}), {open: true, organizationId: ORG});
+  assert.deepEqual(await evaluateGate({policyRaw: POLICY, attested: true, apiKey: KEY, verify: verify('match')}), {open: true, organizationId: ORG, forKey: KEY});
 });
 
 test('no OpenAI request ever occurs when the Phase 2 gate is locked', async () => {
@@ -80,7 +80,7 @@ test('no OpenAI request ever occurs when the Phase 2 gate is locked', async () =
 test('open gate pins every request to the verified organization and disables the Agents API checklist', async () => {
   const calls: Array<{url: string; init: RequestInit}> = [];
   const fetchMock = (async (url: string, init: RequestInit) => { calls.push({url, init}); return new Response(JSON.stringify(decision), {status: 200}); }) as unknown as typeof fetch;
-  const r = resolveProvider({config: hipaa, choice: 'openai', consented: true, apiKey: KEY, attested: true, gate: {open: true, organizationId: ORG}, fetch: fetchMock});
+  const r = resolveProvider({config: hipaa, choice: 'openai', consented: true, apiKey: KEY, attested: true, gate: {open: true, organizationId: ORG, forKey: KEY}, fetch: fetchMock});
   assert.ok(r.provider instanceof OpenAIProvider);
   const out = await runPipeline({studies, profile, provider: r.provider});
   assert.equal(out.mode, 'refined');
@@ -129,4 +129,20 @@ test('manifest declares the managed policy schema', () => {
   const schema = JSON.parse(readFileSync(new URL('../dist/managed_schema.json', import.meta.url), 'utf8'));
   assert.equal(schema.properties.hipaaOpenAIEnabled.type, 'boolean');
   assert.equal(schema.properties.allowedOpenAIOrgIds.type, 'array');
+});
+
+test('open gate still locks when attestation is withdrawn or the key changes afterwards', async () => {
+  const gate = {open: true as const, organizationId: ORG, forKey: KEY};
+  const noAttest = resolveProvider({config: hipaa, choice: 'openai', consented: true, apiKey: KEY, attested: false, gate, local: {generator: localGen, model: 'm'}});
+  assert.ok(noAttest.provider instanceof LocalProvider);
+  const otherKey = resolveProvider({config: hipaa, choice: 'openai', consented: true, apiKey: 'sk-test-OTHERKEY1234567890', attested: true, gate, local: {generator: localGen, model: 'm'}});
+  assert.ok(otherKey.provider instanceof LocalProvider);
+  assert.match(otherKey.reason!, /key changed/);
+});
+
+test('SSE parser handles a CRLF split across chunks', async () => {
+  const {readAgentStream} = await import('../src/openai');
+  const parts = ['data: {"type":"agent.session.turn.output_text.done","text":"{}"}\r', '\n\r\ndata: {"type":"agent.session.turn.completed","turn":{"subagent_id":null}}\r', '\n\r\n'];
+  const response = new Response(new ReadableStream({start(c) { for (const p of parts) c.enqueue(new TextEncoder().encode(p)); c.close(); }}));
+  assert.equal((await readAgentStream(response)).text, '{}');
 });

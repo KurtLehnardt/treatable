@@ -30,7 +30,8 @@ export function parsePolicy(raw: unknown): {ok: true; policy: ManagedPolicy} | {
   return {ok: true, policy: {hipaaOpenAIEnabled: true, allowedOpenAIOrgIds: ids as string[]}};
 }
 
-export type GateResult = {open: true; organizationId: string} | {open: false; reason: string};
+/** forKey binds an open result to the key it was checked with; a different key needs a new check. */
+export type GateResult = {open: true; organizationId: string; forKey: string} | {open: false; reason: string};
 
 export interface GateInput {
   policyRaw: unknown;
@@ -49,7 +50,7 @@ export async function evaluateGate(input: GateInput): Promise<GateResult> {
   const verify = input.verify || ((key: string, org: string) => verifyOrganization(key, org));
   try {
     for (const organizationId of parsed.policy.allowedOpenAIOrgIds) {
-      if (await verify(input.apiKey, organizationId) === 'match') return {open: true, organizationId};
+      if (await verify(input.apiKey, organizationId) === 'match') return {open: true, organizationId, forKey: input.apiKey.trim()};
     }
     return {open: false, reason: 'This API key does not belong to an OpenAI organization allowed by your organization policy.'};
   } catch {
@@ -81,6 +82,8 @@ export function resolveProvider(input: ResolveInput): Resolved {
   if (choice === 'local') return input.local?.model ? {provider: new LocalProvider(input.local.generator, input.local.model)} : {reason: 'Local LLM selected, but the local helper or a model was not detected. See extension/NATIVE_SETUP.md.'};
   if (input.config.hipaaGateEnabled) {
     if (!input.gate || !input.gate.open) return localFallback(`OpenAI mode is locked. ${input.gate && !input.gate.open ? input.gate.reason : 'The organization gate has not been checked.'} Using Local LLM.`);
+    if (!input.attested) return localFallback('OpenAI mode is locked. Tick the BAA attestation. Using Local LLM.');
+    if (input.gate.forKey !== input.apiKey.trim()) return localFallback('OpenAI mode is locked. The API key changed since the organization check. Check the gate again. Using Local LLM.');
   }
   try {
     return {provider: new OpenAIProvider({

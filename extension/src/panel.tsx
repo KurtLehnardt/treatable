@@ -47,6 +47,7 @@ function App() {
   const [synthetic, setSynthetic] = useState(false);
   const [gate, setGate] = useState<GateResult>();
   const [gateBusy, setGateBusy] = useState(false);
+  const gateGeneration = useRef(0);
   const active = useRef<AbortController>();
   const runs = useRef(new LatestRun());
   const searchToken = useRef(0);
@@ -101,6 +102,15 @@ function App() {
     return () => { mounted = false; active.current?.abort(); };
   }, []);
 
+  useEffect(() => {
+    // An admin policy change invalidates any earlier gate result.
+    const onChanged = (_changes: unknown, area: string) => { if (area === 'managed') { gateGeneration.current++; setGate(undefined); } };
+    chrome.storage.onChanged?.addListener(onChanged);
+    return () => chrome.storage.onChanged?.removeListener(onChanged);
+  }, []);
+
+  function resetGate() { gateGeneration.current++; setGate(undefined); }
+
   function updateSettings(patch: Partial<Settings>) {
     setSettings(prev => {
       const next = {...prev, ...patch};
@@ -128,14 +138,22 @@ function App() {
 
   /** Phase 2 only. Cached in memory for this panel session; never written to storage. */
   async function checkGate(): Promise<GateResult> {
+    const generation = ++gateGeneration.current;
+    if (!settings.openaiConsent) {
+      const locked: GateResult = {open: false, reason: 'Accept the OpenAI consent screen before the organization check runs.'};
+      setGate(locked);
+      return locked;
+    }
     setGateBusy(true);
     try {
       let policyRaw: unknown = undefined;
       try { policyRaw = await chrome.storage.managed?.get(null); } catch { policyRaw = undefined; }
       const result = await evaluateGate({policyRaw, attested: baaAttested, apiKey});
+      // Drop a stale result if the key, attestation, or policy changed while checking.
+      if (generation !== gateGeneration.current) return {open: false, reason: 'Settings changed during the organization check. Check again.'};
       setGate(result);
       return result;
-    } finally { setGateBusy(false); }
+    } finally { if (generation === gateGeneration.current) setGateBusy(false); }
   }
 
   async function runChecklist(provider: ScoringProvider, item: ScoredStudy, token: number, signal: AbortSignal) {
@@ -235,14 +253,14 @@ function App() {
     try {
       await queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, key, settings.rememberKey, baaAttested));
       setApiKey(key);
-      setGate(undefined);
+      resetGate();
       setKeyDraft('');
       setNotice(settings.rememberKey ? 'OpenAI key saved on this computer.' : 'OpenAI key saved for this browser session.');
     } catch { setError('Could not save the key.'); }
   }
 
   async function forgetKey() {
-    try { await queue(() => clearApiKey(chrome.storage.session, chrome.storage.local)); setApiKey(''); setBaaAttested(false); setGate(undefined); setNotice('OpenAI key and BAA attestation removed.'); } catch { setError('Could not remove the key.'); }
+    try { await queue(() => clearApiKey(chrome.storage.session, chrome.storage.local)); setApiKey(''); setBaaAttested(false); resetGate(); setNotice('OpenAI key and BAA attestation removed.'); } catch { setError('Could not remove the key.'); }
   }
 
   async function clearEverything() {
@@ -344,7 +362,7 @@ function App() {
           <label key={value} className="check"><input type="radio" name="provider" checked={settings.provider === value} onChange={() => { cancel(); setResult(undefined); updateSettings({provider: value}); if (value === 'local' && !native.ok) void checkNative(); }}/><span><strong>{label}</strong> · {help}</span></label>)}
         {!settings.provider && <p className="message" role="status">Choose a provider. Until you do, results are unrefined and nothing is sent anywhere.</p>}
       </div>
-      {CONFIG.hipaaGateEnabled && settings.provider === 'openai' && <div className={gate?.open ? 'message' : 'message error'} role="status"><strong>{GATE_NAME}:</strong> {gate ? (gate.open ? `Unlocked for ${gate.organizationId}. Requests are pinned to that organization.` : gate.reason) : 'Not checked yet.'} <button className="text-button" disabled={gateBusy} onClick={() => void checkGate()}>{gateBusy ? 'Checking…' : 'Check organization gate'}</button></div>}
+      {CONFIG.hipaaGateEnabled && settings.provider === 'openai' && <div className={gate?.open ? 'message' : 'message error'} role="status"><strong>{GATE_NAME}:</strong> {gate ? (gate.open ? `Unlocked for ${gate.organizationId}. Requests are pinned to that organization.` : gate.reason) : 'Not checked yet.'} <button className="text-button" disabled={gateBusy || !settings.openaiConsent} onClick={() => void checkGate()}>{gateBusy ? 'Checking…' : 'Check organization gate'}</button></div>}
       {settings.provider === 'openai' && !settings.openaiConsent && <div className="consent" role="dialog" aria-label="OpenAI consent">
         <h3>Before anything is sent to OpenAI</h3>
         <p>If you accept, Treatable sends the following to OpenAI (api.openai.com, Decisions API and Agents API) for each shortlisted study:</p>
@@ -352,7 +370,7 @@ function App() {
         <p>Treatable never sends your ZIP code, your name, your notes, or your saved studies.</p>
         <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for meeting those requirements before entering real health details. Local LLM mode keeps everything on this computer.</p>
         <p>Treatable asks OpenAI to delete each agent session after the checklist is read, and shows whether the deletion was confirmed. OpenAI's own data retention terms still apply to your API key's account.</p>
-        <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); setGate(undefined); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
+        <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); resetGate(); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
         <p className="fine">Optional. Leave it unchecked unless it is true. It is stored only with your key and is forgotten when the key is.</p>
         <div className="actions"><button className="primary" onClick={() => updateSettings({openaiConsent: true})}>I understand and accept</button><button onClick={() => updateSettings({provider: 'none'})}>Send nothing instead</button></div>
       </div>}
