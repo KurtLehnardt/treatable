@@ -39,7 +39,7 @@ function Activity({trace, busy, prepared}: {trace: DemoTrace[]; busy: boolean; p
   </details>;
 }
 
-type MatchingPresentation = PrivateMatchingController & {findMatches?:()=>void|Promise<void>;localLocation?:{zip:string;radiusMiles:number};editLocalLocation?:(value:{zip:string;radiusMiles:number})=>void;localDistance?:SiteDistance};
+type MatchingPresentation = Omit<PrivateMatchingController,'findMatches'|'localLocation'|'editLocalLocation'> & {findMatches?:()=>void|Promise<void>;localLocation?:{zip:string;radiusMiles:number};editLocalLocation?:(value:{zip:string;radiusMiles:number})=>void;localDistance?:SiteDistance};
 export function PrivateMatchingView({vm, inline = false}: {vm: MatchingPresentation; inline?: boolean}) {
   const Root = inline ? 'section' : 'main';
   const Heading = inline ? 'h3' : 'h1';
@@ -52,10 +52,10 @@ export function PrivateMatchingView({vm, inline = false}: {vm: MatchingPresentat
   const previewPacket = vm.prepared?.preview.packet;
   return <Root className={`private-match${inline ? ' is-inline' : ''}`} aria-label="Match the studies on this page">
     <header className="matching-header"><div><span className="eyebrow">Match the current results</span><Heading>Find my matches</Heading><p>Compare the {vm.total} studies currently visible on this page with the details you choose to share. To search for different studies, use Search ClinicalTrials.gov above.</p></div><button type="button" className="quiet" onClick={vm.end}>End matching</button></header>
-    {vm.score?.mode==='live'&&<section className="scores-ready" role="status"><div><strong>{vm.applied?'Matches are on the website.':'Scores ready.'}</strong><p>{vm.applied?'The visible cards have been reordered and marked. Use Restore original order or End page matching to undo.':'Apply the scores to rearrange the visible website cards and show their match percentages.'}</p></div>{!vm.applied&&<button type="button" className="primary" ref={applyButton} disabled={disabled} onClick={()=>void vm.apply()}>Apply matches to this page</button>}</section>}
+    {vm.score?.mode==='live'&&<section className="scores-ready" role="status"><div><strong>{vm.applied?'Matches are on the website.':'Scores ready.'}</strong><p>{vm.applied?(vm.applySummary||'The visible cards have been reordered and marked. Use Restore original order or End page matching to undo.'):'Apply the scores to rearrange the visible website cards and show their match percentages.'}</p></div>{!vm.applied&&<button type="button" className="primary" ref={applyButton} disabled={disabled} onClick={()=>void vm.apply()}>Apply matches to this page</button>}</section>}
     {vm.ended ? <p role="status" className="notice">Matching ended. Start matching again to begin with a blank form.</p> : <>
       <ol className="matching-steps" aria-label="Matching steps"><li aria-current={!vm.prepared && !vm.score ? 'step' : undefined}><span>1</span>Choose details</li><li aria-current={vm.prepared && !vm.score ? 'step' : undefined}><span>2</span>Review and confirm</li><li aria-current={vm.score ? 'step' : undefined}><span>3</span>View matches</li></ol>
-      <p className="fine">Your details stay in this extension area until you confirm the minimized request. Website search filters go to ClinicalTrials.gov and browser history; this matching form has no exact age, ZIP or notes fields.</p>
+      <p className="fine">Your details stay in this extension area until you confirm the minimized request. Website search filters go to ClinicalTrials.gov and browser history; your matching request excludes exact age, local ZIP and notes.</p>
       {vm.error && <p role="alert" className="message error">{vm.error}</p>}
       <PrivacyNotice mode="live" key={vm.epoch} accepted={vm.accepted} disabled={disabled} onAccept={vm.accept}/>
       <section className="surface"><SectionHeading>Choose what you will share.</SectionHeading><fieldset disabled={disabled}>
