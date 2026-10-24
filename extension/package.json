@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts && node --test native/test/*.test.mjs",
     "pretest": "npm run build:all",
     "build:b": "node scripts/build.mjs --variant=b",
     "build:all": "npm run build && npm run build:b"
