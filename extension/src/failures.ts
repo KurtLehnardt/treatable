@@ -1,15 +1,15 @@
 /** Typed failure codes and the fixed copy shown for them. Codes come from the native helper (validated by the shared
  * contract) or from the background/panel themselves. Transported error text is never rendered; only this table is. */
 export const FAILURE_CODE=/^[A-Z_]{1,40}$/;
-export const GENERIC_FAILURE_COPY='The operation did not complete, so no result is shown in its place. Local search and the offline study snapshot still work. The failure code is listed in the trace.';
+export const GENERIC_FAILURE_COPY='The operation did not complete, so no result is shown in its place. Local search still works. The failure code is listed in the trace.';
 export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
- NATIVE_HOST_MISSING:'Install the Treatable helper, then reload the extension. Nothing was sent to OpenAI. Local search and the offline study snapshot still work.',
+ NATIVE_HOST_MISSING:'Install the Treatable helper, then reload the extension. Nothing was sent to OpenAI. Local search still works.',
  NATIVE_HOST_FORBIDDEN:'Chrome blocked this extension from using the Treatable helper. Reinstall the helper for this extension, then reload it. Nothing was sent to OpenAI. Local search still works.',
- NATIVE_HOST_DISCONNECTED:'The Treatable helper stopped or could not start. Reinstall or restart it, then retry. Local search and the offline study snapshot still work.',
- NATIVE_TIMEOUT:'The helper did not answer within 150 seconds, so Treatable closed the connection and ended this session. Start a blank session to retry; local search works again after restart.',
- INVALID_NATIVE_REPLY:'The helper reply failed validation and was discarded, so no result is shown. Local search and the offline study snapshot still work.',
- RESULT_MISMATCH:'Mismatched result rejected: it did not match the fixture or studies you selected, so it is not shown. Local search still works.',
- SESSION_ENDED:'The session ended before the operation finished. Start a blank session to continue; local search is available again after restart.',
+ NATIVE_HOST_DISCONNECTED:'The Treatable helper stopped or could not start. Reinstall or restart it, then retry. Local search still works.',
+ NATIVE_TIMEOUT:'The helper did not answer within 150 seconds, so Treatable closed the connection and ended this session. Reload the extension to retry; local search works again.',
+ INVALID_NATIVE_REPLY:'The helper reply failed validation and was discarded, so no result is shown. Local search still works.',
+ RESULT_MISMATCH:'Mismatched result rejected: it did not match the studies you selected, so it is not shown. Local search still works.',
+ SESSION_ENDED:'The session ended before the operation finished. Reload the extension to continue; local search works again.',
  KEY_MISSING:'No dedicated API key is set up for the Treatable helper. Run its Keychain setup in Terminal; never paste a key into Chrome. Nothing was sent to OpenAI. Local search still works.',
  KEY_REJECTED:'OpenAI rejected the configured API key. Replace it with the helper Keychain setup, then retry. Local search and earlier results still work.',
  API_PERMISSION:'This API key or project lacks access to the required OpenAI API or model. Check the account permissions, then retry. Local search still works.',
@@ -25,8 +25,8 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  CONSENT_EXPIRED:'The prepared preview expired before sending, so nothing was sent to OpenAI. Prepare and review a fresh preview.',
  INVALID_CONSENT_RECEIPT:'The preview receipt was stale, changed or already used, so nothing was sent to OpenAI. Prepare and review a fresh preview.',
  PREVIEW_TOO_LARGE:'The selected records exceed the preview size limit, so nothing was sent to OpenAI. Choose fewer labels or studies and prepare again.',
- INVALID_FIXTURE_STUDIES:'Only the fictional fixture’s own public studies are allowed, so nothing was sent to OpenAI. Reselect the fixture and retry.',
- INTERNAL_ERROR:'The helper hit an internal error and returned no result. Retry once; if it repeats, restart Chrome. Local search and the offline study snapshot still work.',
+ INVALID_FIXTURE_STUDIES:'Only the test sample studies are allowed, so nothing was sent to OpenAI. Reselect the sample and retry.',
+ INTERNAL_ERROR:'The helper hit an internal error and returned no result. Retry once; if it repeats, restart Chrome. Local search still works.',
  INCOMPLETE_AGENT_TURN:'The Agents stream ended without a completed, tool-verified answer, so no result is shown. Check the trace for cleanup, then retry.',
  // Help me apply (study page). The local contact plan keeps working when any of these occur.
  RECORD_UNAVAILABLE:'The official study record could not be loaded from ClinicalTrials.gov. Check your connection and refresh the study page, then open Treatable again.',

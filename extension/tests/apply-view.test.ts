@@ -78,7 +78,7 @@ test('production overlay entry presents the public brief before search, never mo
  for(const[key,value]of Object.entries({window:win,document:doc,chrome:{runtime},navigator:{userActivation:{isActive:true}}}))Object.defineProperty(globalThis,key,{configurable:true,value});captureSiteActivations(win);let renderer!:TestRenderer.ReactTestRenderer;
  try{await act(async()=>{renderer=TestRenderer.create(React.createElement(OverlayAssistant));const e=new Event('message');Object.assign(e,{source:parent,origin:'https://clinicaltrials.gov',data:{type:'treatable.site.activate',purpose:'overlay',capability:'a'.repeat(64)}});win.dispatchEvent(e);await flush()});const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Understand this study'));assert.ok(text.indexOf('Understand this study')<text.indexOf('Search for other studies'));assert.doesNotMatch(text,/Find my matches|Confirm what you|Review what you will share/);assert.equal(privatePorts,0);assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false);
  await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n)==='Generate study brief')!.props.onClick();await flush()});
- assert.match(renderedText(renderer.root),/public study review complete/);assert.match(renderedText(renderer.root),/questions classified/);
+ assert.match(renderedText(renderer.root),/Study review complete/);assert.match(renderedText(renderer.root),/Questions sorted/);
  const editor=()=>renderer.root.findAllByType('textarea').find(n=>n.props.className==='apply-email')!;
  await act(async()=>{editor().props.onChange({target:{value:'My reviewed enquiry from the production entry.'}});await flush()});
  assert.equal(editor().props.value,'My reviewed enquiry from the production entry.');

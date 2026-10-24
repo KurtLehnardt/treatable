@@ -186,7 +186,7 @@ export function createGuideMount(doc: Document, options: GuideMountOptions = {})
           backdrop: false,
           heightAuto: false,
           scrollbarPadding: false,
-          returnFocus: false,
+          returnFocus: true,
           allowOutsideClick: false,
           allowEscapeKey: true,
           focusConfirm: !!dialog.next && !dialog.focus,
