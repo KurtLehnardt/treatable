@@ -13,7 +13,6 @@
  *   §3.5 OpportunityMap           → opportunityMap.ts
  *   §3.6 Design tokens            → OUT OF SCOPE for CON-01 (CON-02)
  *   §3.7 Model routing table      → modelRouting.ts
- *   §3.8 AnalyticsEvent           → analyticsEvent.ts
  *
  * Shared primitives (provenance, citations, timestamps) → primitives.ts
  */
@@ -25,4 +24,6 @@ export * from "./opportunity";
 export * from "./eligibilityDetermination";
 export * from "./opportunityMap";
 export * from "./modelRouting";
-export * from "./analyticsEvent";
+export * from "./patientProfile";
+export * from "./study";
+export * from "./studyMatch";

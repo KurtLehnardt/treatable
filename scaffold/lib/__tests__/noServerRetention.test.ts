@@ -4,12 +4,6 @@ import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, extname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  AnalyticsPayloadSchema,
-  AnalyticsEventSchema,
-  FORBIDDEN_CONTENT_KEYS,
-} from "../contracts/analyticsEvent";
-
 /**
  * PLT-02 — R9.0 / §5.3 "no server-side retention" regression guard.
  *
@@ -37,7 +31,7 @@ import {
  *
  * Three checks, corresponding to PLT-02's definition of done:
  *   (a) no file under app/api/** references a mock-auth identifier
- *   (b) the AnalyticsEvent contract still rejects description content
+ *   (b) the patient app has no analytics capture surface
  *   (c) no console.(log|error|warn|info) call under app/**|lib/** mentions
  *       "description"
  */
@@ -145,7 +139,7 @@ describe("(a) app/api never references mock-auth (R9.0: gates nothing server-sid
 });
 
 // ---------------------------------------------------------------------------
-// (b) The AnalyticsEvent contract still rejects description content.
+// (b) The patient app has no analytics capture surface.
 //
 // This is a recon-level guard that the CON-01 contract is wired the way
 // R9.0/§5.3 needs — complementary to, not a duplicate of, the contract's own
@@ -153,31 +147,20 @@ describe("(a) app/api never references mock-auth (R9.0: gates nothing server-sid
 // does not depend on that file existing.
 // ---------------------------------------------------------------------------
 
-describe("(b) AnalyticsEvent contract rejects description content", () => {
-  test("FORBIDDEN_CONTENT_KEYS still lists the description-shaped keys", () => {
-    for (const key of ["description", "company_description", "companyDescription"]) {
-      assert.ok(
-        FORBIDDEN_CONTENT_KEYS.includes(key),
-        `expected FORBIDDEN_CONTENT_KEYS to still include "${key}"`,
-      );
+describe("(b) patient app has no analytics capture surface", () => {
+  test("telemetry implementation and contract are absent", () => {
+    assert.equal(existsSync(join(SCAFFOLD_ROOT,"lib","analytics","track.ts")),false);
+    assert.equal(existsSync(join(SCAFFOLD_ROOT,"lib","contracts","analyticsEvent.ts")),false);
+  });
+  test("API source cannot import telemetry", () => {
+    for(const file of walk(join(SCAFFOLD_ROOT,"app","api"))){
+      if(isUnderTestsDir(relative(SCAFFOLD_ROOT,file)))continue;
+      assert.doesNotMatch(readFileSync(file,"utf8"),/from\s+["'][^"']*(?:analytics|AnalyticsProvider)/);
     }
   });
-
-  test("AnalyticsPayloadSchema rejects a payload with a description key", () => {
-    const result = AnalyticsPayloadSchema.safeParse({
-      description: "we build AI for hospitals, pre-filing IP",
-    });
-    assert.equal(result.success, false);
-  });
-
-  test("AnalyticsEventSchema rejects a full event with description-shaped free text under a benign key", () => {
-    const event = {
-      name: "search_started",
-      ts: 0,
-      payload: { blurb: "we build AI for hospitals, pre-filing IP" },
-    };
-    const result = AnalyticsEventSchema.safeParse(event);
-    assert.equal(result.success, false);
+  test("patient matching route avoids file/cache persistence imports", () => {
+    const source=readFileSync(join(SCAFFOLD_ROOT,"app","api","match","handler.ts"),"utf8");
+    assert.doesNotMatch(source,/node:fs|fs\/promises|writeFile|appendFile|runsStore|saveRun|logError|withErrorLogging/);
   });
 });
 
@@ -193,7 +176,7 @@ describe("(b) AnalyticsEvent contract rejects description content", () => {
 // ---------------------------------------------------------------------------
 
 const CONSOLE_CALL_RE = /console\.(log|error|warn|info)\s*\(/;
-const DESCRIPTION_MENTION_RE = /description/i;
+const DESCRIPTION_MENTION_RE = /description|symptomNarrative|primaryDiagnoses|treatmentsTried|profile\./i;
 
 interface ConsoleDescriptionHit {
   file: string;
