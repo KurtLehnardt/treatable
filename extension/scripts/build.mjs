@@ -23,7 +23,9 @@ manifest.web_accessible_resources=[{resources:['overlay.html','score-badge.html'
 const csp=manifest.content_security_policy?.extension_pages??'';
 const ancestorRule="frame-ancestors https://clinicaltrials.gov https://www.clinicaltrials.gov";
 if(!csp.endsWith(ancestorRule))throw Error('Only the two named registry origins may embed public frames');
-const privateCsp=csp.replace(ancestorRule,"frame-ancestors 'none'");
+const networkRule="connect-src 'self' https://clinicaltrials.gov https://www.clinicaltrials.gov";
+if(!csp.includes(networkRule+';'))throw Error('Only named registry origins may receive browser requests');
+const privateCsp=csp.replace(ancestorRule,"frame-ancestors 'none'").replace(networkRule,"connect-src 'self'");
 if(!/(^|; )default-src 'none'(;|$)/.test(privateCsp)||!/(^|; )script-src 'self'(;|$)/.test(privateCsp)||/https?:|\*|data:|blob:|'unsafe-/.test(privateCsp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 for(const name of ['panel','overlay','score-badge','private-match'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));

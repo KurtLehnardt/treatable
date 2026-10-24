@@ -77,7 +77,7 @@ The combined real-consent checkpoint passes 49 extension tests, 21 native tests,
 
 [North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
 
-Decisions and Agents are independent operations over the same selected case (fictional by default, explicitly consented real packet optionally). The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
+Decisions and Agents are independent operations over the same selected case (fictional by default, explicitly consented real packet optionally). The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. Legacy panels do not accept caller-supplied scores. The new page path retains only explicitly applied derived scores in bounded extension memory, as described below.
 
 
 ## Search-first overlay development
@@ -95,7 +95,37 @@ protected extension window. Scores are rendered inside extension-origin badge
 frames, never written into website text, attributes, titles, or frame URLs.
 
 The overlay reports all loaded cards on the current results page. It does not
-claim to rank the entire registry. Its site-adapter integration and authenticated
-live scoring are separate implementation steps; the UI build does not fabricate
-production scores. Actual Chrome rendering, focus, iframe positioning, and motion
+claim to rank the entire registry. Private matching is wired through a registered, non-web-accessible top-level
+`private-match.html` window and the native STDIO helper. It fetches fresh records
+for all loaded NCT IDs (maximum 10), without using the shipped 2,000-record
+snapshot. For larger pages, select a website page size of 10; incomplete pages
+are never reordered. Condition labels are taken from those fetched records.
+
+The private form collects only age band, optional state/sex and explicitly
+selected public condition labels. Its scrollable notice and separate pinned
+confirmation gate real Decisions scoring and an independent Agents review of
+one or two records. Exact request bodies start collapsed. The browser never
+receives the Keychain credential or supplies model evidence, prompts or URLs.
+
+Apply sends only an analysis ID. The background accepts scores only from a
+validated native result bound to the current query, frozen snapshot and minimized
+profile. Known structured sex or whole-age-band mismatches remain visible and
+rank behind unknown compatibility, regardless of topical relevance. No result
+establishes eligibility.
+
+After Apply, only derived NCT IDs, relevance values and fixed compatibility
+buckets remain in tab-scoped extension memory for up to five minutes. Closing
+the private window clears its raw profile, preview and trace. End page matching,
+query/navigation changes, hidden pages, expiry and lost runtime connections
+clear badges and restore the original connected card order. A generation-only
+heartbeat runs every ten seconds while the applied page lease is active; a cold
+worker without that lease makes the content controller restore immediately on
+its next check. No health persistence is used to survive worker suspension.
+
+The packed CSP permits embedding and browser public-record fetches only for the
+two named Gov HTTPS origins; scripts remain packaged-only. The private entry is
+not web-accessible and requires its registered popup, window ID, document ID and
+top-level sender. OpenAI remains reachable only through the native helper. Actual Chrome rendering, focus, iframe positioning, and motion
 checks remain unverified until browser integration is exercised.
+
+Current automated checkpoint: 114 extension tests and 52 native tests pass, plus typecheck and all three builds. Live OpenAI authentication, actual Chrome rendering and its native-host handshake remain unverified. Earlier security-review reports describe their named historical commits, not this new live-page path.
