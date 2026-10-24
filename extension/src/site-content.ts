@@ -3,7 +3,8 @@ import{SiteCardManager}from'./site-dom';
 import{isSupportedSite}from'./sites';
 import{isNctId,exactSiteKeys,type SitePurpose}from'./site-contract';
 import{parseAvailability}from'./site-availability';
-type Activation={capability:string;purpose:SitePurpose;nctId?:string};
+import{isDisplayMode,isTheme}from'./ui-prefs';
+type Activation={capability:string;purpose:SitePurpose;nctId?:string;displayMode?:'overlay'|'popup'|'sidebar';theme?:'system'|'light'|'dark'};
 type Frame={element:HTMLIFrameElement;purpose:SitePurpose;nctId?:string};
 export function installSiteContent(win:Window,doc:Document,api:any){
  const extensionOrigin=api.runtime.getURL('').replace(/\/$/,'');
@@ -23,7 +24,7 @@ export function installSiteContent(win:Window,doc:Document,api:any){
  function activate(value:Activation){if(disposed||!isSupportedSite(win.location.href))return;if(value.purpose==='badge'&&(!isNctId(value.nctId)||!manager.snapshot.nctIds.includes(value.nctId)))return;
   if(value.purpose==='overlay'&&overlay)removeFrame(overlay);if(value.purpose==='badge')for(const old of [...frames])if(old.purpose==='badge'&&old.nctId===value.nctId)removeFrame(old);
   const element=doc.createElement('iframe');element.src=api.runtime.getURL(value.purpose==='overlay'?'overlay.html':`score-badge.html?nct=${value.nctId}`);element.title=value.purpose==='overlay'?'Treatable study assistant':'Treatable match information';/* The overlay may write (never read) the clipboard for "Copy email"; badges get no clipboard access. */element.setAttribute('allow',value.purpose==='overlay'?"camera 'none'; microphone 'none'; geolocation 'none'; clipboard-write 'src'":"camera 'none'; microphone 'none'; geolocation 'none'");style(element,{border:'0',margin:'0',padding:'0',zIndex:value.purpose==='overlay'?'2147483647':'2147483646',background:'transparent',pointerEvents:'auto'});
-  const frame:Frame={element,purpose:value.purpose,nctId:value.nctId};frames.add(frame);if(value.purpose==='overlay'){overlay=frame;collapsed=false}doc.body.appendChild(element);if(value.purpose==='overlay')layout({collapsed:false});else placeBadges();
+  const frame:Frame={element,purpose:value.purpose,nctId:value.nctId};frames.add(frame);if(value.purpose==='overlay'){overlay=frame;collapsed=false}doc.body.appendChild(element);if(value.purpose==='overlay')layout({collapsed:false,...(isDisplayMode(value.displayMode)?{displayMode:value.displayMode}:{}),...(isTheme(value.theme)?{theme:value.theme}:{})});else placeBadges();
   const child=element.contentWindow;let sent=false;element.addEventListener('load',()=>{if(sent||!element.isConnected||element.contentWindow!==child)return;sent=true;child?.postMessage({type:'treatable.site.activate',capability:value.capability,purpose:value.purpose,...(value.nctId?{nctId:value.nctId}:{})},extensionOrigin);if(value.purpose==='overlay')element.focus()},{once:true});
  }
  function onWindowMessage(event:MessageEvent){if(event.origin!==extensionOrigin||!exactSiteKeys(event.data,['type'])||event.data.type!=='treatable.site.dismiss')return;const frame=[...frames].find(f=>f.element.contentWindow===event.source);if(frame){lease.stop();try{manager.clearAvailability()}catch{}clearBadges();if(frame.purpose==='overlay')removeFrame(frame);void api.runtime.sendMessage({kind:'treatable.site.content',type:'dismiss'}).catch(()=>{})}}
@@ -36,4 +37,4 @@ export function installSiteContent(win:Window,doc:Document,api:any){
 }
 if(typeof chrome!=='undefined'&&typeof window!=='undefined'&&isSupportedSite(location.href)){const scope=globalThis as any;if(!scope.__treatableSiteControllerV1||scope.__treatableSiteControllerV1.isDisposed?.())scope.__treatableSiteControllerV1=installSiteContent(window,document,chrome)}
 /** Serialized separately: no imported helpers or lexical dependencies. */
-export function activateSiteFrame(value:{capability:string;purpose:'overlay'|'badge';nctId?:string}){const controller=(globalThis as any).__treatableSiteControllerV1;if(!controller)throw Error('The site content controller is unavailable');controller.activate(value)}
+export function activateSiteFrame(value:{capability:string;purpose:'overlay'|'badge';nctId?:string;displayMode?:'overlay'|'popup'|'sidebar';theme?:'system'|'light'|'dark'}){const controller=(globalThis as any).__treatableSiteControllerV1;if(!controller)throw Error('The site content controller is unavailable');controller.activate(value)}

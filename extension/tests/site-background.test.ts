@@ -33,3 +33,31 @@ test('navigation during delayed confirmation creation closes only the new owned 
 test('Restore acknowledges the original inline owner and permits only the original complete map without extending its lease',async(t)=>{t.mock.timers.enable({apis:['Date']});const h=await authenticated();await h.service.handle(1,{id:'open',type:'site.openPrivate',payload:{}});const sender=h.p.sender,ctx=await h.service.privateContext(sender),analysisId='01234567-1234-4123-8123-012345678901';await h.service.captureAnalysis(sender,{kind:'scoreLive',mode:'live',analysisId,snapshotId:'a'.repeat(64),source:ctx.source,profileKey:'b'.repeat(64),consentDigest:'c'.repeat(64),scores:ctx.snapshot.nctIds.map(nctId=>({nctId,index:75,confidence:.9}))},{});let reply:any;h.messages.emit({kind:'site.applyAnalysis',analysisId},sender,(v:any)=>reply=v);await flush();const first=h.commands.filter((v:any)=>v.type==='reorder').at(-1);assert.equal(reply.ok,true);const restored=await h.service.handle(1,{id:'restore-own',type:'site.restore',payload:{}});assert.deepEqual(restored.result,{restored:true,canReapply:true,analysisId});assert.equal(h.service.privateSender(sender),true);t.mock.timers.setTime(Date.now()+60000);h.messages.emit({kind:'site.applyAnalysis',analysisId},sender,(v:any)=>reply=v);await flush();const again=h.commands.filter((v:any)=>v.type==='reorder').at(-1);assert.equal(reply.ok,true);assert.equal(again.payload.expiresAt,first.payload.expiresAt);h.service.endTab(1);let replay:any;h.messages.emit({kind:'site.applyAnalysis',analysisId},sender,(v:any)=>replay=v);await flush();assert.equal(replay,undefined);h.p.disconnect()});
 
 test('Gov home zero results and unsupported views finish availability initialization and retain explicit choices through submitted search',async()=>{for(const url of ['https://clinicaltrials.gov/','https://clinicaltrials.gov/search?cond=synthetic-zero','https://clinicaltrials.gov/search?view=table']){const h=harness();h.setSnapshot({...h.snapshot(),url,nctIds:[],supported:false,diagnostic:'No compatible cards'});await h.service.launch({id:1,url});const p=h.port();p.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();assert.ok(p.sent.some((v:any)=>v.type==='site.availability'&&v.loading===false));await h.service.handle(1,{id:'prefs',type:'site.availability',payload:{options:{onlyAccepting:true,includeSoon:true,includeInvitation:true}}});assert.equal(p.sent.filter((v:any)=>v.type==='site.availability').at(-1).loading,false);await h.service.handle(1,{id:'search',type:'site.search',payload:{filters:{cond:'synthetic'}}});const query=new URL(h.navigations.at(-1).url);assert.equal(query.searchParams.get('aggFilters'),'status:rec ava not enr');h.service.endTab(1);h.setSnapshot({...h.snapshot(),url:query.href});await h.service.launch({id:1,url:query.href});const next=h.port();next.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();const ready=next.sent.find((v:any)=>v.type==='site.availability'&&v.loading===false);assert.equal(ready.options.includeSoon,true);assert.equal(ready.options.includeInvitation,true);next.disconnect()}});
+test('overlay activation carries only the validated saved display preferences, with defaults for anything else',async()=>{
+ const defaults={displayMode:'overlay',theme:'system'};
+ const cases:Array<[string,any,{displayMode:string;theme:string}]>=[
+  ['saved popup and dark',{'treatable.uiPrefs':{displayMode:'popup',theme:'dark'}},{displayMode:'popup',theme:'dark'}],
+  ['saved sidebar and light',{'treatable.uiPrefs':{displayMode:'sidebar',theme:'light'}},{displayMode:'sidebar',theme:'light'}],
+  ['nothing saved',{},defaults],
+  ['unknown value',{'treatable.uiPrefs':{displayMode:'fullscreen',theme:'dark'}},defaults],
+  ['extra health field',{'treatable.uiPrefs':{displayMode:'popup',theme:'dark',zip:'83702'}},defaults],
+  ['wrong type',{'treatable.uiPrefs':'popup'},defaults],
+  ['unrelated keys only',{displayMode:'popup',theme:'dark','treatable.patient.v1':{condition:'PRIVATE_CANARY'}},defaults],
+ ];
+ for(const[label,stored,expected]of cases){
+  const reads:string[]=[],h=harness();
+  h.api.storage={local:{get:async(key:string)=>{reads.push(key);return key in stored?{[key]:stored[key]}:{}},set:async()=>{throw new Error('activation must never write')}}};
+  await h.service.launch({id:1,url:h.snapshot().url});
+  const args=h.scripts.at(-1).args[0];
+  assert.deepEqual({displayMode:args.displayMode,theme:args.theme},expected,label);
+  assert.deepEqual(Object.keys(args).sort(),['capability','displayMode','purpose','theme'],label);
+  assert.deepEqual(reads,['treatable.uiPrefs'],label);
+  assert.doesNotMatch(JSON.stringify(h.scripts),/PRIVATE_CANARY|83702/,label);
+ }
+ const unreadable=harness();unreadable.api.storage={local:{get:async()=>{throw new Error('storage down')},set:async()=>{}}};
+ await unreadable.service.launch({id:1,url:unreadable.snapshot().url});
+ assert.deepEqual({displayMode:unreadable.scripts.at(-1).args[0].displayMode,theme:unreadable.scripts.at(-1).args[0].theme},defaults,'read errors still open the overlay with defaults');
+ const without=harness();await without.service.launch({id:1,url:without.snapshot().url});
+ assert.equal(without.scripts.at(-1).args[0].displayMode,'overlay','no storage API still opens the overlay');
+});
+

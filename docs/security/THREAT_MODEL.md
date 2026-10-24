@@ -108,7 +108,7 @@ Data flow in one paragraph: patient free text is typed into the panel and used t
 | T | Malformed or extra-field requests | `parseDemoRequest`/`parseRealRequest` with exact keys and enums (`shared/demo-contract.mjs:13-23`, `shared/real-contract.mjs:18-24`); an invalid request closes the port (`src/background.ts:14`); replies are re-validated against the request ID and type (`src/background.ts:13`, `shared/demo-contract.mjs:24-39`) | Existing |
 | R | User later disputes what was consented | Digest binds the exact bodies shown in the preview (`native/real.mjs:20`); no durable consent log by design (privacy trade-off) | Accepted risk |
 | I | Free text crosses to the native host | The client only sends fixture IDs or the minimized packet (`src/native.ts:6,15-18`); unknown fields are rejected (`shared/real-contract.mjs:11`) | Existing |
-| I | Browser persistence of patient data | No storage writes; the `storage` permission only deletes the legacy key without reading it (`src/storage.ts:1-8`) | Existing |
+| I | Browser persistence of patient data | No patient-data writes; the `storage` permission deletes the legacy key without reading it (`src/storage.ts:1-8`). The one other write is the enum-only display preference record `treatable.uiPrefs` (`src/ui-prefs.ts`), which rejects any other key or value | Existing |
 | I | Spellcheck/autofill sends or stores health text (Chrome Enhanced Spell Check sends typed text to Google) | `autoComplete="off"`, `spellCheck={false}` on patient fields and the condition filter (`src/patient-form.tsx:4-8`, `src/real-panel.tsx:14`) | Existing (partial) |
 | I | Same, for every remaining health field | Extend to all health inputs and selects | In progress (panel) |
 | D | Panel floods the worker | At most 4 pending requests, duplicate IDs rejected, 150 s timer (`src/background.ts:14`) | Existing |
@@ -228,7 +228,7 @@ What the optional real path does send, after a scroll-gated notice, a checkbox, 
 | Panel ↔ background ↔ native host | Chrome IPC and a local stdio pipe inside the user's session | Not a network path; not encrypted, not reachable from other machines |
 | Native host → OpenAI | TLS via Node `https` with certificate verification against Node's bundled CA store; Node's default minimum is TLS 1.2 (`native/transport.mjs:13`) | Explicit `minVersion` and `servername` In progress (native). No proxy, no redirects |
 | API key at rest | macOS Keychain generic-password item, not synchronizable (`credential.swift:36`) | Protected by the user's login keychain. Any process the Keychain ACL trusts, including the helper, can read it (§9) |
-| Patient data at rest | None written by Treatable | No `chrome.storage` writes, files, caches or logs. OS swap, crash dumps and browser features outside the app (autofill, Enhanced Spell Check) are outside this control |
+| Patient data at rest | None written by Treatable | No patient data in `chrome.storage` (only the enum-only display preference record `treatable.uiPrefs`), files, caches or logs. OS swap, crash dumps and browser features outside the app (autofill, Enhanced Spell Check) are outside this control |
 | Consent integrity | SHA-256 digest over policy version, catalog metadata and exact preview (`native/real.mjs:20`); token from 32 random bytes (`native/real.mjs:18`) | Integrity binding, not encryption |
 | Provider-side storage | Governed by OpenAI's policies | Not verified by us |
 

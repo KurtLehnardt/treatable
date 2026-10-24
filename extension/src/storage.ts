@@ -1,4 +1,4 @@
-/** Deletion-only compatibility migration. Never reads or writes patient values. */
+/** Deletion-only compatibility migration. Never reads or writes patient values. It removes only the legacy patient key listed below and never touches the separate non-health display preferences record. */
 export const STORAGE_KEY='treatable.patient.v1';
 export const LEGACY_STORAGE_KEYS=[STORAGE_KEY] as const;
 export interface CleanupArea {remove:(key:string)=>Promise<void>}
