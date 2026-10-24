@@ -1,0 +1,1 @@
+import {readFileSync} from "node:fs";import path from "node:path";export const dynamic="force-static";export async function GET(){try{return Response.json(JSON.parse(readFileSync(path.join(process.cwd(),"data/precomputed.json"),"utf8")),{headers:{"Cache-Control":"no-store"}});}catch{return Response.json({demos:[]});}}
