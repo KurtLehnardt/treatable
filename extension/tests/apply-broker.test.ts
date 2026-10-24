@@ -81,3 +81,42 @@ test('actual broker receives stdio progress, selected-study tools and final resu
 test('trace correlation rejects malformed, wrong-study and replay events and strips provider identifiers',async()=>{for(const invalid of[{sequence:2,stage:'agent.request'},{sequence:1,stage:'agent.tool.request',nctId:'NCT00000001'},{sequence:1,stage:'agent.request',patient:'PRIVATE_CANARY'}]){const h=harness();await h.overlay();const p=await h.apply();await h.send(p,{id:'prep',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});await h.reply(h.natives[0],{id:'prep',type:'result',ok:true,result:briefPrepared(['NCT07254806'])});await h.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});await h.reply(h.natives[0],{id:'run',type:'trace',ok:true,trace:invalid});assert.equal(replies(p).at(-1).code,'INVALID_NATIVE_REPLY');assert.equal(p.closed,true);assert.ok(!JSON.stringify(p.sent).includes('PRIVATE_CANARY'));}const h=harness();await h.overlay();const p=await h.apply();await h.send(p,{id:'prep',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});await h.reply(h.natives[0],{id:'prep',type:'result',ok:true,result:briefPrepared(['NCT07254806'])});await h.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});await h.reply(h.natives[0],{id:'run',type:'trace',ok:true,trace:{sequence:1,stage:'agent.session.created',sessionId:'provider_private_id'}});assert.deepEqual(replies(p).at(-1).trace,{sequence:1,stage:'agent.session.created'});const count=p.sent.length;p.disconnect();await h.reply(h.natives[0],{id:'run',type:'trace',ok:true,trace:{sequence:2,stage:'agent.complete'}});assert.equal(p.sent.length,count);});
 
 test('brief records loaded for the local contact plan keep every listed site rather than the native prepare cap',async()=>{const many=rawStudy();many.protocolSection.contactsLocationsModule={...(many.protocolSection.contactsLocationsModule??{}),locations:Array.from({length:150},(_,i)=>({facility:`University Medical Center Research Site ${i}`,status:'RECRUITING',city:'Springfield',state:'Illinois',zip:'62701',country:'United States',geoPoint:{lat:39.78+i/100,lon:-89.65},contacts:[{name:'Jane Coordinator, RN',role:'CONTACT',phone:'217-555-0100',email:'jane.coordinator@example.org'}]}))};const h=harness(STUDY,{fetchStudyJson:async()=>many});await h.overlay();const p=await h.apply();p.onMessage.emit({kind:'studyBriefRecord',id:'sites',nctIds:['NCT07254806']});await flush();const reply=replies(p).at(-1);assert.equal(reply.type,'briefRecords');assert.equal(reply.records[0].sites.length,150);assert.equal(reply.records[0].sitesTruncated,false);assert.equal(h.natives.length,0);});
+
+// Regression: "Generate study brief" showed INVALID_REQUEST when Chrome launched a helper installed before the study-brief protocol existed.
+// The request is built by the real ApplyClient, routed through the actual broker and validated by a real installed helper over stdio.
+import{ApplyClient}from'../src/apply-client';
+import{readFile as readText,writeFile as writeText}from'node:fs/promises';import nodePath from'node:path';
+// core.mjs validateRequest exactly as shipped before the Help me apply and study-brief operations were added.
+const PRE_APPLY_VALIDATE_REQUEST='export function validateRequest(v){return LIVE_REQUEST_TYPES.includes(v?.type)?parseLiveRequest(v):parseDemoRequest(v);}';
+function stdioNative(host:any){
+ const native={sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v));host.send(v)},disconnect(){if(this.closed)return;this.closed=true;host.child.stdin.end()}};
+ const decoder=new MessageDecoder((v:any)=>native.onMessage.emit(v),()=>{throw Error('Invalid test frame')});host.child.stdout.on('data',(chunk:any)=>decoder.push(chunk));return native;
+}
+// Connects an ApplyClient to the broker through a paired in-memory port, as the overlay frame does through chrome.runtime.connect.
+function clientThroughBroker(h:ReturnType<typeof harness>){
+ const toClient=new Events(),clientEnded=new Events();
+ const brokerPort={name:APPLY_PORT,sender:h.frame(),closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){toClient.emit(structuredClone(v))},disconnect(){if(this.closed)return;this.closed=true;clientEnded.emit()}};
+ const runtime={connect:()=>{h.api.runtime.onConnect.emit(brokerPort);return{postMessage:(v:unknown)=>brokerPort.onMessage.emit(structuredClone(v)),disconnect:()=>{if(brokerPort.closed)return;brokerPort.closed=true;brokerPort.onDisconnect.emit()},onMessage:toClient,onDisconnect:clientEnded}}};
+ return new ApplyClient(runtime);
+}
+test('Generate study brief reaches the current helper, and a helper without the study-brief contract is reported as a version mismatch',async()=>{
+ const nctId='NCT07254806';
+ for(const stale of [false,true]){
+  const installed=await installHost('treatable-brief-version-');let host:any;
+  try{
+   if(stale){const file=nodePath.join(installed.dir,'core.mjs'),current=await readText(file,'utf8'),old=current.replace(/^export function validateRequest\(v\)\{.*\}$/m,PRE_APPLY_VALIDATE_REQUEST);assert.notEqual(old,current,'the stale helper fixture must replace validateRequest');await writeText(file,old);}
+   host=startHost(installed,{hook:await writeHook(installed.home,{log:installed.log,govRecords:{[nctId]:rawStudy()}})});
+   const native=stdioNative(host),h=harness(STUDY,{nativeFactory:()=>native,now:()=>Date.now()});await h.overlay();
+   const client=clientThroughBroker(h);assert.equal(await client.open(()=>{}),nctId);
+   if(stale){
+    await assert.rejects(client.prepareBrief([nctId]),(error:any)=>error.code==='HELPER_VERSION_MISMATCH'&&error.message===FAILURE_COPY.HELPER_VERSION_MISMATCH);
+    const raw=await poll(()=>host.frames.find((f:any)=>f.id===native.sent[0]?.id));assert.equal(raw.code,'INVALID_REQUEST','the stale helper itself still answers INVALID_REQUEST');
+   }else{
+    const prepared=await client.prepareBrief([nctId]);assert.equal(prepared.kind,'preparedStudyBrief');assert.deepEqual(prepared.records.map(r=>r.nctId),[nctId]);
+   }
+   assert.equal(native.sent.length,1);assert.deepEqual(native.sent[0],{id:native.sent[0].id,type:'prepareStudyBrief',payload:{nctIds:[nctId]}});
+   assert.equal((await readLines(installed.log)).filter((r:any)=>r.host==='api.openai.com').length,0,'preparing a brief never contacts OpenAI');
+   client.disconnect();await host.exit;host=undefined;
+  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true})}
+ }
+});
