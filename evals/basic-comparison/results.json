@@ -1,0 +1,1382 @@
+{
+  "predeclarationCommit": "4a31b36",
+  "analyzedAt": "2026-10-24T13:30:59.229Z",
+  "basicCommit": "8be03247d708852c64e280320379e7c151904f84",
+  "basicSourceHashes": {
+    "extension/src/basic-matching.ts": "0555c0c28c87c1667a6a649463d8d8dff3a32fe23b5926e2807a7607c5cf4a13",
+    "extension/src/structured-checks.ts": "0aec1e59502563d4878a9958a0d9e249f0d0426dd4227f7d8b6dd94dd2b159f7",
+    "extension/src/core.ts": "bb87c4b378be3299334d190a7c05f59405aa367ae138113cc3499bcefe550131",
+    "extension/src/validation.ts": "144151b2cce9cdf13000d01014e1dd397e1e80a3ebf958752735511dcb7833fd"
+  },
+  "basicSourceSha256": "0555c0c28c87c1667a6a649463d8d8dff3a32fe23b5926e2807a7607c5cf4a13",
+  "rankingVersion": "basic-keyword-v1",
+  "localDistanceSha256": "2a33d4d1e0aa93a34e38e020fc01ecd701bf7215c2f9692bdcecfceba4e3b1fa",
+  "publicArtifactSha256": "fa07934ef9979953a67a8e33fb8f51b2e796523809ad244323206a09a53d554b",
+  "profiles": [
+    {
+      "profileId": "fictional-fibromyalgia",
+      "strictInputParity": false,
+      "inputParityLimitation": "OpenAI received the predeclared optional state; Basic API rejects state. Excluded from strict paired aggregate.",
+      "basic": {
+        "latencyMs": 2.37662499999999,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 0.5,
+          "reciprocalRank": 1,
+          "positiveLabels": 2
+        },
+        "rows": [
+          {
+            "nctId": "NCT05067998",
+            "title": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225418,
+            "lastUpdatePostDate": "2025-09-23",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [
+              {
+                "term": "fibromyalgia",
+                "field": "conditions",
+                "match": "exact",
+                "weight": 8
+              }
+            ],
+            "index": 100
+          },
+          {
+            "nctId": "NCT02846571",
+            "title": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225760,
+            "lastUpdatePostDate": "2026-03-12",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06229834",
+            "title": "Chiropractic Care for Episodic Migraine",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225530,
+            "lastUpdatePostDate": "2026-06-26",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06473597",
+            "title": "A Comparison of Nurtec ODT to Maxalt MLT-ODT in Adult ED Patients With Migraine Headache",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225642,
+            "lastUpdatePostDate": "2026-09-24",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "title": "A Study to Evaluate the Effectiveness of IDCT (Intradiscal Cell Therapy) in Subjects With One Level, Symptomatic Mild to Moderate Lumbar Degenerative Disc Disease",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225175,
+            "lastUpdatePostDate": "2026-10-15",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06567886",
+            "title": "Fibromyalgia Sleep A to ZZZ Study",
+            "checks": [
+              {
+                "id": "age",
+                "status": "unknown",
+                "message": "Age-band compatibility cannot be fully confirmed from these fields."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225293,
+            "lastUpdatePostDate": "2026-06-04",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 1,
+            "bucket": "unknown",
+            "factors": [
+              {
+                "term": "fibromyalgia",
+                "field": "conditions",
+                "match": "exact",
+                "weight": 8
+              }
+            ],
+            "index": 100
+          }
+        ]
+      },
+      "openai": {
+        "latencyMs": 948.948708,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 0.5,
+          "reciprocalRank": 1,
+          "positiveLabels": 2
+        },
+        "rows": [
+          {
+            "nctId": "NCT05067998",
+            "index": 87,
+            "confidence": 0.6,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06473597",
+            "index": 4,
+            "confidence": 0.87,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06229834",
+            "index": 1,
+            "confidence": 0.98,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT02846571",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "index": 0,
+            "confidence": 0.99,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06567886",
+            "index": 98,
+            "confidence": 0.94,
+            "guardTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "profileId": "fictional-migraine",
+      "strictInputParity": true,
+      "inputParityLimitation": null,
+      "basic": {
+        "latencyMs": 0.9669580000000337,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "positiveLabels": 1
+        },
+        "rows": [
+          {
+            "nctId": "NCT06229834",
+            "title": "Chiropractic Care for Episodic Migraine",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225530,
+            "lastUpdatePostDate": "2026-06-26",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [
+              {
+                "term": "migraine",
+                "field": "conditions",
+                "match": "exact",
+                "weight": 8
+              }
+            ],
+            "index": 100
+          },
+          {
+            "nctId": "NCT06473597",
+            "title": "A Comparison of Nurtec ODT to Maxalt MLT-ODT in Adult ED Patients With Migraine Headache",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225642,
+            "lastUpdatePostDate": "2026-09-24",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [
+              {
+                "term": "migraine",
+                "field": "conditions",
+                "match": "exact",
+                "weight": 8
+              }
+            ],
+            "index": 100
+          },
+          {
+            "nctId": "NCT02846571",
+            "title": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225760,
+            "lastUpdatePostDate": "2026-03-12",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT05067998",
+            "title": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225418,
+            "lastUpdatePostDate": "2025-09-23",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "title": "A Study to Evaluate the Effectiveness of IDCT (Intradiscal Cell Therapy) in Subjects With One Level, Symptomatic Mild to Moderate Lumbar Degenerative Disc Disease",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225175,
+            "lastUpdatePostDate": "2026-10-15",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06567886",
+            "title": "Fibromyalgia Sleep A to ZZZ Study",
+            "checks": [
+              {
+                "id": "age",
+                "status": "unknown",
+                "message": "Age-band compatibility cannot be fully confirmed from these fields."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225293,
+            "lastUpdatePostDate": "2026-06-04",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 1,
+            "bucket": "unknown",
+            "factors": [],
+            "index": 0
+          }
+        ]
+      },
+      "openai": {
+        "latencyMs": 245.41716599999995,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 1,
+          "reciprocalRank": 0.5,
+          "positiveLabels": 1
+        },
+        "rows": [
+          {
+            "nctId": "NCT06229834",
+            "index": 100,
+            "confidence": 0.99,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06473597",
+            "index": 94,
+            "confidence": 0.81,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT02846571",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT05067998",
+            "index": 0,
+            "confidence": 0.99,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06567886",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 1
+          }
+        ]
+      }
+    },
+    {
+      "profileId": "fictional-diabetes",
+      "strictInputParity": true,
+      "inputParityLimitation": null,
+      "basic": {
+        "latencyMs": 0.5670000000000073,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "positiveLabels": 1
+        },
+        "rows": [
+          {
+            "nctId": "NCT02846571",
+            "title": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225760,
+            "lastUpdatePostDate": "2026-03-12",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [
+              {
+                "term": "diabetes",
+                "field": "conditions",
+                "match": "exact",
+                "weight": 8
+              }
+            ],
+            "index": 100
+          },
+          {
+            "nctId": "NCT05067998",
+            "title": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225418,
+            "lastUpdatePostDate": "2025-09-23",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "title": "A Study to Evaluate the Effectiveness of IDCT (Intradiscal Cell Therapy) in Subjects With One Level, Symptomatic Mild to Moderate Lumbar Degenerative Disc Disease",
+            "checks": [
+              {
+                "id": "age",
+                "status": "met",
+                "message": "The age band fits the listed structured age range."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225175,
+            "lastUpdatePostDate": "2026-10-15",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 0,
+            "bucket": "structured_compatible",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06229834",
+            "title": "Chiropractic Care for Episodic Migraine",
+            "checks": [
+              {
+                "id": "age",
+                "status": "unknown",
+                "message": "Age-band compatibility cannot be fully confirmed from these fields."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225530,
+            "lastUpdatePostDate": "2026-06-26",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 1,
+            "bucket": "unknown",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06473597",
+            "title": "A Comparison of Nurtec ODT to Maxalt MLT-ODT in Adult ED Patients With Migraine Headache",
+            "checks": [
+              {
+                "id": "age",
+                "status": "unknown",
+                "message": "Age-band compatibility cannot be fully confirmed from these fields."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225642,
+            "lastUpdatePostDate": "2026-09-24",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 1,
+            "bucket": "unknown",
+            "factors": [],
+            "index": 0
+          },
+          {
+            "nctId": "NCT06567886",
+            "title": "Fibromyalgia Sleep A to ZZZ Study",
+            "checks": [
+              {
+                "id": "age",
+                "status": "unknown",
+                "message": "Age-band compatibility cannot be fully confirmed from these fields."
+              },
+              {
+                "id": "sex",
+                "status": "met",
+                "message": "No conflict in the listed structured sex criterion."
+              },
+              {
+                "id": "status",
+                "status": "met",
+                "message": "The public record reports recruiting or available expanded access."
+              }
+            ],
+            "missingFields": [],
+            "fetchedAt": 1792848225293,
+            "lastUpdatePostDate": "2026-06-04",
+            "stale": false,
+            "rankingVersion": "basic-keyword-v1",
+            "resultState": "scored",
+            "guardTier": 1,
+            "bucket": "unknown",
+            "factors": [],
+            "index": 0
+          }
+        ]
+      },
+      "openai": {
+        "latencyMs": 264.5514999999998,
+        "metrics": {
+          "precisionAt5": 0.2,
+          "recallAt5": 1,
+          "reciprocalRank": 1,
+          "positiveLabels": 1
+        },
+        "rows": [
+          {
+            "nctId": "NCT02846571",
+            "index": 95,
+            "confidence": 0.85,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT05067998",
+            "index": 4,
+            "confidence": 0.89,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT07254806",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 0
+          },
+          {
+            "nctId": "NCT06229834",
+            "index": 1,
+            "confidence": 0.98,
+            "guardTier": 1
+          },
+          {
+            "nctId": "NCT06473597",
+            "index": 1,
+            "confidence": 0.96,
+            "guardTier": 1
+          },
+          {
+            "nctId": "NCT06567886",
+            "index": 0,
+            "confidence": 1,
+            "guardTier": 1
+          }
+        ]
+      }
+    }
+  ],
+  "synthetic": {
+    "passed": 22,
+    "evaluated": 23,
+    "failed": [
+      {
+        "key": "topicalMatch",
+        "expected": true,
+        "actual": false,
+        "pass": false
+      }
+    ],
+    "invalidAssertions": 1,
+    "fixtureResults": [
+      {
+        "id": "exact",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 0,
+          "bucket": "structured_compatible",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "topicalMatch",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "age",
+            "expected": "met",
+            "actual": "met",
+            "pass": true
+          },
+          {
+            "key": "sex",
+            "expected": "met",
+            "actual": "met",
+            "pass": true
+          },
+          {
+            "key": "status",
+            "expected": "met",
+            "actual": "met",
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "known-age-conflict",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "unmet",
+              "message": "The whole age band falls outside the listed age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 2,
+          "bucket": "unlikely",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "age",
+            "expected": "unmet",
+            "actual": "unmet",
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "known-sex-conflict",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "unmet",
+              "message": "The selected sex conflicts with the listed study criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 2,
+          "bucket": "unlikely",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "sex",
+            "expected": "unmet",
+            "actual": "unmet",
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "unknown-eligibility",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "unknown",
+              "message": "Age-band compatibility cannot be fully confirmed from these fields."
+            },
+            {
+              "id": "sex",
+              "status": "unknown",
+              "message": "Sex-criterion compatibility is unknown or not shared."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 1,
+          "bucket": "unknown",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "age",
+            "expected": "unknown",
+            "actual": "unknown",
+            "pass": true
+          },
+          {
+            "key": "sex",
+            "expected": "unknown",
+            "actual": "unknown",
+            "pass": true
+          },
+          {
+            "key": "notExcluded",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "single-character-typo",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 0,
+          "bucket": "structured_compatible",
+          "factors": [
+            {
+              "term": "fibromyalgiq",
+              "field": "conditions",
+              "match": "typo",
+              "weight": 6
+            }
+          ],
+          "index": 75
+        },
+        "checks": [
+          {
+            "key": "topicalMatch",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "notExcluded",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "explicit-synonym",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 0,
+          "bucket": "structured_compatible",
+          "factors": [],
+          "index": 0
+        },
+        "checks": [
+          {
+            "key": "topicalMatch",
+            "expected": true,
+            "actual": false,
+            "pass": false
+          },
+          {
+            "key": "notExcluded",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          }
+        ]
+      },
+      {
+        "id": "nearby-terminated-site",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 0,
+          "bucket": "structured_compatible",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          },
+          {
+            "key": "nearestSelectableFacility",
+            "expected": "Far recruiting",
+            "actual": null,
+            "pass": null,
+            "invalidFixture": "Country omitted in the frozen sites. Production requires confirmed US country to measure a US site. This assertion is not counted; input defect identified before Basic execution."
+          }
+        ],
+        "siteResult": {
+          "distanceStatus": "unknown",
+          "outsideRadius": false,
+          "radiusStatus": "unknown",
+          "missingCoordinates": 1,
+          "eligibleSites": 0,
+          "unverifiedSites": 1,
+          "coverage": "none"
+        }
+      },
+      {
+        "id": "missing-geo",
+        "row": {
+          "nctId": "NCT00000001",
+          "title": "Condition study",
+          "checks": [
+            {
+              "id": "age",
+              "status": "met",
+              "message": "The age band fits the listed structured age range."
+            },
+            {
+              "id": "sex",
+              "status": "met",
+              "message": "No conflict in the listed structured sex criterion."
+            },
+            {
+              "id": "status",
+              "status": "met",
+              "message": "The public record reports recruiting or available expanded access."
+            }
+          ],
+          "missingFields": [],
+          "fetchedAt": 1792843200000,
+          "lastUpdatePostDate": null,
+          "stale": true,
+          "rankingVersion": "basic-keyword-v1",
+          "resultState": "scored",
+          "guardTier": 0,
+          "bucket": "structured_compatible",
+          "factors": [
+            {
+              "term": "fibromyalgia",
+              "field": "conditions",
+              "match": "exact",
+              "weight": 8
+            }
+          ],
+          "index": 100
+        },
+        "checks": [
+          {
+            "key": "notExcluded",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          },
+          {
+            "key": "noEligibilityClaim",
+            "expected": true,
+            "actual": true,
+            "pass": true,
+            "scope": "Structured result bucket only; no browser UI evaluated."
+          },
+          {
+            "key": "distanceUnknown",
+            "expected": true,
+            "actual": true,
+            "pass": true
+          }
+        ],
+        "siteResult": {
+          "distanceStatus": "unknown",
+          "outsideRadius": false,
+          "radiusStatus": "unknown",
+          "missingCoordinates": 1,
+          "eligibleSites": 0,
+          "unverifiedSites": 1,
+          "coverage": "none"
+        }
+      }
+    ],
+    "supplementalUSSiteProbe": {
+      "predeclaredSeparately": true,
+      "reason": "Country correction declared before Basic/site execution; not part of the original predeclared score.",
+      "pass": true,
+      "result": {
+        "distanceStatus": "known",
+        "outsideRadius": false,
+        "radiusStatus": "not_set",
+        "missingCoordinates": 0,
+        "eligibleSites": 1,
+        "unverifiedSites": 0,
+        "coverage": "complete",
+        "distanceMiles": 2147.663660671565,
+        "nearestSiteLabel": "Far recruiting",
+        "siteStatus": "accepting"
+      }
+    },
+    "publicSiteEvidence": {
+      "nctId": "NCT07254806",
+      "facilities": 31,
+      "withCoordinates": 31,
+      "recruiting": 30,
+      "terminated": 1
+    }
+  },
+  "safety": {
+    "falseEligibilityBuckets": 0,
+    "falseExclusions": 0,
+    "unknownAssertions": [
+      {
+        "key": "age",
+        "expected": "unknown",
+        "actual": "unknown",
+        "pass": true
+      },
+      {
+        "key": "sex",
+        "expected": "unknown",
+        "actual": "unknown",
+        "pass": true
+      },
+      {
+        "key": "distanceUnknown",
+        "expected": true,
+        "actual": true,
+        "pass": true
+      }
+    ],
+    "openaiEligibilityClaimScope": "Score-only result schema cannot express eligibility or exclusion; shared deterministic guard rows used unchanged. No clinical false-eligibility rate measured."
+  },
+  "actualAuthenticatedRequests": 3,
+  "completedRequests": 3,
+  "agentsRequests": 0,
+  "cost": null,
+  "notes": [
+    "Basic receives precisely the same normalized title/conditions/summary/criteria and age/sex/status facts as OpenAI. Neither receives untruncated raw study text or interventions absent from this native projection.",
+    "Basic conditionText is only joined selected public condition labels. The first OpenAI profile additionally contains state ID. Basic rejects this field, so that comparison is not strict equal-input and must not enter a paired aggregate. The other two profiles have identical allowed fields. No ZIP, origin, history or notes reach either ranker.",
+    "Both scored lists use the SAME Basic deterministic guard tiers before scores. A topically exact study with a known constraint conflict can rank lower than unrelated but structurally compatible records.",
+    "Synthetic safety is local deterministic verification. OpenAI was not asked to score synthetic fixtures.",
+    "Single execution times are observations, not latency benchmarks. Offline reruns update Basic compute latency but reuse saved OpenAI observations."
+  ]
+}
