@@ -1,104 +1,21 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
-import React from 'react';
-import {renderToStaticMarkup} from 'react-dom/server';
-import TestRenderer,{act,type ReactTestRenderer} from 'react-test-renderer';
-import {PanelB} from '../src/panel-b-view';
-import type {PanelController} from '../src/use-panel-controller';
-import {STORAGE_KEY,type StorageArea} from '../src/storage';
-
-class Area implements StorageArea{
- data:Record<string,unknown>={};
- async get(key:string){return {[key]:this.data[key]}}
- async set(value:Record<string,unknown>){Object.assign(this.data,value)}
- async remove(key:string){delete this.data[key]}
- async setAccessLevel(){/* trusted-context behavior is covered by storage.test.ts */}
-}
-const studies=JSON.parse(readFileSync(new URL('../../scaffold/data/studies.json',import.meta.url),'utf8'));
-const zips=JSON.parse(readFileSync(new URL('../../scaffold/data/us-zip-centroids.json',import.meta.url),'utf8'));
-let session=new Area(),local=new Area(),messages:any[]=[],pendingGenerate:((v:any)=>void)|undefined,pendingPage:((v:any)=>void)|undefined;
-const runtime={getURL:(path:string)=>path,sendMessage:async(message:any)=>{
- messages.push(message);
- if(message.kind==='readPage')return await new Promise(resolve=>{pendingPage=resolve});
- if(message.kind==='nativeDisconnect')return{ok:true};
- if(message.request?.type==='status')return{id:message.request.id,type:'status',ok:true,models:[{name:'installed:local'}],message:'Local model available.'};
- if(message.request?.type==='generate')return await new Promise(resolve=>{pendingGenerate=resolve});
- return{ok:true};
-}};
-Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime,storage:{get session(){return session},get local(){return local}}}});
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';
+import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import TestRenderer,{act,type ReactTestRenderer} from 'react-test-renderer';
+import {PanelB} from '../src/panel-b-view';import type {PanelController} from '../src/use-panel-controller';import {FakeRuntime} from './fake-panel-runtime';
+const studies=JSON.parse(readFileSync(new URL('../../scaffold/data/studies.json',import.meta.url),'utf8')),zips=JSON.parse(readFileSync(new URL('../../scaffold/data/us-zip-centroids.json',import.meta.url),'utf8'));
+let runtime:FakeRuntime,removed:string[],failCleanup=false,vm:PanelController,focusEvents:string[]=[];
+const documentEvents=new EventTarget() as EventTarget&{visibilityState:string};documentEvents.visibilityState='visible';const windowEvents=new EventTarget();
+Object.defineProperty(globalThis,'document',{configurable:true,value:documentEvents});Object.defineProperty(globalThis,'window',{configurable:true,value:windowEvents});
 Object.defineProperty(globalThis,'fetch',{configurable:true,value:async(path:string)=>({json:async()=>path.endsWith('studies.json')?studies:zips})});
 const {usePanelController}=await import('../src/use-panel-controller');
-let vm:PanelController;
-let focusEvents:string[]=[];
 function Probe(){vm=usePanelController();return React.createElement(PanelB,{controller:vm})}
-async function mount(){session=new Area();local=new Area();messages=[];pendingGenerate=undefined;pendingPage=undefined;focusEvents=[];let renderer!:ReactTestRenderer;await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:element=>({focus:()=>focusEvents.push(element.props.id)})});});assert.equal(vm.ready,true);return renderer}
-function updateProfile(){act(()=>{vm.edit('condition','fibromyalgia');vm.edit('age','45');vm.edit('sex','female');vm.edit('zip','83702');});act(()=>{vm.applySearch()});assert.ok(vm.matches.length>0)}
+async function mount(failure=false){runtime=new FakeRuntime();removed=[];focusEvents=[];failCleanup=failure;documentEvents.visibilityState='visible';const area={async remove(key:string){removed.push(key);if(failCleanup)throw Error('SyntheticPrivateName')},get(){throw Error('Storage reads prohibited')},set(){throw Error('Storage writes prohibited')}};Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime,storage:{session:area,local:area}}});let renderer!:ReactTestRenderer;await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:element=>({focus:()=>focusEvents.push(element.props.id)})})});return renderer}
+function profile(){act(()=>{vm.edit('condition','fibromyalgia');vm.edit('age','45');vm.edit('zip','83702');vm.edit('notes','REAL_PATIENT_CANARY_7149')});act(()=>{vm.applySearch()});assert.ok(vm.matches.length)}
 function hash(path:string){return createHash('sha256').update(readFileSync(new URL(path,import.meta.url))).digest('hex')}
-
-test('A and B retain identical extension identity, permissions, worker, and data provenance',()=>{
- const a=JSON.parse(readFileSync(new URL('../dist/manifest.json',import.meta.url),'utf8'));
- const b=JSON.parse(readFileSync(new URL('../dist-b/manifest.json',import.meta.url),'utf8'));
- assert.match(b.name,/Version B/);b.name=a.name;assert.deepEqual(a,b);
- for(const file of ['background.js','data/studies.json','data/us-zip-centroids.json','data/provenance.json'])assert.equal(hash('../dist/'+file),hash('../dist-b/'+file),file);
-});
-
-test('shared controller preserves search, save/remember, and clear behavior through the B view',async()=>{
- const renderer=await mount();updateProfile();const ids=vm.matches.map(m=>m.study.id);const first=ids[0];
- act(()=>{vm.toggleSave(first)});await act(async()=>{vm.updateRemember(true)});
- assert.deepEqual(vm.saved,[first]);assert.ok(local.data[STORAGE_KEY]);assert.equal(session.data[STORAGE_KEY],undefined);
- const nav=renderer.root.findByProps({'aria-label':'Panel sections'});
- act(()=>nav.findAllByType('button')[1].props.onClick());assert.equal(vm.tab,'results');
- assert.equal(renderer.root.findAllByType('article').length,ids.length);
- act(()=>nav.findAllByType('button')[2].props.onClick());assert.equal(vm.tab,'saved');assert.equal(renderer.root.findAllByType('article').length,1);
- await act(async()=>{await vm.clearEverything()});
- assert.equal(vm.form.condition,'');assert.deepEqual(vm.matches,[]);assert.deepEqual(vm.saved,[]);assert.equal(vm.profile,undefined);
- assert.deepEqual(local.data,{});assert.deepEqual(session.data,{});assert.ok(messages.some(m=>m.kind==='nativeDisconnect'));
- act(()=>renderer.unmount());
-});
-
-test('late local generation and page reads cannot restore patient analysis after clear or edit',async()=>{
- const renderer=await mount();updateProfile();await act(async()=>{await vm.checkModels()});
- let generation!:Promise<void>;act(()=>{generation=vm.explain()});assert.equal(vm.busy,true);assert.ok(pendingGenerate);
- await act(async()=>{await vm.clearEverything()});
- await act(async()=>{pendingGenerate!({ok:true,text:JSON.stringify({summary:'Ask the study team.',questions:[],cautions:[]})});await generation});
- assert.equal(vm.explanation,undefined);assert.deepEqual(vm.matches,[]);assert.equal(vm.busy,false);assert.ok(messages.some(m=>m.request?.type==='cancel'));
- updateProfile();let page!:Promise<void>;act(()=>{page=vm.analyzePage()});assert.ok(pendingPage);
- act(()=>{vm.edit('condition','neuropathy')});
- await act(async()=>{pendingPage!({ok:true,source:{kind:'clinicaltrials',url:'https://clinicaltrials.gov/study/'+studies[0].id,title:'Late study',text:'Study text',nctId:studies[0].id}});await page});
- assert.equal(vm.source,undefined);assert.deepEqual(vm.matches,[]);assert.equal(vm.form.condition,'neuropathy');
- act(()=>renderer.unmount());
-});
-
-test('B presents truthful unchecked status, labelled controls, and clear static navigation states',async()=>{
- const renderer=await mount();
- const html=renderToStaticMarkup(React.createElement(PanelB,{controller:vm}));
- assert.match(html,/Model not checked/);assert.match(html,/Local only/);assert.match(html,/aria-current="page"/);
- assert.match(html,/Medical condition or symptoms/);assert.match(html,/Sex for study criteria/);assert.match(html,/not encrypted/);
- assert.doesNotMatch(html,/Local model available/);assert.equal(renderer.root.findAllByType('nav').length,1);
- const nav=renderer.root.findByProps({'aria-label':'Panel sections'});assert.equal(nav.findAllByType('button').length,3);
- act(()=>renderer.unmount());
-});
-
-test('B keeps cancellation available after navigating away from an active local explanation',async()=>{
- const renderer=await mount();updateProfile();await act(async()=>{await vm.checkModels()});const ids=vm.matches.map(m=>m.study.id);
- let generation!:Promise<void>;act(()=>{generation=vm.explain()});assert.equal(vm.busy,true);
- const nav=renderer.root.findByProps({'aria-label':'Panel sections'});act(()=>nav.findAllByType('button')[2].props.onClick());
- assert.equal(vm.tab,'saved');act(()=>renderer.root.findByProps({'aria-label':'Stop local explanation'}).props.onClick());
- assert.equal(vm.busy,false);assert.deepEqual(vm.matches.map(m=>m.study.id),ids);
- await act(async()=>{pendingGenerate!({ok:true,text:JSON.stringify({summary:'Late draft',questions:[],cautions:[]})});await generation});
- assert.equal(vm.explanation,undefined);assert.ok(messages.some(m=>m.request?.type==='cancel'));
- act(()=>renderer.unmount());
-});
-
-test('B validation errors from Search expose an Edit profile action that focuses the profile heading',async()=>{
- for(const label of ['Search locally','Read ClinicalTrials.gov page']){
-  const renderer=await mount();const nav=renderer.root.findByProps({'aria-label':'Panel sections'});act(()=>nav.findAllByType('button')[1].props.onClick());
-  const button=renderer.root.findAllByType('button').find(node=>node.children.some(child=>child===label));assert.ok(button);
-  await act(async()=>{await button.props.onClick()});assert.ok(vm.error);assert.equal(vm.profile,undefined);
-  const edit=renderer.root.findAllByType('button').find(node=>node.children.includes('Edit profile'));assert.ok(edit);
-  act(()=>edit.props.onClick());assert.equal(renderer.root.findAllByProps({id:'profile-heading'}).length,1);assert.deepEqual(focusEvents,['profile-heading']);
-  act(()=>renderer.unmount());
- }
-});
+test('updated A/B share identity, strict permissions, snapshot and background while retaining separate presentation',()=>{const a=JSON.parse(readFileSync(new URL('../dist/manifest.json',import.meta.url),'utf8')),b=JSON.parse(readFileSync(new URL('../dist-b/manifest.json',import.meta.url),'utf8'));assert.match(b.name,/Version B/);b.name=a.name;assert.deepEqual(a,b);assert.equal(a.minimum_chrome_version,'142');assert.ok(!a.permissions.includes('cookies'));for(const file of ['background.js','data/studies.json','data/us-zip-centroids.json','data/provenance.json'])assert.equal(hash('../dist/'+file),hash('../dist-b/'+file))});
+test('cleanup gates entry, removes both old locations without reading, and failures block all data actions',async()=>{const renderer=await mount(true);assert.equal(vm.ready,false);act(()=>vm.edit('condition','REAL_PATIENT_CANARY'));assert.equal(vm.form.condition,'');await act(async()=>{await vm.runDemo('scoreDemo')});assert.equal(runtime.operations.length,0);assert.equal(runtime.ports.length,0);assert.equal(removed.length,2);assert.doesNotMatch(vm.error,/SyntheticPrivateName/);act(()=>renderer.unmount())});
+test('panel-only profile never enters storage, native demo payload, preview, or trace; reopen is blank',async()=>{const renderer=await mount();assert.equal(vm.ready,true);profile();const realIds=vm.matches.map(v=>v.study.id);assert.ok(realIds.length);act(()=>vm.approveDemo(true));let task!:Promise<void>;act(()=>{task=vm.runDemo('scoreDemo')});assert.equal(runtime.operations.length,1);assert.deepEqual(runtime.operations[0].request.payload,{fixtureId:'fibromyalgia',consent:true});assert.doesNotMatch(JSON.stringify(runtime.sent),/REAL_PATIENT_CANARY|83702/);runtime.score();await act(async()=>{await task});const html=renderToStaticMarkup(React.createElement(PanelB,{controller:vm}));assert.doesNotMatch(html,/REAL_PATIENT_CANARY/);assert.match(html,/Fictional demo only/);assert.equal(vm.scores?.mode,'test');assert.deepEqual(vm.matches.map(v=>v.study.id),realIds);act(()=>renderer.unmount());const reopened=await mount();assert.equal(vm.form.condition,'');assert.equal(vm.form.notes,'');assert.equal(vm.scores,undefined);assert.deepEqual(vm.matches,[]);act(()=>reopened.unmount())});
+test('End session drops patient/page/demo state, closes transport, and rejects late replies',async()=>{const renderer=await mount();profile();act(()=>vm.approveDemo(true));let task!:Promise<void>;act(()=>{task=vm.runDemo('scoreDemo')});await act(async()=>{vm.clearEverything();await task});runtime.score();assert.equal(vm.ready,false);assert.equal(vm.profile,undefined);assert.equal(vm.form.notes,'');assert.deepEqual(vm.matches,[]);assert.equal(vm.scores,undefined);assert.deepEqual(vm.trace,[]);assert.equal(runtime.ports[0].closed,true);act(()=>renderer.unmount())});
+test('late page reply cannot restore profile or source after End session',async()=>{const renderer=await mount();profile();let task!:Promise<void>;act(()=>{task=vm.analyzePage()});assert.ok(runtime.pageResolve);act(()=>vm.clearEverything());await act(async()=>{runtime.pageResolve!({ok:true,source:{url:'https://clinicaltrials.gov/study/'+studies[0].id,title:'Late',text:'Late public evidence'}});await task});assert.equal(vm.source,undefined);assert.deepEqual(vm.matches,[]);act(()=>renderer.unmount())});
+test('actual pagehide and hidden-document handlers end session and remove their listeners on unmount',async()=>{for(const kind of ['pagehide','visibilitychange']){const renderer=await mount();profile();await act(async()=>{if(kind==='pagehide')windowEvents.dispatchEvent(new Event('pagehide'));else{documentEvents.visibilityState='hidden';documentEvents.dispatchEvent(new Event('visibilitychange'))}});assert.equal(vm.form.condition,'');assert.equal(vm.ready,false);assert.equal(runtime.ports[0].closed,true);act(()=>renderer.unmount())}});
+test('forms request autofill/spellchecking off and prevent native form submission before validation',async()=>{const renderer=await mount();const nav=renderer.root.findByProps({'aria-label':'Panel sections'});act(()=>nav.findAllByType('button')[0].props.onClick());const form=renderer.root.findByType('form');assert.equal(form.props.autoComplete,'off');for(const input of renderer.root.findAllByType('input')){assert.equal(input.props.autoComplete,'off');assert.equal(input.props.spellCheck,false)}let prevented=false;act(()=>form.props.onSubmit({preventDefault:()=>{prevented=true}}));assert.equal(prevented,true);assert.ok(vm.error);assert.equal(runtime.operations.length,0);act(()=>renderer.unmount())});
+test('navigation keeps Stop API operation available; invalid profile exposes focused edit route',async()=>{const renderer=await mount();act(()=>vm.approveDemo(true));let task!:Promise<void>;act(()=>{task=vm.runDemo('agentDemo')});const nav=renderer.root.findByProps({'aria-label':'Panel sections'});act(()=>nav.findAllByType('button')[0].props.onClick());assert.ok(renderer.root.findAllByType('button').some(b=>b.children.includes('Stop API operation')));await act(async()=>{vm.clearEverything();await task});act(()=>renderer.unmount());const fresh=await mount();const freshNav=fresh.root.findByProps({'aria-label':'Panel sections'});act(()=>freshNav.findAllByType('button')[1].props.onClick());const search=fresh.root.findAllByType('button').find(b=>b.children.includes('Search locally'))!;act(()=>search.props.onClick());const edit=fresh.root.findAllByType('button').find(b=>b.children.includes('Edit profile'))!;act(()=>edit.props.onClick());assert.deepEqual(focusEvents,['profile-heading']);act(()=>fresh.unmount())});

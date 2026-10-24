@@ -1,19 +1,22 @@
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
 import {parsePageSource} from './core';
-import {parseLocalRequest,parseNativeReply,type LocalRequest} from './validation';
-const pending=new Map<string,{resolve:(value:unknown)=>void,timer:ReturnType<typeof setTimeout>,request:Pick<LocalRequest,'id'|'type'>}>();
-let nativePort:any;
-function failPending(){for(const[id,item]of pending){clearTimeout(item.timer);item.resolve({id,type:'result',ok:false,error:'Local helper disconnected. Source results are preserved.'});}pending.clear();nativePort=undefined;}
-function port(){
- if(nativePort)return nativePort;const connection=chrome.runtime.connectNative('com.treatable.local');nativePort=connection;
- connection.onMessage.addListener((message:unknown)=>{if(nativePort!==connection||!message||typeof message!=='object'||typeof(message as any).id!=='string')return;const id=(message as any).id,item=pending.get(id);if(!item)return;clearTimeout(item.timer);pending.delete(id);try{item.resolve(parseNativeReply(message,item.request))}catch{item.resolve({id,type:'result',ok:false,error:'Local helper returned an unsupported response. Source checks are preserved.'})}});
- connection.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(nativePort===connection)failPending()});return connection;
+import {parseDemoRequest,parseDemoReply,type DemoRequest} from '../shared/demo-contract.mjs';
+const panels=new Map<any,()=>void>();
+function allowedPanel(sender:any){return sender?.id===chrome.runtime.id&&!sender.tab&&sender.url===chrome.runtime.getURL('panel.html')}
+function attachPanel(panel:any){
+ if(panel.name!=='treatable-panel-v2'||!allowedPanel(panel.sender)){panel.disconnect();return}
+ let native:any,closed=false;const pending=new Map<string,{request:Pick<DemoRequest,'id'|'type'>,timer:ReturnType<typeof setTimeout>}>();
+ const post=(message:unknown)=>{if(!closed)try{panel.postMessage(message)}catch{end()}};
+ const failure=(id:string)=>({id,type:'result',ok:false,error:'The fixed API operation was unavailable. Local results are preserved.',code:'OPERATION_FAILED'});
+ function end(){if(closed)return;closed=true;panels.delete(panel);for(const item of pending.values())clearTimeout(item.timer);pending.clear();try{native?.disconnect()}catch{}native=undefined;try{panel.disconnect()}catch{}}
+ function connection(){if(native)return native;const connection=chrome.runtime.connectNative('com.treatable.local');native=connection;connection.onMessage.addListener((value:unknown)=>{if(native!==connection||!value||typeof value!=='object'||typeof(value as any).id!=='string')return;const id=(value as any).id,item=pending.get(id);if(!item)return;try{const reply=parseDemoReply(value,id);if(reply.type==='trace'){post({reply});return}if(item.request.type==='status'&&reply.type!=='status'||item.request.type!=='status'&&reply.type!=='result')throw new Error('Response mismatch');clearTimeout(item.timer);pending.delete(id);post({reply:!reply.ok?failure(id):reply.type==='status'?{id,type:'status',ok:true,provider:'openai',configured:reply.configured,message:reply.configured?'Dedicated credential configured.':'Dedicated credential setup required.'}:reply})}catch{clearTimeout(item.timer);pending.delete(id);post({reply:failure(id)})}});connection.onDisconnect.addListener(()=>{void chrome.runtime.lastError;if(native===connection){native=undefined;for(const[id,item]of pending){clearTimeout(item.timer);post({reply:failure(id)})}pending.clear()}});return connection}
+ panel.onMessage.addListener((message:any)=>{if(closed)return;if(message?.kind!=='native')return;let request:DemoRequest;try{request=parseDemoRequest(message.request);if(pending.has(request.id)||pending.size>=4)throw new Error('Busy')}catch{end();return}const timer=setTimeout(()=>{pending.delete(request.id);post({reply:failure(request.id)});end()},150000);pending.set(request.id,{request:{id:request.id,type:request.type},timer});try{connection().postMessage(request)}catch{clearTimeout(timer);pending.delete(request.id);post({reply:failure(request.id)})}});
+ panel.onDisconnect.addListener(end);panels.set(panel,end);post({kind:'panelReady'});
 }
-async function sendNative(input:unknown){
- const request=parseLocalRequest(input);if(pending.has(request.id))throw new Error('Duplicate local request.');if(pending.size>=6)throw new Error('Local helper busy. Stop the current explanation first.');
- return new Promise(resolve=>{const id=request.id;const timer=setTimeout(()=>{pending.delete(id);resolve({id,type:'result',ok:false,error:'Local model timed out. Source results are preserved.'})},95000);pending.set(id,{resolve,timer,request:{id,type:request.type}});try{port().postMessage(request)}catch{clearTimeout(timer);pending.delete(id);resolve({id,type:'result',ok:false,error:'Install the local helper to enable private explanations.'})}});
-}
-async function readCurrentPage(){const[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||typeof tab.url!=='string'||!isSupportedSite(tab.url))throw new Error('Open an HTTPS ClinicalTrials.gov page. Other sites are not supported.');const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readPage,args:[[...TRIAL_ORIGINS]]});return parsePageSource(results?.[0]?.result);}
+chrome.runtime.onConnect.addListener(attachPanel);
+async function readCurrentPage(){const[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||typeof tab.url!=='string'||!isSupportedSite(tab.url))throw new Error('Unsupported page');const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readPage,args:[[...TRIAL_ORIGINS]]});return parsePageSource(results?.[0]?.result)}
 chrome.action.onClicked.addListener((tab:any)=>{if(tab?.windowId!==undefined)void chrome.sidePanel.open({windowId:tab.windowId})});
-chrome.runtime.onMessage.addListener((message:any,sender:any,respond:(v:unknown)=>void)=>{const origin=`chrome-extension://${chrome.runtime.id}/`;if(sender.id!==chrome.runtime.id||sender.tab||typeof sender.url!=='string'||!sender.url.startsWith(origin))return false;if(message?.kind==='nativeDisconnect'){nativePort?.disconnect();failPending();respond({ok:true});return false}if(message?.kind==='native'){void sendNative(message.request).then(respond).catch(()=>respond({ok:false,error:'Invalid or unavailable local request. Source checks are preserved.'}));return true}if(message?.kind==='readPage'){void readCurrentPage().then(source=>respond({ok:true,source})).catch(()=>respond({ok:false,error:'Open an HTTPS ClinicalTrials.gov page, then click Analyze. This release cannot read other sites.'}));return true}return false});
+// Chrome 142+: any closed panel ends all panel sessions, deliberately privacy-first.
+chrome.sidePanel.onClosed.addListener(()=>{for(const[panel,end]of [...panels]){try{panel.postMessage({kind:'endSession'})}catch{}end()}panels.clear()});
+chrome.runtime.onMessage.addListener((message:any,sender:any,respond:(v:unknown)=>void)=>{if(!allowedPanel(sender))return false;if(message?.kind==='readPage'){void readCurrentPage().then(source=>respond({ok:true,source})).catch(()=>respond({ok:false,error:'Open a supported ClinicalTrials.gov study page and retry.'}));return true}return false});

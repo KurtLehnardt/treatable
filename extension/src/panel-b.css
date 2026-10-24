@@ -3,3 +3,5 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}.primary:active:not(:disabled){scale:1}}
 
 .message.error>.quiet{display:flex;color:inherit;margin-top:6px}.section-title h2:focus{outline:2px solid #507e5e;outline-offset:4px}
+
+fieldset{border:0;padding:0;margin:0;min-width:0}fieldset:disabled{opacity:.65}.input-preview pre{max-height:260px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px}.demo-banner{background:#faf3dc}.score-row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}.api-trace{font-size:11px;line-height:1.7;padding-left:18px}.api-trace li{overflow-wrap:anywhere}.api-trace code{font-size:11px}.check input{min-width:18px}.version-a{background:#f7faf8}.demo-section h4{margin-bottom:4px}.model-actions{margin-top:14px}.input-preview p{font-size:11px;line-height:1.6}.runtime-actions{flex-wrap:wrap}

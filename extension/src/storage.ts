@@ -1,8 +1,8 @@
-import {PatientProfileSchema,type PatientProfile} from './core';
-export interface StoredState{profile?:PatientProfile;savedIds:string[]}
+/** Deletion-only compatibility migration. Never reads or writes patient values. */
 export const STORAGE_KEY='treatable.patient.v1';
-export interface StorageArea{get:(key:string)=>Promise<Record<string,unknown>>;set:(value:Record<string,unknown>)=>Promise<void>;remove:(key:string)=>Promise<void>;setAccessLevel?:(arg:{accessLevel:string})=>Promise<void>}
-export async function secureStorage(session:StorageArea,local:StorageArea){await session.setAccessLevel?.({accessLevel:'TRUSTED_CONTEXTS'});await local.setAccessLevel?.({accessLevel:'TRUSTED_CONTEXTS'});}
-export async function loadState(session:StorageArea,local:StorageArea):Promise<{state:StoredState;remember:boolean}>{for(const [area,remember]of [[session,false],[local,true]]as const){const raw=(await area.get(STORAGE_KEY))[STORAGE_KEY];if(!raw||typeof raw!=='object')continue;const value=raw as Record<string,unknown>;const parsed=PatientProfileSchema.safeParse(value.profile);return{state:{profile:parsed.success?parsed.data:undefined,savedIds:Array.isArray(value.savedIds)?value.savedIds.filter((v):v is string=>typeof v==='string'&&/^NCT\d{8}$/.test(v)).slice(0,200):[]},remember};}return{state:{savedIds:[]},remember:false}}
-export async function saveState(session:StorageArea,local:StorageArea,state:StoredState,remember:boolean){const target=remember?local:session,other=remember?session:local;await other.remove(STORAGE_KEY);await target.set({[STORAGE_KEY]:state})}
-export async function clearState(session:StorageArea,local:StorageArea){await Promise.all([session.remove(STORAGE_KEY),local.remove(STORAGE_KEY)])}
+export const LEGACY_STORAGE_KEYS=[STORAGE_KEY] as const;
+export interface CleanupArea {remove:(key:string)=>Promise<void>}
+export async function clearLegacyPatientData(session:CleanupArea|undefined,local:CleanupArea|undefined):Promise<void>{
+ if(!session||!local||typeof session.remove!=='function'||typeof local.remove!=='function')throw new Error('Legacy data cleanup is unavailable. Patient entry remains blocked.');
+ try{await Promise.all(LEGACY_STORAGE_KEYS.flatMap(key=>[session.remove(key),local.remove(key)]))}catch{throw new Error('Legacy data cleanup did not finish. Retry before entering patient details.')}
+}

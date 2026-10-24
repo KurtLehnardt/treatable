@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseFormInput,parseLocalRequest,parseNativeReply,parseStatus,parsePageReply,withinMessageBudget} from '../src/validation';
 import {profileFromForm,parsePageSource,parseExplanation,resolveZip} from '../src/core';
-import {LocalModelClient} from '../src/native';
+import {DemoClient} from '../src/native';
+import {FakeRuntime} from './fake-panel-runtime';
 const form={condition:"Sjo\u0308gren’s syndrome; ألم مزمن",notes:'Symptoms on multiple days.',age:'0.5',sex:'prefer_not_to_say',zip:'01001-1234',radius:'100'};
 const zips={zips:{'01001':{city:'Agawam',state:'MA',lat:42.06,lon:-72.61}}};
 const statusRequest={id:'request_1',type:'status',payload:{}} as const;
@@ -66,8 +67,4 @@ test('model JSON is bounded before parsing and does not silently truncate unsafe
  assert.throws(()=>parseExplanation(' '.repeat(16001)));assert.throws(()=>parseExplanation('{SyntheticPrivateName'),error=>error instanceof Error&&!error.message.includes('SyntheticPrivateName'));
 });
 
-test('local client validates status and successful generation through the message boundary',async()=>{
- const client=new LocalModelClient({sendMessage:async(message:any)=>message.request.type==='status'?{id:message.request.id,type:'status',ok:true,models:[{name:'installed:local'}]}:{id:message.request.id,type:'result',ok:true,text:'A valid local response'}});
- assert.equal((await client.status()).models[0].name,'installed:local');assert.equal(await client.generate('installed:local','A question',new AbortController().signal),'A valid local response');
- const bad=new LocalModelClient({sendMessage:async()=>({ok:true,text:'SyntheticPrivateName'})});await assert.rejects(bad.generate('installed:local','A question',new AbortController().signal),error=>error instanceof Error&&!error.message.includes('SyntheticPrivateName'));
-});
+test('current demo client validates correlated status through the per-panel message boundary',async()=>{const runtime=new FakeRuntime(),client=new DemoClient(runtime);await client.open(()=>{});assert.equal((await client.status()).configured,true);const task=client.run('scoreDemo','fibromyalgia',true,()=>{},new AbortController().signal);const operation=runtime.operations[0];operation.port.reply({id:operation.request.id,type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'pancreatic',mode:'test',scores:[{nctId:'NCT12345678',index:50,confidence:.5}]}});await assert.rejects(task,/Mismatched/);client.disconnect()});

@@ -1,0 +1,11 @@
+import React from 'react';
+import type {PanelController} from './use-panel-controller';
+export function PatientForm({controller:vm,onSearch}:{controller:PanelController;onSearch:()=>void}){
+ return <form aria-label="Patient profile" autoComplete="off" onSubmit={event=>{event.preventDefault();onSearch()}}><fieldset disabled={!vm.ready}>
+ <label>Medical condition or symptoms<input autoComplete="off" spellCheck={false} autoCorrect="off" autoCapitalize="off" value={vm.form.condition} onChange={e=>vm.edit('condition',e.target.value)} placeholder="e.g. fibromyalgia" maxLength={2400}/></label>
+ <label>Symptoms or treatments tried<span className="optional">Optional · stays in this panel</span><textarea autoComplete="off" spellCheck={false} autoCorrect="off" autoCapitalize="off" value={vm.form.notes} onChange={e=>vm.edit('notes',e.target.value)} maxLength={12000} rows={3}/></label>
+ <div className="field-grid"><label>Age<input autoComplete="off" spellCheck={false} inputMode="decimal" value={vm.form.age} onChange={e=>vm.edit('age',e.target.value)} placeholder="Years" maxLength={8}/></label><label>Sex for study criteria<select autoComplete="off" value={vm.form.sex} onChange={e=>vm.edit('sex',e.target.value)}><option value="prefer_not_to_say">Not provided</option><option value="female">Female</option><option value="male">Male</option></select></label></div>
+ <div className="field-grid"><label>US ZIP<span className="optional">Optional</span><input autoComplete="off" spellCheck={false} value={vm.form.zip} onChange={e=>vm.edit('zip',e.target.value)} placeholder="83702" maxLength={10} inputMode="numeric"/></label><label>Travel preference<select autoComplete="off" value={vm.form.radius} onChange={e=>vm.edit('radius',e.target.value)}>{['25','50','100','250','anywhere'].map(v=><option key={v} value={v}>{v==='anywhere'?'Anywhere':`${v} miles`}</option>)}</select></label></div>
+ <button type="submit" className="primary full-width" disabled={!vm.ready}>Find studies locally <span aria-hidden="true">→</span></button>
+ </fieldset><p className="fine">These fields are used for local screening only. Treatable does not save them. Browser autofill/spellchecking is requested off, but browser and OS behavior cannot be guaranteed.</p></form>;
+}
