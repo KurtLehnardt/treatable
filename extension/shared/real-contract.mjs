@@ -1,6 +1,6 @@
 import{exactKeys,isRecord,utf8Bytes,validId,MAX_MESSAGE_BYTES,QUESTION_TEMPLATES,CAUTION_TEMPLATES}from'./demo-contract.mjs';
 import{PUBLIC_CONDITIONS,PUBLIC_STUDY_IDS,PUBLIC_CATALOG_METADATA}from'./public-catalog.mjs';
-export const REAL_POLICY_VERSION='treatable-health-api-draft-2026-10-24-v1';
+export const REAL_POLICY_VERSION='treatable-health-api-2026-10-24-v1';
 export const PREPARED_TTL_MS=5*60*1000;
 export const AGE_BANDS=Object.freeze(['under_18','18_29','30_44','45_59','60_74','75_89','90_plus']);
 export const US_STATES=Object.freeze('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' '));
