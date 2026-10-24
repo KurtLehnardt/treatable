@@ -33,7 +33,7 @@ test('status reports the contract, the policy version, the mode label, and which
   assert.equal(result.mode, 'mocked');
   assert.deepEqual(result.session, { prepared: false, pending: 0, requests: 1 });
   assert.deepEqual(result.operations, {
-    status: 'ready', searchTrials: 'not_implemented', screenLocal: 'not_implemented', prepareReal: 'not_implemented',
+    status: 'ready', searchTrials: 'not_implemented', screenLocal: 'ready', prepareReal: 'not_implemented',
     executeReal: 'not_implemented', revokeReal: 'ready', cancel: 'ready', endSession: 'ready', 'credential.request': 'not_implemented',
   });
   assert.ok(!JSON.stringify(response).includes('sk-'), 'status never exposes credentials');
@@ -43,7 +43,6 @@ test('operations owned by later tasks answer a typed NOT_IMPLEMENTED error', asy
   const core = createCore(testPorts(), { mode: 'mocked', runtime: 'test' });
   const cases: [string, unknown][] = [
     ['searchTrials', { conditionTerms: ['asthma'] }],
-    ['screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { ageYears: 40 } }],
     ['prepareReal', { packet, policyReceipt: receipt }],
     ['executeReal', { token: 'A'.repeat(43), digest: 'b'.repeat(64), operation: 'score', policyReceipt: receipt }],
   ];
@@ -265,7 +264,8 @@ test('BUSY, cancel, and consent clearing abort running work; local operations re
   await new Promise(r => setImmediate(r));
   assert.equal(okResult<Record<string, any>>(await h.call('status', {})).session.pending, 1);
   assert.equal(errorCode(await h.call('prepareReal', { packet, policyReceipt: receipt })), 'BUSY');
-  assert.equal(errorCode(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: {} })), 'NOT_IMPLEMENTED');
+  // screenLocal is a built-in pipeline now (A1b), so while one operation runs it reports BUSY.
+  assert.equal(errorCode(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: {} })), 'BUSY');
   assert.deepEqual(okResult(await h.call('cancel', { requestId: 'search1' })), { aborted: true });
   assert.equal(errorCode(await running), 'CANCELLED');
   assert.deepEqual(okResult(await h.call('cancel', { requestId: 'search1' })), { aborted: false });

@@ -1,9 +1,12 @@
 /**
  * Mocked dispatcher harness: fake pipelines stand in for tasks A2 (search and subject pinning) and
  * A4 (provider execution) so the consent gate in the dispatcher can be exercised end to end without
- * any network access. Nothing here is product behavior.
+ * any network access. Nothing here is product behavior. The A2 stand-in also remembers the records
+ * it returns (rememberRecords), so the built-in screenLocal (A1b) works against them; the real
+ * bundled ZIP table is exposed through the fake loader so ZIP-based screening resolves locally.
  */
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { createCore, type CoreOptions, type CredentialBroker, type ExecuteContext, type Pipelines } from '../../src/dispatcher.ts';
 import {
   CAUTION_IDS,
@@ -15,8 +18,13 @@ import {
   type ExecuteRealResult,
   type OperationResult,
 } from '../../src/protocol.ts';
+import { rememberRecords } from '../../src/screening.ts';
+import type { Transport } from '../../src/ports.ts';
 import { testPorts, type TestPorts } from './fakes.ts';
 import { FICTIONAL_IDS, makePreview } from './preview.ts';
+
+/** The real bundled table bytes, so screening tests resolve ZIPs exactly as shipped. */
+const ZIP_BYTES = await readFile(new URL('../../data/zip-centroids.v1.json', import.meta.url));
 
 export const receipt = { policyVersion: CONSENT_POLICY_VERSION, accepted: true } as const;
 export const FAKE_KEY = 'sk-test-not-a-real-credential-0001';
@@ -55,6 +63,8 @@ export interface HarnessOptions {
   readonly credentials?: CredentialBroker | null;
   readonly execute?: (ctx: ExecuteContext, log: ProviderLog) => Promise<ExecuteRealResult>;
   readonly options?: Partial<CoreOptions>;
+  /** Replaces the recording transport; no default test uses this except the transport-gate tests. */
+  readonly transport?: Transport;
 }
 
 /** A well-behaved fake provider run: asks for the key once, emits a trace, returns a valid result. */
@@ -86,7 +96,12 @@ export async function defaultExecute(ctx: ExecuteContext, log: ProviderLog): Pro
 }
 
 export function harness(opts: HarnessOptions = {}) {
-  const ports: TestPorts = testPorts();
+  const base = testPorts({ 'zip-centroids.v1.json': ZIP_BYTES });
+  // A transport override replaces the recording transport at the raw port level; createCore still
+  // wraps it in the gate. The cast is deliberately a lie about .calls, which only default
+  // harnesses (RecordingTransport) ever have, and no overridden-transport test reads.
+  const ports: TestPorts =
+    opts.transport === undefined ? base : ({ ...base, transport: opts.transport } as TestPorts);
   const log: ProviderLog = { executions: [], credentialRequests: [] };
   const events: CoreEvent[] = [];
   const broker: CredentialBroker = {
@@ -97,9 +112,11 @@ export function harness(opts: HarnessOptions = {}) {
   };
   const pipelines: Partial<Pipelines> = {
     async searchTrials(ctx, payload): Promise<OperationResult<'searchTrials'>> {
-      // Stand-in for A2: the subject digest covers the returned record set.
+      // Stand-in for A2: the subject digest covers the returned record set, and the records are
+      // remembered in the session so the built-in screenLocal (A1b) can screen them.
       const ids = FICTIONAL_IDS.slice(0, payload.pageSize ?? 3);
       ctx.session.setSubjectDigest(createHash('sha256').update(JSON.stringify([payload.conditionTerms, ids])).digest('hex'));
+      rememberRecords(ctx.session, ids.map(fakeRecord));
       return {
         records: ids.map(fakeRecord) as OperationResult<'searchTrials'>['records'],
         retrievedAt: '2026-10-24T08:00:00.000Z',

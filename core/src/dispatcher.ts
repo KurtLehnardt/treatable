@@ -14,9 +14,12 @@
  *   - every response and event is validated against the protocol schemas and size bounds before it
  *     leaves the core, and a response or event that contains the credential is replaced by an
  *     error.
- * Operations owned by later tasks (searchTrials: A2, screenLocal: A1b, preview building and
- * provider execution: A2/A4, credential flow details: A6b) answer NOT_IMPLEMENTED until their
- * pipelines are wired in. Pipelines never replace the consent checks in this file.
+ * Operations owned by later tasks (searchTrials: A2, preview building and provider execution:
+ * A2/A4, credential flow details: A6b) answer NOT_IMPLEMENTED until their pipelines are wired in.
+ * The screenLocal pipeline from task A1b is built in and is the default; the host may still pass
+ * its own. The transport port is guarded at construction (task A1b), so every outbound request
+ * keeps the endpoint allowlist, origin pin, size cap, and header invariants whichever transport
+ * the host injected. Pipelines never replace the consent checks in this file.
  */
 import { base64UrlEncode, utf8ByteLength } from './bytes.ts';
 import type { PinnedConsent } from './consent/store.ts';
@@ -59,7 +62,9 @@ import {
   type Runtime,
   type TraceEvent,
 } from './protocol.ts';
+import { screenLocalPipeline } from './screening.ts';
 import { createSession, type Session } from './session.ts';
+import { guardCorePorts } from './transport-gate.ts';
 
 /** Host side of credential.request. The desktop helper forwards it over stdio; the mobile app reads the platform credential store. */
 export interface CredentialBroker {
@@ -152,11 +157,15 @@ function containsSecret(value: unknown, secrets: ReadonlySet<string>): boolean {
 }
 
 export function createCore(portsInput: CorePorts, options: CoreOptions): Core {
-  const ports = assertPorts(portsInput);
+  // Task A1b: the guard re-validates and rebuilds every outbound request before the port sees it,
+  // so no injected transport can widen the pinned outbound invariants.
+  const ports = guardCorePorts(assertPorts(portsInput));
   if (!(MODES as readonly string[]).includes(options?.mode) || !(RUNTIMES as readonly string[]).includes(options?.runtime)) {
     throw new TypeError('Treatable core requires a mode and a runtime.');
   }
   const pipelines: Partial<Pipelines> = { ...(options.pipelines ?? {}) };
+  // Local screening is built in (task A1b): the default pipeline unless the host supplies its own.
+  if (pipelines.screenLocal === undefined) pipelines.screenLocal = screenLocalPipeline;
   const sessionOptions = options.consentTtlMs !== undefined ? { ttlMs: options.consentTtlMs } : {};
   let session = createSession(ports, sessionOptions);
 
