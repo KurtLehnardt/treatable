@@ -15,17 +15,17 @@ npm run build
 
 Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repository's `extension/dist` folder. The extension public key gives the stable development ID `lmgmjeabbalehlcakdbolielnfgchojf`. It does not contain a private signing key. No store publication is performed.
 
-Click the Treatable toolbar icon while viewing a study/research page. The side panel can:
+Click the Treatable toolbar icon while viewing an HTTPS ClinicalTrials.gov page. The side panel can:
 
 - Store a patient profile for the browser session, or remember it locally after explicit selection.
 - Search the shipped 2,000-study US snapshot and resolve ZIP distances locally.
 - Read selected or rendered text on the active page after your click.
 - Recognize ClinicalTrials.gov study IDs and use the matching offline record when available.
-- Show clearly unverified excerpts and questions for other accessible medical research pages.
+- Show clearly unverified ClinicalTrials.gov page excerpts when no offline structured record is available.
 - Save studies, view source criteria/contacts, and clear all stored patient data.
 - Add optional local model explanations through the native helper.
 
-The generic reader does not claim every website has reliable structured extraction. Browser-protected pages, inaccessible frames, forms, hidden text, and login fields are not read. On a new website tab, click the toolbar icon again to grant temporary page access. A study outside the snapshot remains unverified rather than being fabricated.
+This first release supports only `https://clinicaltrials.gov/*` and `https://www.clinicaltrials.gov/*`. It has no all-sites access or activeTab permission. The single `sites.json` allowlist drives packed host permissions and exact runtime origin checks before page injection. Other domains, lookalikes, arbitrary subdomains, and HTTP pages are rejected. Forms, editable controls, hidden text and script content are excluded, including selected text in editable fields. A study outside the snapshot remains unverified rather than being fabricated. Dedicated support for other registries is deferred.
 
 ## Release artifact
 
@@ -37,11 +37,11 @@ See [native helper setup](NATIVE_SETUP.md). The native helper is required only f
 
 ## Privacy boundaries
 
-- No host permissions, cloud requests, analytics, remote executable code, or `storage.sync` use.
+- Host permissions name only the two ClinicalTrials.gov HTTPS origins. No all-sites access, cloud requests, analytics, remote executable code, or `storage.sync` use.
 - Extension CSP permits data loading only from itself. Patient details are never injected into the website or sent as a study-search/ZIP query.
 - Profile defaults to `chrome.storage.session`; Remember uses `chrome.storage.local`. Both are restricted to trusted extension contexts. This is local storage, not Treatable-managed encryption at rest.
 - Ordinary browsing and opening source links still make normal website requests. The privacy guarantee concerns extension processing, not the browser's preexisting website traffic.
-- Page text is untrusted evidence. It cannot invoke native operations or change deterministic eligibility checks. Model output is a draft, not verified medical information.
+- Page text is untrusted evidence. It cannot invoke native operations or change deterministic eligibility checks. Model output is a draft, not verified medical information. A conservative English-language check rejects obvious eligibility/benefit promises and unverified citations; it is an engineering guard, not clinical validation. Source checks remain visible if narration is rejected.
 - Clear all removes the extension's patient profile/saved IDs and resets the active page/analysis/results. It does not erase browser history, website data, downloaded model weights, or operating-system backups.
 
 ## Source and limits

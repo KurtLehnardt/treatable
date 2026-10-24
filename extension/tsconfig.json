@@ -19,7 +19,8 @@
       "zod": [
         "node_modules/zod"
       ]
-    }
+    },
+    "resolveJsonModule": true
   },
   "include": [
     "src",
