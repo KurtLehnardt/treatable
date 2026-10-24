@@ -358,7 +358,7 @@ function App() {
 
     <section className="model-box"><div className="section-heading"><h2>Settings: how results are refined</h2></div>
       <div className="provider-choice" role="radiogroup" aria-label="Scoring provider">
-        {([['openai', 'OpenAI', 'Decisions API scores each shortlisted study; Agents API builds the checklist. Needs your API key and consent.'], ['local', 'Local LLM', 'Same questions answered by a model through the local helper on this device. Recommended for real health details.'], ['none', 'Send nothing', `Stages 1-2 only. ${UNREFINED_LABEL}; nothing can show as Strong.`]] as Array<[ProviderChoice, string, string]>).map(([value, label, help]) =>
+        {([['openai', 'OpenAI', 'Decisions API scores each shortlisted study; Agents API builds the checklist. Needs your API key and consent.'], ['local', 'Local LLM', 'Same questions answered by a model through the local helper on this device. Keeps requests on this device.'], ['none', 'Send nothing', `Stages 1-2 only. ${UNREFINED_LABEL}; nothing can show as Strong.`]] as Array<[ProviderChoice, string, string]>).map(([value, label, help]) =>
           <label key={value} className="check"><input type="radio" name="provider" checked={settings.provider === value} onChange={() => { cancel(); setResult(undefined); updateSettings({provider: value}); if (value === 'local' && !native.ok) void checkNative(); }}/><span><strong>{label}</strong> · {help}</span></label>)}
         {!settings.provider && <p className="message" role="status">Choose a provider. Until you do, results are unrefined and nothing is sent anywhere.</p>}
       </div>

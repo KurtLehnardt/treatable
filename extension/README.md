@@ -37,7 +37,7 @@ Tiers: 80+ Strong, 65-79 Possible, 50-64 Weak. "Matches what you told us" appear
 
 Choose one in Settings. Until you choose, results stay unrefined and nothing is sent anywhere. If the local helper is detected, Local LLM is selected by default.
 
-- **Local LLM.** Stages 3 and 4 run through the native helper and a model on this computer. Requests are sent to the local helper on this device, and no API key is needed. This is the recommended mode for real health details. See [native helper setup](NATIVE_SETUP.md).
+- **Local LLM.** Stages 3 and 4 run through the native helper and a model on this computer. Requests are sent to the local helper on this device, and no API key is needed. This keeps requests on this device. In the demo build, still enter synthetic data only. See [native helper setup](NATIVE_SETUP.md).
 - **OpenAI (opt-in).** Stage 3 uses the OpenAI Decisions API (`POST /v1/decisions`, model `gpt-6-luna`), one request per shortlisted study. Stage 4 uses the OpenAI Agents API (`POST /v1/agents/sessions`, model `gpt-6-astra`, no sandbox environment, JSON-schema output). You paste your own API key. Agents API use needs a key with `api.agents.read` and `api.agents.write`.
 - **Send nothing.** Stages 1 and 2 only, labeled "Unrefined: keyword screening only." Nothing can display as Strong in this mode.
 

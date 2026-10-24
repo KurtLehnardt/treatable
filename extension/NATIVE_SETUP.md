@@ -1,6 +1,6 @@
 # Local model setup for the Chrome extension
 
-The **Local LLM** provider uses a small Chrome native-messaging helper and your installed Ollama binary. It answers the same scoring questions and builds the same eligibility checklist as the OpenAI provider, with requests sent to the local helper on this device. It is the recommended mode for real health details. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
+The **Local LLM** provider uses a small Chrome native-messaging helper and your installed Ollama binary. It answers the same scoring questions and builds the same eligibility checklist as the OpenAI provider, with requests sent to the local helper on this device. It keeps requests on this device. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
 
 ## macOS
 
