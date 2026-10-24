@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   readFileSync, readdirSync, existsSync, realpathSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, appendFileSync, symlinkSync,
+  chmodSync,
 } from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
@@ -1245,6 +1246,8 @@ test('claims scan: exemptions are exact, justified, and limited to test and fixt
 test('claims scan: shipped strings and docs make no banned compliance, security, anonymity, or validity claims', () => {
   const found = collectFiles();
   const relative = found.files.map(f => f.rel);
+  // A scan that collected nothing would pass the checks below by finding no text at all, so it must fail here.
+  assert.ok(found.files.length > 0, 'an empty scan must fail the check, not pass it');
   assert.ok(relative.includes('core/strings/strings.en.json'), 'the strings file must be in the scan');
   assert.ok(relative.includes('core/strings/README.md'), 'the strings README must be in the scan');
   assert.ok(!relative.includes('core/strings/claims.test.mjs'), 'the rule definitions file must not be scanned');
@@ -1439,6 +1442,13 @@ test('self-test: top-level folders and docs entries must be classified', () => {
   assert.equal(classifyTopLevel([dir('core')], [{name: 'NOTES.md', isDirectory: false, isFile: true}]).length, 1);
 });
 
+test('self-test: the scan roots cover the shared code, the mobile app, the desktop shells, and the app docs', () => {
+  // Platforms that do not exist yet are in this list on purpose, so their files are scanned from the first day
+  // someone adds the folder. Removing a root must be a decision visible in this test, not a silent gap.
+  assert.deepEqual([...SCAN_ROOT_DIRS], ['core', 'desktop-helper', 'mobile', 'macos', 'windows', 'linux']);
+  assert.equal(DOCS_SCAN_DIR, 'apps');
+});
+
 test('self-test: exemptions are accepted only for justified test and fixture paths with named rules', () => {
   const exists = () => true;
   const good = {path: 'core/test/fixtures/ctgov-real.json', reason: 'Recorded public registry response with sponsor wording.', rules: ['certified']};
@@ -1623,6 +1633,30 @@ test('self-test: a symlink that git does not ignore is reported', {skip: GIT_SKI
     return;
   }
   assert.deepEqual(collectFiles(dir).symlinks, ['core/link.md']);
+});
+
+test('self-test: a read error during the scan fails the check instead of passing it', () => {
+  // A file that disappears between the walk and the read (or cannot be read for any other reason) crashes the
+  // scan. It is never skipped, so a missing file cannot turn into a clean result.
+  const found = {files: [{full: path.join(tmpdir(), `treatable-claims-gone-${process.pid}.md`), rel: 'mobile/gone.md', ignoreRules: new Set()}]};
+  assert.throws(() => scanFound(found));
+});
+
+test('self-test: a directory that cannot be read fails the scan instead of being skipped', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {'core/a.md': CLEAN_MD});
+  const locked = path.join(dir, 'core', 'locked');
+  mkdirSync(locked);
+  writeFileSync(path.join(locked, 'claim.md'), CLAIM_MD);
+  chmodSync(locked, 0o000);
+  let error = null;
+  try {
+    collectFiles(dir);
+  } catch (e) {
+    error = e;
+  }
+  chmodSync(locked, 0o755);
+  if (error === null) t.skip('this account can read an unreadable directory (for example running as root), so the failure cannot be simulated');
+  assert.equal(error.code, 'EACCES', 'the walk must crash on a directory it cannot read');
 });
 
 test('self-test: a phrase split by an HTML comment is still caught', () => {
