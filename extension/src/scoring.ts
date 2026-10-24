@@ -278,6 +278,8 @@ export interface ProviderChecklistResult {
   taskShown: {instructions: string; input: string};
   model: string;
   sessionId?: string;
+  /** True only when OpenAI confirmed the session DELETE with a 2xx response. */
+  sessionDeleted?: boolean;
 }
 
 /** The provider contract. OpenAI and the local helper both implement it. */

@@ -86,9 +86,9 @@ export class OpenAIProvider implements ScoringProvider {
   }
 
   /** One attempt plus at most one retry with backoff, for transient failures only. */
-  private async request(path: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
+  private async request(path: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal, retry = true): Promise<Response> {
     let lastError: ProviderError | undefined;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < (retry ? 2 : 1); attempt++) {
       if (attempt > 0) await this.sleep(lastError?.kind === 'rate_limited' ? 2000 : 800);
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       const controller = new AbortController();
@@ -116,7 +116,15 @@ export class OpenAIProvider implements ScoringProvider {
     const body = decisionsRequest(evidence, DECISIONS_MODEL);
     const response = await this.request('/v1/decisions', {method: 'POST', headers: this.headers(), body: JSON.stringify(body)}, this.options.decisionsTimeoutMs ?? 20000, signal);
     let raw: unknown;
-    try { raw = await response.json(); } catch { throw new ProviderError('malformed'); }
+    let bodyTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      raw = await Promise.race([
+        response.json(),
+        new Promise((_, reject) => { bodyTimer = setTimeout(() => reject(new ProviderError('timeout')), this.options.decisionsTimeoutMs ?? 20000); }),
+      ]);
+    } catch (error) {
+      throw error instanceof ProviderError ? error : new ProviderError('malformed');
+    } finally { clearTimeout(bodyTimer); }
     try {
       return {answers: parseDecisionAnswers(raw), requestShown: {endpoint: 'POST /v1/decisions', ...body}, rawShown: raw, model: DECISIONS_MODEL};
     } catch (error) {
@@ -133,23 +141,40 @@ export class OpenAIProvider implements ScoringProvider {
       stream: true,
       metadata: {app: 'treatable-extension'},
     };
-    const response = await this.request('/v1/agents/sessions', {method: 'POST', headers: this.headers({'OpenAI-Beta': 'agents=v1', Accept: 'text/event-stream'}), body: JSON.stringify(body)}, this.options.agentTimeoutMs ?? 90000, signal);
-    const {text, sessionId} = await readAgentStream(response, this.options.agentTimeoutMs ?? 90000, signal);
-    if (sessionId && this.options.deleteSessions !== false) {
-      void this.doFetch(`${OPENAI_ORIGIN}/v1/agents/sessions/${encodeURIComponent(sessionId)}`, {method: 'DELETE', headers: this.headers({'OpenAI-Beta': 'agents=v1'})}).catch(() => {});
+    // Session creation is not retried: a retried POST could leave an orphaned session.
+    const response = await this.request('/v1/agents/sessions', {method: 'POST', headers: this.headers({'OpenAI-Beta': 'agents=v1', Accept: 'text/event-stream'}), body: JSON.stringify(body)}, this.options.agentTimeoutMs ?? 90000, signal, false);
+    const holder: {sessionId?: string} = {};
+    let text: string;
+    let sessionDeleted = false;
+    try {
+      text = (await readAgentStream(response, this.options.agentTimeoutMs ?? 90000, signal, holder)).text;
+    } finally {
+      // Delete on every path, success or failure, once the session ID is known.
+      if (holder.sessionId && this.options.deleteSessions !== false) sessionDeleted = await this.deleteSession(holder.sessionId);
     }
+    const sessionId = holder.sessionId;
     let raw: unknown;
     try { raw = JSON.parse(text); } catch { throw new ProviderError('malformed', 'The agent did not return valid JSON.'); }
     try {
-      return {checklist: validateChecklist(raw, evidence.study.eligibility_text, evidence.study.id), taskShown: {instructions: CHECKLIST_INSTRUCTIONS, input}, model: AGENT_MODEL, sessionId};
+      return {checklist: validateChecklist(raw, evidence.study.eligibility_text, evidence.study.id), taskShown: {instructions: CHECKLIST_INSTRUCTIONS, input}, model: AGENT_MODEL, sessionId, sessionDeleted};
     } catch (error) {
       throw new ProviderError('malformed', error instanceof ProviderFormatError ? error.message : undefined);
     }
   }
+
+  /** DELETE /v1/agents/sessions/{id}. Returns true only on a 2xx response. */
+  private async deleteSession(id: string): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const r = await this.doFetch(`${OPENAI_ORIGIN}/v1/agents/sessions/${encodeURIComponent(id)}`, {method: 'DELETE', headers: this.headers({'OpenAI-Beta': 'agents=v1'}), signal: controller.signal});
+      return r.ok;
+    } catch { return false; } finally { clearTimeout(timer); }
+  }
 }
 
 /** Read an Agents API server-sent event stream until the root turn ends. */
-export async function readAgentStream(response: Response, deadlineMs = 90000, signal?: AbortSignal): Promise<{text: string; sessionId?: string}> {
+export async function readAgentStream(response: Response, deadlineMs = 90000, signal?: AbortSignal, holder: {sessionId?: string} = {}): Promise<{text: string; sessionId?: string}> {
   if (!response.body) throw new ProviderError('malformed');
   const reader = response.body.getReader();
   let timedOut = false;
@@ -157,7 +182,7 @@ export async function readAgentStream(response: Response, deadlineMs = 90000, si
   const onAbort = () => { void reader.cancel().catch(() => {}); };
   signal?.addEventListener('abort', onAbort, {once: true});
   try {
-    return await consume(reader);
+    return await consume(reader, holder);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
@@ -166,14 +191,14 @@ export async function readAgentStream(response: Response, deadlineMs = 90000, si
   }
 }
 
-async function consume(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<{text: string; sessionId?: string}> {
+async function consume(reader: ReadableStreamDefaultReader<Uint8Array>, holder: {sessionId?: string}): Promise<{text: string; sessionId?: string}> {
   const decoder = new TextDecoder();
-  let buffer = '', finalText = '', lastText = '', sessionId: string | undefined, outcome: 'completed' | 'failed' | undefined;
+  let buffer = '', finalText = '', lastText = '', outcome: 'completed' | 'failed' | undefined;
   const handle = (data: string) => {
     let event: any;
     try { event = JSON.parse(data); } catch { return; }
-    if (typeof event?.session_id === 'string') sessionId = event.session_id;
-    if (event?.type === 'agent.session.created' && typeof event.session?.id === 'string') sessionId = event.session.id;
+    if (typeof event?.session_id === 'string') holder.sessionId = event.session_id;
+    if (event?.type === 'agent.session.created' && typeof event.session?.id === 'string') holder.sessionId = event.session.id;
     if (event?.turn?.subagent_id) return; // only the root turn ends the task
     switch (event?.type) {
       case 'agent.session.turn.output_text.done': if (typeof event.text === 'string') lastText = event.text; break;
@@ -187,21 +212,24 @@ async function consume(reader: ReadableStreamDefaultReader<Uint8Array>): Promise
       case 'agent.session.turn.failed': case 'agent.session.turn.cancelled': case 'agent.session.failed': case 'error': outcome = 'failed'; break;
     }
   };
+  const flush = (chunk: string) => {
+    const data = chunk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n');
+    if (data && data !== '[DONE]') handle(data);
+  };
   while (!outcome) {
     const {value, done} = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, {stream: true});
+    if (done) { flush(buffer.replace(/\r\n?/g, '\n')); buffer = ''; break; }
+    buffer = (buffer + decoder.decode(value, {stream: true})).replace(/\r\n?/g, '\n');
     let cut;
-    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+    while (!outcome && (cut = buffer.indexOf('\n\n')) >= 0) {
       const chunk = buffer.slice(0, cut);
       buffer = buffer.slice(cut + 2);
-      const data = chunk.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart()).join('\n');
-      if (data && data !== '[DONE]') handle(data);
+      flush(chunk);
     }
   }
   void reader.cancel().catch(() => {});
   if (outcome !== 'completed') throw new ProviderError('agent_failed', outcome === 'failed' ? undefined : 'The stream closed before the task finished.');
   const text = finalText || lastText;
   if (!text) throw new ProviderError('malformed', 'The agent returned no output.');
-  return {text, sessionId};
+  return {text, sessionId: holder.sessionId};
 }

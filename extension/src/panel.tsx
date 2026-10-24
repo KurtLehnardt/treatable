@@ -293,7 +293,7 @@ function App() {
         {state.result.checklist.items.length === 0 && <p className="fine">No verifiable criteria returned.</p>}
         {state.result.checklist.droppedCitations > 0 && <p className="warning">{state.result.checklist.droppedCitations} item(s) dropped: their quoted line was not found in the source text.</p>}
         {state.result.checklist.questions_for_study_team.length > 0 && <><h3>Questions to ask the study team</h3><ul>{state.result.checklist.questions_for_study_team.map((q, i) => <li key={i}>{q}</li>)}</ul></>}
-        <details><summary>Agent task sent ({state.result.model}{state.result.sessionId ? ', session deleted after reading' : ''})</summary><p><strong>Instructions:</strong> {state.result.taskShown.instructions}</p><pre>{state.result.taskShown.input}</pre></details>
+        <details><summary>Agent task sent ({state.result.model}{state.result.sessionId ? (state.result.sessionDeleted ? ', session deleted' : ', session deletion requested but not confirmed') : ''})</summary><p><strong>Instructions:</strong> {state.result.taskShown.instructions}</p><pre>{state.result.taskShown.input}</pre></details>
       </>}
     </div>;
   }
@@ -344,7 +344,7 @@ function App() {
         <ul><li>Your condition as typed</li><li>Your age as a five-year band (for example 40-44), not your exact age</li><li>Your sex for study criteria</li><li>Your spine region, if your condition names one</li><li>The public ClinicalTrials.gov text of the study</li></ul>
         <p>Treatable never sends your ZIP code, your name, your notes, or your saved studies.</p>
         <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for meeting those requirements before entering real health details. Local LLM mode keeps everything on this computer.</p>
-        <p>Agent sessions are deleted after the checklist is read. OpenAI's own data retention terms still apply to your API key's account.</p>
+        <p>Treatable asks OpenAI to delete each agent session after the checklist is read, and shows whether the deletion was confirmed. OpenAI's own data retention terms still apply to your API key's account.</p>
         <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
         <p className="fine">Optional. Leave it unchecked unless it is true. It is stored only with your key and is forgotten when the key is.</p>
         <div className="actions"><button className="primary" onClick={() => updateSettings({openaiConsent: true})}>I understand and accept</button><button onClick={() => updateSettings({provider: 'none'})}>Send nothing instead</button></div>

@@ -273,8 +273,10 @@ test('Local LLM provider: same contract, validated output, and never makes a net
     assert.throws(() => parseLocalAnswers(JSON.stringify({condition_match: 'exact'})), ProviderFormatError);
     const broken = new LocalProvider({generate: async () => 'nonsense'}, 'llama3.2:3b');
     const fallback = await runPipeline({studies: [study()], profile: p, provider: broken});
+    assert.equal(fallback.mode, 'unrefined');
     assert.equal(fallback.studies[0].refined, false);
-    assert.match(fallback.studies[0].note!, /local model/i);
+    assert.match(fallback.failure!, /Local LLM scoring failed for every study/);
+    assert.match(fallback.failure!, /local model/i);
   } finally { globalThis.fetch = original; }
   assert.equal(fetched, 0);
 });
@@ -303,4 +305,21 @@ test('consent and README copy: not set up for PHI, BAA plus Modified Retention, 
   }
   assert.doesNotMatch(readme, /No OpenAI key or cloud provider is used|No all-sites access, cloud requests/i);
   assert.match(panel, /never sends your ZIP code, your name, your notes, or your saved studies/);
+});
+
+test('critic fixes: multi-region patient is unspecified; partial failures are surfaced; agent sessions are deleted on failure; CRLF SSE parses', async () => {
+  assert.equal(patientRegion('cervical and lumbar stenosis'), 'unspecified');
+  const p = profileOf('lumbar degenerative disc disease');
+  const partial = mockFetch((_, n) => n === 2 ? json({answers: []}) : json(decisionJson()));
+  const r = await runPipeline({studies, profile: p, provider: new OpenAIProvider({apiKey: FAKE_KEY, consented: true, fetch: partial.fn, sleep: noSleep}), concurrency: 1});
+  assert.equal(r.mode, 'refined');
+  assert.match(r.failure!, /could not score 1 of/);
+  const failing = mockFetch(({init}) => init.method === 'DELETE' ? new Response(null, {status: 200}) : sse([{type: 'agent.session.created', session: {id: 'sess_9'}}, {type: 'agent.session.turn.failed', session_id: 'sess_9', turn: {subagent_id: null}}]));
+  const provider = new OpenAIProvider({apiKey: FAKE_KEY, consented: true, fetch: failing.fn, sleep: noSleep});
+  const evidence = buildEvidence(p, screenCandidates(retrieveCandidates([study()], 'thoracic degenerative disc disease'), profileOf('thoracic degenerative disc disease'))[0]);
+  await assert.rejects(provider.checklist(evidence), (e: unknown) => e instanceof ProviderError && e.kind === 'agent_failed');
+  assert.ok(failing.calls.some(c => c.init.method === 'DELETE' && c.url.endsWith('/sess_9')));
+  assert.equal(failing.calls.filter(c => c.init.method === 'POST').length, 1, 'session creation is never retried');
+  const crlf = new Response(new ReadableStream({start(c) { c.enqueue(new TextEncoder().encode('data: {"type":"agent.session.turn.output_text.done","text":"{}"}\r\n\r\ndata: {"type":"agent.session.turn.completed","turn":{"subagent_id":null}}')); c.close(); }}));
+  assert.equal((await readAgentStream(crlf)).text, '{}');
 });

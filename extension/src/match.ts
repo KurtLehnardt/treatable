@@ -158,8 +158,9 @@ export function patientRegion(condition: string): SpineRegion | 'unspecified' {
   const t = condition.toLowerCase();
   const spineContext = /dis[ck]|spine|spinal|spondyl|vertebra|back|neck|radicul|myelopath|stenosis|sciatica|ddd/.test(t);
   if (!spineContext) return 'unspecified';
-  for (const region of ['cervical', 'thoracic', 'lumbar', 'sacral'] as SpineRegion[]) if (new RegExp(`\\b${region}\\b`).test(t)) return region;
-  const regions = extractRegions(t);
+  const named = (['cervical', 'thoracic', 'lumbar', 'sacral'] as SpineRegion[]).filter(region => new RegExp(`\\b${region}\\b`).test(t));
+  const regions = [...new Set([...named, ...extractRegions(t)])];
+  // More than one region named: no single region to cap against.
   return regions.length === 1 ? regions[0] : 'unspecified';
 }
 

@@ -104,8 +104,15 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
       }
     });
     if (input.signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-    if (globalFailure) return unrefined(`${provider.id === 'openai' ? 'OpenAI' : 'Local LLM'} scoring failed: ${globalFailure} Showing unrefined keyword screening instead.`);
-    return assemble(scored, {...base, mode: 'refined', providerId: provider.id, providerLabel: provider.label});
+    const name = provider.id === 'openai' ? 'OpenAI' : 'Local LLM';
+    if (globalFailure) return unrefined(`${name} scoring failed: ${globalFailure} Showing unrefined keyword screening instead.`);
+    const attempted = Math.min(kept.length, provider.scoreLimit);
+    const failed = scored.filter((s, i) => i < provider.scoreLimit && !s.refined);
+    if (attempted > 0 && failed.length === attempted) {
+      return unrefined(`${name} scoring failed for every study. ${failed[0].note?.replace('Scoring failed for this study: ', '') || ''} Showing unrefined keyword screening instead.`.replace(/\s+/g, ' '));
+    }
+    const partial = failed.length ? `${name} could not score ${failed.length} of ${attempted} studies; they are shown unrefined. ${failed[0].note?.replace('Scoring failed for this study: ', '') || ''}`.trim() : undefined;
+    return assemble(scored, {...base, mode: 'refined', providerId: provider.id, providerLabel: provider.label, failure: partial});
   } finally {
     input.signal?.removeEventListener('abort', abort);
   }
