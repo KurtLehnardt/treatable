@@ -23,10 +23,13 @@ export function buildRealAnalysis(packet,corpus){const p=parseRealPacket(packet)
 }
 export class PreparedRealStore{
  constructor(corpus,{now=()=>performance.now(),wallNow=()=>Date.now(),token=()=>randomBytes(32).toString('base64url'),onInvalidate=()=>{}}={}){this.corpus=corpus;this.now=now;this.wallNow=wallNow;this.makeToken=token;this.onInvalidate=onInvalidate;this.active=undefined;this.timer=undefined;}
- clear(){clearTimeout(this.timer);this.timer=undefined;this.active=undefined;this.onInvalidate();}
+ // Explicit invalidation (revoke, cancel of a real operation, disconnect): drops the preview and aborts real requests that are running.
+ clear(){this.discard();this.onInvalidate();}
+ // Expiry or invalid real-path input: the preview can no longer start a send, but an operation that already started is never aborted.
+ discard(){clearTimeout(this.timer);this.timer=undefined;this.active=undefined;}
  prepare(packet,receipt){parsePolicyReceipt(receipt);const analysis=buildRealAnalysis(packet,this.corpus);const digest=sha(JSON.stringify({policyVersion:REAL_POLICY_VERSION,catalogMetadata:PUBLIC_CATALOG_METADATA,preview:analysis.preview}));const token=this.makeToken(),expiresAt=this.wallNow()+PREPARED_TTL_MS;
-  const reply={kind:'preparedReal',token,digest,expiresAt,policyVersion:REAL_POLICY_VERSION,catalogMetadata:PUBLIC_CATALOG_METADATA,preview:analysis.preview};if(utf8Bytes(reply)>MAX_MESSAGE_BYTES-1024)throw new ApiError('PREVIEW_TOO_LARGE');this.clear();this.active={token,digest,expires:this.now()+PREPARED_TTL_MS,analysis,used:new Set()};this.timer=setTimeout(()=>this.clear(),PREPARED_TTL_MS);this.timer.unref?.();return structuredClone(reply);
+  const reply={kind:'preparedReal',token,digest,expiresAt,policyVersion:REAL_POLICY_VERSION,catalogMetadata:PUBLIC_CATALOG_METADATA,preview:analysis.preview};if(utf8Bytes(reply)>MAX_MESSAGE_BYTES-1024)throw new ApiError('PREVIEW_TOO_LARGE');this.discard();this.active={token,digest,expires:this.now()+PREPARED_TTL_MS,analysis,used:new Set()};this.timer=setTimeout(()=>this.discard(),PREPARED_TTL_MS);this.timer.unref?.();return structuredClone(reply);
  }
- take(payload){parsePolicyReceipt(payload.policyReceipt);const current=this.active;if(!current||current.expires<=this.now()){this.clear();throw new ApiError('CONSENT_EXPIRED');}const matches=sameSecret(payload.token,current.token)&sameSecret(payload.digest,current.digest);if(!matches||!['score','agent'].includes(payload.operation)||current.used.has(payload.operation))throw new ApiError('INVALID_CONSENT_RECEIPT');current.used.add(payload.operation);return{...current.analysis,consentDigest:current.digest};}
+ take(payload){parsePolicyReceipt(payload.policyReceipt);const current=this.active;if(!current||current.expires<=this.now()){this.discard();throw new ApiError('CONSENT_EXPIRED');}const matches=sameSecret(payload.token,current.token)&sameSecret(payload.digest,current.digest);if(!matches||!['score','agent'].includes(payload.operation)||current.used.has(payload.operation))throw new ApiError('INVALID_CONSENT_RECEIPT');current.used.add(payload.operation);return{...current.analysis,consentDigest:current.digest};}
  revoke(token){if(token!==undefined&&this.active&&!sameSecret(token,this.active.token))throw new ApiError('INVALID_CONSENT_RECEIPT');this.clear();}
 }

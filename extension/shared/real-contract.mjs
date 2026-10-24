@@ -1,4 +1,4 @@
-import{exactKeys,isRecord,utf8Bytes,validId,MAX_MESSAGE_BYTES,QUESTION_TEMPLATES,CAUTION_TEMPLATES}from'./demo-contract.mjs';
+import{exactKeys,isRecord,utf8Bytes,validId,templateIdList,MAX_MESSAGE_BYTES,QUESTION_TEMPLATES,CAUTION_TEMPLATES}from'./demo-contract.mjs';
 import{PUBLIC_CONDITIONS,PUBLIC_STUDY_IDS,PUBLIC_CATALOG_METADATA}from'./public-catalog.mjs';
 export const REAL_POLICY_VERSION='treatable-health-api-2026-10-24-v1';
 export const PREPARED_TTL_MS=5*60*1000;
@@ -26,11 +26,11 @@ export function parseRealResult(v){
  if(!isRecord(v)||!['scoreReal','agentReal'].includes(v.kind)||!['live','test'].includes(v.mode)||typeof v.consentDigest!=='string'||!DIGEST.test(v.consentDigest))throw Error('Invalid real analysis result');
  if(v.kind==='scoreReal'){
   if(!exactKeys(v,['kind','mode','consentDigest','scores'])||!Array.isArray(v.scores)||!v.scores.length||v.scores.length>2||new Set(v.scores.map(x=>x?.nctId)).size!==v.scores.length)throw Error('Invalid relevance result');
-  for(const s of v.scores)if(!exactKeys(s,['nctId','index','confidence'])||!studies.has(s.nctId)||!Number.isFinite(s.index)||s.index<0||s.index>100||!Number.isFinite(s.confidence)||s.confidence<0||s.confidence>1)throw Error('Invalid relevance score');
+  for(const s of v.scores)if(!exactKeys(s,['nctId','index','confidence'])||typeof s.nctId!=='string'||!studies.has(s.nctId)||!Number.isFinite(s.index)||s.index<0||s.index>100||!Number.isFinite(s.confidence)||s.confidence<0||s.confidence>1)throw Error('Invalid relevance score');
  }else{
   if(!exactKeys(v,['kind','mode','consentDigest','comparisons','cautionIds','toolCalls','cleanup'])||!Array.isArray(v.comparisons)||!v.comparisons.length||v.comparisons.length>2||new Set(v.comparisons.map(x=>x?.nctId)).size!==v.comparisons.length||!Number.isInteger(v.toolCalls)||v.toolCalls<1||v.toolCalls>6||!['deleted','failed'].includes(v.cleanup))throw Error('Invalid agent plan');
-  for(const c of v.comparisons)if(!exactKeys(c,['nctId','questionIds'])||!studies.has(c.nctId)||!Array.isArray(c.questionIds)||!c.questionIds.length||c.questionIds.length>6||c.questionIds.some(x=>!Object.hasOwn(QUESTION_TEMPLATES,x)))throw Error('Invalid contact question');
-  if(!Array.isArray(v.cautionIds)||v.cautionIds.length!==3||new Set(v.cautionIds).size!==3||v.cautionIds.some(x=>!Object.hasOwn(CAUTION_TEMPLATES,x)))throw Error('Invalid cautions');
+  for(const c of v.comparisons)if(!exactKeys(c,['nctId','questionIds'])||typeof c.nctId!=='string'||!studies.has(c.nctId)||!templateIdList(c.questionIds,QUESTION_TEMPLATES,1,6))throw Error('Invalid contact question');
+  if(!templateIdList(v.cautionIds,CAUTION_TEMPLATES,3,3))throw Error('Invalid cautions');
  }return v;
 }
 export function parsePreparedResult(v){if(!exactKeys(v,['kind','token','digest','expiresAt','policyVersion','catalogMetadata','preview'])||v.kind!=='preparedReal'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!DIGEST.test(v.digest)||!Number.isSafeInteger(v.expiresAt)||v.policyVersion!==REAL_POLICY_VERSION||JSON.stringify(v.catalogMetadata)!==JSON.stringify(PUBLIC_CATALOG_METADATA)||!exactKeys(v.preview,['packet','decisionsRequest','agentsRequest','toolResults'])||!isRecord(v.preview.decisionsRequest)||!isRecord(v.preview.agentsRequest)||!Array.isArray(v.preview.toolResults)||v.preview.toolResults.length<1||v.preview.toolResults.length>2||utf8Bytes(v)>MAX_MESSAGE_BYTES)throw Error('Invalid prepared preview');parseRealPacket(v.preview.packet);return v;}

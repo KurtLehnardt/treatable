@@ -12,6 +12,7 @@ export const QUESTION_TEMPLATES:Readonly<Record<string,string>>;export const CAU
 export function isRecord(v:unknown):v is Record<string,unknown>;
 export function exactKeys(v:unknown,keys:string[]):boolean;
 export function validId(v:unknown):v is string;
+export function templateIdList(v:unknown,table:Readonly<Record<string,string>>,min:number,max:number):v is string[];
 export function utf8Bytes(v:unknown):number;
 export function parseDemoRequest(v:unknown):DemoRequest;
 export function parseDemoReply(v:unknown,expectedId:string):DemoReply;

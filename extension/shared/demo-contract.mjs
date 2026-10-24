@@ -10,6 +10,8 @@ export const TRACE_STAGES = Object.freeze(['decisions.request','decisions.comple
 export function isRecord(v){return !!v&&typeof v==='object'&&!Array.isArray(v)&&Object.getPrototypeOf(v)===Object.prototype;}
 export function exactKeys(v,keys){return isRecord(v)&&Object.keys(v).every(k=>keys.includes(k));}
 export function validId(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(v);}
+// Template/caution ID lists: strings only, own keys of the fixed table (never inherited or coerced), and no duplicates.
+export function templateIdList(v,table,min,max){return Array.isArray(v)&&v.length>=min&&v.length<=max&&v.every(x=>typeof x==='string'&&Object.hasOwn(table,x))&&new Set(v).size===v.length;}
 export function utf8Bytes(v){return new TextEncoder().encode(typeof v==='string'?v:JSON.stringify(v)).length;}
 export function parseDemoRequest(v){
  if(['prepareReal','executeReal','revokeReal'].includes(v?.type))return parseRealRequest(v);
@@ -48,9 +50,9 @@ export function parseDemoResult(v){
   if(!exactKeys(v,['kind','fixtureId','mode','scores'])||!Array.isArray(v.scores)||!v.scores.length||v.scores.length>3||new Set(v.scores.map(x=>x.nctId)).size!==v.scores.length)throw new Error('Invalid scores');
   for(const s of v.scores)if(!exactKeys(s,['nctId','index','confidence'])||typeof s.nctId!=='string'||!/^NCT\d{8}$/.test(s.nctId)||!Number.isFinite(s.index)||s.index<0||s.index>100||!Number.isFinite(s.confidence)||s.confidence<0||s.confidence>1)throw new Error('Invalid score');
  }else{
-  if(!exactKeys(v,['kind','fixtureId','mode','comparisons','cautionIds','toolCalls','cleanup'])||!Array.isArray(v.comparisons)||!v.comparisons.length||v.comparisons.length>3||!Number.isInteger(v.toolCalls)||v.toolCalls<1||v.toolCalls>6||!['deleted','failed'].includes(v.cleanup))throw new Error('Invalid agent result');
-  for(const c of v.comparisons)if(!exactKeys(c,['nctId','questionIds'])||typeof c.nctId!=='string'||!/^NCT\d{8}$/.test(c.nctId)||!Array.isArray(c.questionIds)||!c.questionIds.length||c.questionIds.length>6||c.questionIds.some(x=>!Object.hasOwn(QUESTION_TEMPLATES,x)))throw new Error('Invalid comparison');
-  if(!Array.isArray(v.cautionIds)||!v.cautionIds.length||v.cautionIds.length>3||v.cautionIds.some(x=>!Object.hasOwn(CAUTION_TEMPLATES,x)))throw new Error('Invalid cautions');
+  if(!exactKeys(v,['kind','fixtureId','mode','comparisons','cautionIds','toolCalls','cleanup'])||!Array.isArray(v.comparisons)||!v.comparisons.length||v.comparisons.length>3||!Number.isInteger(v.toolCalls)||v.toolCalls<1||v.toolCalls>6||!['deleted','failed'].includes(v.cleanup)||new Set(v.comparisons.map(x=>x?.nctId)).size!==v.comparisons.length)throw new Error('Invalid agent result');
+  for(const c of v.comparisons)if(!exactKeys(c,['nctId','questionIds'])||typeof c.nctId!=='string'||!/^NCT\d{8}$/.test(c.nctId)||!templateIdList(c.questionIds,QUESTION_TEMPLATES,1,6))throw new Error('Invalid comparison');
+  if(!templateIdList(v.cautionIds,CAUTION_TEMPLATES,1,3))throw new Error('Invalid cautions');
  }
  return v;
 }
