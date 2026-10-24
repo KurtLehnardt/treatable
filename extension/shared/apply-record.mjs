@@ -51,5 +51,5 @@ export function normalizeStudyBrief(raw,fetchedAt){
  if(!items.some(x=>/sham|placebo/i.test(x.text)))unknowns.push('A sham or placebo group is not described in the available excerpts.');
  if(!items.some(x=>/cross.?over/i.test(x.text)))unknowns.push('Access to treatment after a control group is not stated in the available excerpts.');
  if(!arr(obj(p.contactsLocationsModule).centralContacts).length&&!arr(obj(p.contactsLocationsModule).locations).some(l=>arr(obj(l).contacts).length))unknowns.push('No study contact is listed in the available record.');
- const brief={nctId,sourceUrl,fetchedAt,items,unknowns,claims:[]};return parsePublicStudyBrief(brief);
+ if(!obj(raw).resultsSection)unknowns.push('Published results are not included in the available source excerpts.');while(items.length&&utf8Bytes({nctId,sourceUrl,fetchedAt,items,unknowns})>20*1024)items.pop();const brief={nctId,sourceUrl,fetchedAt,items,unknowns,claims:[]};return parsePublicStudyBrief(brief);
 }

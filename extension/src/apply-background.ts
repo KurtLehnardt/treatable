@@ -1,64 +1,45 @@
-/** "Help me apply" broker. Only the authenticated overlay frame on a ClinicalTrials.gov study page may connect. The study
- * ID comes from the validated tab URL, never from the page DOM; only that public NCT ID and a prepared receipt reach the
- * native helper. Patient fields never arrive here. */
-import{parseApplyRequest,parseApplyReply,type ApplyRequest}from'../shared/apply-contract.mjs';
-import{normalizeApplyRecord}from'../shared/apply-record.mjs';
-import{FAILURE_CODE,failureCopy,nativeDisconnectCode}from'./failures';
-import{studyPageNctId}from'./apply-page';
-import{fetchPublicStudyJson}from'./site-background';
-export const APPLY_PORT='treatable-apply-v1';
-export const APPLY_NATIVE_TIMEOUT_MS=150000;
-const ID=/^[A-Za-z0-9_-]{1,80}$/;
-type Prepared={token:string;digest:string;expiresAt:number;nctId:string};
-export interface ApplySiteAccess{overlaySender:(sender:any)=>boolean}
+/** Separate public-study authority. Exact toolbar-registered overlay only; no patient fields, caller URL/prompt or generic native operation. */
+import{parseApplyRequest,parseApplyReply,briefNctIds,APPLY_TOKEN_TTL_MS,type ApplyRequest}from'../shared/apply-contract.mjs';
+import{normalizeApplyRecord,normalizeStudyBrief}from'../shared/apply-record.mjs';
+import{FAILURE_CODE,failureCopy,nativeDisconnectCode}from'./failures';import{studyPageNctId}from'./apply-page';import{isSupportedSite}from'./sites';import{fetchPublicStudyJson}from'./site-background';
+export const APPLY_PORT='treatable-apply-v1';export const APPLY_NATIVE_TIMEOUT_MS=150000;const ID=/^[A-Za-z0-9_-]{1,80}$/;
+type Source={key:string;nctId?:string;nctIds:string[]};type Prepared={token:string;digest:string;expiresAt:number;nctIds:string[];brief:boolean;used:boolean};
+export interface ApplySiteAccess{overlaySender:(sender:any)=>boolean;snapshot?:(tabId:number)=>Promise<any>;publicStudyTitles?:(nctIds:string[])=>{nctId:string;title?:string}[]}
 export function installApplyBroker(api:any,site:ApplySiteAccess,options:{fetchStudyJson?:(nctId:string)=>Promise<unknown>;now?:()=>number}={}){
- const now=options.now??(()=>Date.now()),sessions=new Map<any,{tabId:number;nctId:string;end:(notify?:boolean)=>void}>();
+ const now=options.now??(()=>Date.now()),sessions=new Map<any,{tabId:number;key:string;end:(notify?:boolean)=>void}>();
  const failure=(id:string,code:string)=>{const safe=FAILURE_CODE.test(code)?code:'UNEXPECTED_FAILURE';return{id,type:'result',ok:false,code:safe,error:failureCopy(safe)}};
- async function currentStudy(sender:any){if(!site.overlaySender(sender))return;const tab=await api.tabs.get(sender.tab.id).catch(()=>undefined);return studyPageNctId(tab?.url)}
- function endTab(tabId:number,keepStudy?:string){for(const s of [...sessions.values()])if(s.tabId===tabId&&s.nctId!==keepStudy)s.end(true)}
+ const pageKey=(url:string)=>{try{const u=new URL(url);u.hash='';return u.href}catch{return''}};
+ async function currentSource(sender:any):Promise<Source|undefined>{if(!site.overlaySender(sender))return;const tab=await api.tabs.get(sender.tab.id).catch(()=>undefined);if(!site.overlaySender(sender)||!isSupportedSite(tab?.url??''))return;const nctId=studyPageNctId(tab.url);if(nctId)return{key:pageKey(tab.url),nctId,nctIds:[nctId]};if(!site.snapshot)return;const snap=await site.snapshot(sender.tab.id);if(!site.overlaySender(sender)||!snap?.supported||pageKey(snap.url)!==pageKey(tab.url)||!Array.isArray(snap.nctIds)||!snap.nctIds.length||snap.nctIds.length>100||snap.nctIds.some((id:any)=>typeof id!=='string'||!/^NCT[0-9]{8}$/.test(id)))return;return{key:pageKey(tab.url)+'|'+snap.generation,nctIds:[...snap.nctIds]};}
+ function endTab(tabId:number,keepUrl?:string){for(const s of [...sessions.values()])if(s.tabId===tabId&&(!keepUrl||s.key.split('|')[0]!==pageKey(keepUrl)))s.end(true)}
  api.runtime.onConnect.addListener((port:any)=>{
-  if(port.name!==APPLY_PORT)return;const sender=port.sender;
-  if(!site.overlaySender(sender)){try{port.disconnect()}catch{}return}
-  const tabId:number=sender.tab.id;let initial:string|undefined;
-  let native:any,closed=false,prepared:Prepared|undefined;const pending=new Map<string,{request:ApplyRequest;nctId:string;timer:ReturnType<typeof setTimeout>}>();
-  const post=(v:unknown)=>{if(!closed)try{port.postMessage(v)}catch{end()}};
-  const settle=(id:string,reply:unknown)=>{const item=pending.get(id);if(!item)return;clearTimeout(item.timer);pending.delete(id);post({reply})};
-  function end(notify=false){if(closed)return;if(notify)try{port.postMessage({kind:'applyEnded'})}catch{}closed=true;sessions.delete(port);for(const p of pending.values())clearTimeout(p.timer);pending.clear();const n=native,token=prepared?.token;native=undefined;prepared=undefined;
-   // Revoke the one-use receipt, then let the helper read it before closing its stdio.
-   if(n){if(token)try{n.postMessage({id:`revoke-${tabId}-${Math.floor(now())}`,type:'revokeApply',payload:{token}})}catch{}setTimeout(()=>{try{n.disconnect()}catch{}},token?500:0)}
-   try{port.disconnect()}catch{}}
+  if(port.name!==APPLY_PORT)return;const sender=port.sender;if(!site.overlaySender(sender)){try{port.disconnect()}catch{}return}
+  const tabId:number=sender.tab.id,expiresAt=now()+APPLY_TOKEN_TTL_MS;let initial:Source|undefined,native:any,closed=false,prepared:Prepared|undefined,reading=false;
+  const pending=new Map<string,{request:ApplyRequest;nctIds:string[];timer:ReturnType<typeof setTimeout>}>();const timer=setTimeout(()=>end(true),APPLY_TOKEN_TTL_MS);timer.unref?.();
+  const post=(v:unknown)=>{if(!closed)try{port.postMessage(v)}catch{end()}};const settle=(id:string,reply:unknown)=>{const item=pending.get(id);if(!item)return;clearTimeout(item.timer);pending.delete(id);post({reply})};
+  function end(notify=false){if(closed)return;if(notify)try{port.postMessage({kind:'applyEnded'})}catch{}closed=true;clearTimeout(timer);sessions.delete(port);for(const p of pending.values())clearTimeout(p.timer);pending.clear();const n=native,p=prepared;native=undefined;prepared=undefined;if(n){if(p)try{n.postMessage({id:`revoke-${tabId}-${Math.floor(now())}`,type:p.brief?'revokeStudyBrief':'revokeApply',payload:{token:p.token}})}catch{}setTimeout(()=>{try{n.disconnect()}catch{}},p?500:0)}try{port.disconnect()}catch{}}
+  const same=(s:Source|undefined)=>!!s&&!!initial&&s.key===initial.key&&JSON.stringify(s.nctIds)===JSON.stringify(initial.nctIds)&&site.overlaySender(sender)&&now()<expiresAt&&!closed;
+  async function valid(){const s=await currentSource(sender);if(!same(s)){end(true);return false}return true}
+  const selected=(ids:unknown)=>{const v=briefNctIds(ids);if(!initial||v.some(id=>!initial!.nctIds.includes(id)))throw Error();return v;};
   function connection(){if(native)return native;const n=api.runtime.connectNative('com.treatable.local');native=n;
-   n.onMessage.addListener((value:any)=>{if(closed||native!==n)return;const id=value?.id,item=typeof id==='string'?pending.get(id):undefined;if(!item)return;
+   n.onMessage.addListener((value:any)=>{void(async()=>{if(closed||native!==n)return;const id=value?.id,item=typeof id==='string'?pending.get(id):undefined;if(!item||!await valid()||native!==n||pending.get(id)!==item)return;
     let reply:any;try{reply=parseApplyReply(value,id)}catch{settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}
-    if(!reply.ok){if(item.request.type==='executeApply'||reply.code==='APPLY_EXPIRED')prepared=undefined;settle(id,failure(id,reply.code));return}
-    const r=reply.result;
-    if(item.request.type==='prepareApply'){if(r?.kind!=='preparedApply'||r.nctId!==item.nctId||r.record.nctId!==item.nctId){settle(id,failure(id,'RESULT_MISMATCH'));return}prepared={token:r.token,digest:r.digest,expiresAt:r.expiresAt,nctId:r.nctId}}
-    else if(item.request.type==='executeApply'){const p=prepared;prepared=undefined;if(r?.kind!=='applyAgent'||!p||r.nctId!==p.nctId||r.digest!==p.digest){settle(id,failure(id,'RESULT_MISMATCH'));return}}
-    else if(r!==undefined){settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}
-    settle(id,r===undefined?{id,type:'result',ok:true}:{id,type:'result',ok:true,result:r});
-   });
-   n.onDisconnect.addListener(()=>{const code=nativeDisconnectCode(api.runtime.lastError?.message);if(native!==n)return;native=undefined;prepared=undefined;for(const id of [...pending.keys()])settle(id,failure(id,code))});
-   return n}
-  async function record(id:string){const nctId=await currentStudy(sender);if(closed)return;if(!nctId||nctId!==initial){post({reply:failure(id,'NOT_STUDY_PAGE')});return}
-   try{const raw=options.fetchStudyJson?await options.fetchStudyJson(nctId):await fetchPublicStudyJson(nctId,4*1024*1024,8000);const value=normalizeApplyRecord(raw,now());if(closed)return;if(value.nctId!==nctId)throw Error();post({reply:{id,type:'record',ok:true,record:value}})}catch{post({reply:failure(id,'RECORD_UNAVAILABLE')})}}
-    // The session binds to the study shown in the validated tab URL when the frame connects.
-  const ready=currentStudy(sender).then(id=>{if(closed)return;if(!id){end();return}initial=id;sessions.set(port,{tabId,nctId:id,end});post({kind:'applyReady',nctId:id})},()=>end());
+    if(!reply.ok){if(item.request.type.startsWith('execute')||reply.code==='APPLY_EXPIRED')prepared=undefined;settle(id,failure(id,reply.code));return}const r=reply.result;
+    if(item.request.type==='prepareApply'||item.request.type==='prepareStudyBrief'){const brief=item.request.type==='prepareStudyBrief',ids=brief?r?.records?.map((x:any)=>x.nctId):[r?.nctId];if(r?.kind!==(brief?'preparedStudyBrief':'preparedApply')||JSON.stringify(ids)!==JSON.stringify(item.nctIds)){settle(id,failure(id,'RESULT_MISMATCH'));return}r.expiresAt=Math.min(r.expiresAt,expiresAt);prepared={token:r.token,digest:r.digest,expiresAt:r.expiresAt,nctIds:ids,brief,used:false};}
+    else if(item.request.type==='executeApply'||item.request.type==='executeStudyBrief'){const p=prepared;prepared=undefined;const ids=item.request.type==='executeStudyBrief'?r?.briefs?.map((b:any)=>b.nctId):[r?.nctId];if(!p||r?.kind!==(p.brief?'studyBrief':'applyAgent')||r.digest!==p.digest||JSON.stringify(ids)!==JSON.stringify(p.nctIds)){settle(id,failure(id,'RESULT_MISMATCH'));return}}
+    else if(r!==undefined){settle(id,failure(id,'INVALID_NATIVE_REPLY'));return}settle(id,r===undefined?{id,type:'result',ok:true}:{id,type:'result',ok:true,result:r});})().catch(()=>end(true))});
+   n.onDisconnect.addListener(()=>{const code=nativeDisconnectCode(api.runtime.lastError?.message);if(native!==n)return;native=undefined;prepared=undefined;for(const id of [...pending.keys()])settle(id,failure(id,code))});return n;}
+  async function record(id:string,nctIds:string[],brief:boolean){if(reading){post({reply:failure(id,'BUSY')});return}reading=true;try{if(!await valid())return;const raws=await Promise.all(nctIds.map(nctId=>options.fetchStudyJson?options.fetchStudyJson(nctId):fetchPublicStudyJson(nctId,4*1024*1024,8000)));if(!await valid())return;const at=now(),records=raws.map(raw=>normalizeApplyRecord(raw,at,brief?16000:undefined)),briefs=brief?raws.map(raw=>normalizeStudyBrief(raw,at)):[];if(records.some((r,i)=>r.nctId!==nctIds[i]))throw Error();post({reply:brief?{id,type:'briefRecords',ok:true,records,briefs}:{id,type:'record',ok:true,record:records[0]}});}catch{if(!closed)post({reply:failure(id,'RECORD_UNAVAILABLE')})}finally{reading=false}}
+  const ready=currentSource(sender).then(source=>{if(closed)return;if(!source){end();return}initial=source;sessions.set(port,{tabId,key:source.key,end});post({kind:'applyReady',...(source.nctId?{nctId:source.nctId}:{}),nctIds:source.nctIds,studies:site.publicStudyTitles?.(source.nctIds)??source.nctIds.map(nctId=>({nctId})),expiresAt})},()=>end());
   port.onMessage.addListener((message:any)=>{if(closed)return;void(async()=>{await ready;if(closed||!initial)return;
-   if(message?.kind==='applyRecord'){if(Object.keys(message).some(k=>!['kind','id'].includes(k))||typeof message.id!=='string'||!ID.test(message.id)){end();return}await record(message.id);return}
-   if(message?.kind!=='applyNative'||Object.keys(message).some(k=>!['kind','request'].includes(k))){end();return}
-   let request:ApplyRequest;try{request=parseApplyRequest(message.request)}catch{end();return}
-   const nctId=await currentStudy(sender);if(closed)return;
-   if(pending.has(request.id)){end();return}if(pending.size){post({reply:failure(request.id,'BUSY')});return}
-   if(!nctId||nctId!==initial){post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}
-   if(request.type==='prepareApply'&&request.payload.nctId!==nctId){post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}
-   if(request.type==='executeApply'){const p=prepared;if(!p||p.token!==request.payload.token||p.digest!==request.payload.digest||p.nctId!==nctId){post({reply:failure(request.id,'INVALID_APPLY_RECEIPT')});return}if(p.expiresAt<=now()){prepared=undefined;post({reply:failure(request.id,'APPLY_EXPIRED')});return}}
-   if(request.type==='revokeApply'){const token=prepared?.token;prepared=undefined;if(!token||!native){post({reply:{id:request.id,type:'result',ok:true}});return}request={id:request.id,type:'revokeApply',payload:{token}}}
-   const timer=setTimeout(()=>{settle(request.id,failure(request.id,'NATIVE_TIMEOUT'));end()},APPLY_NATIVE_TIMEOUT_MS);pending.set(request.id,{request,nctId,timer});
-   let n:any;try{n=connection();n.postMessage(request)}catch(error){if(n&&native===n){native=undefined;try{n.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}
-  })()});
-  port.onDisconnect.addListener(()=>end());
- });
- api.tabs.onUpdated.addListener((tabId:number,change:any)=>{if(change?.url)endTab(tabId,studyPageNctId(change.url))});
- api.tabs.onRemoved.addListener((tabId:number)=>endTab(tabId));
- return{endTab,sessionCount:()=>sessions.size};
+   if(message?.kind==='applyRecord'||message?.kind==='studyBriefRecord'){const brief=message.kind==='studyBriefRecord';if(Object.keys(message).some(k=>!(brief?['kind','id','nctIds']:['kind','id']).includes(k))||typeof message.id!=='string'||!ID.test(message.id)){end();return}let ids:string[];try{ids=brief?selected(message.nctIds):[initial.nctId!];if(!ids[0])throw Error()}catch{post({reply:failure(message.id,'NOT_STUDY_PAGE')});return}await record(message.id,ids,brief);return}
+   if(message?.kind!=='applyNative'||Object.keys(message).some(k=>!['kind','request'].includes(k))){end();return}let request:ApplyRequest;try{request=parseApplyRequest(message.request)}catch{end();return}
+   if(pending.has(request.id)){end();return}if(pending.size){post({reply:failure(request.id,'BUSY')});return}if(!await valid())return;
+   let ids=prepared?.nctIds??(initial.nctId?[initial.nctId]:[]);const brief=request.type.endsWith('StudyBrief');
+   if(request.type==='prepareStudyBrief'){try{ids=selected(request.payload.nctIds)}catch{post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}prepared=undefined;}
+   if(request.type==='prepareApply'){if(!initial.nctId||request.payload.nctId!==initial.nctId){post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}ids=[initial.nctId];prepared=undefined;}
+   if(request.type==='executeApply'||request.type==='executeStudyBrief'){const p=prepared;if(!p||p.used||p.brief!==brief||p.token!==request.payload.token||p.digest!==request.payload.digest){post({reply:failure(request.id,'INVALID_APPLY_RECEIPT')});return}if(p.expiresAt<=now()){prepared=undefined;post({reply:failure(request.id,'APPLY_EXPIRED')});return}p.used=true;ids=p.nctIds;}
+   if(request.type==='revokeApply'||request.type==='revokeStudyBrief'){const p=prepared;prepared=undefined;if(!p||!native){post({reply:{id:request.id,type:'result',ok:true}});return}request={id:request.id,type:p.brief?'revokeStudyBrief':'revokeApply',payload:{token:p.token}};}
+   const wait=setTimeout(()=>{settle(request.id,failure(request.id,'NATIVE_TIMEOUT'));end()},APPLY_NATIVE_TIMEOUT_MS);pending.set(request.id,{request,nctIds:ids,timer:wait});let n:any;try{n=connection();n.postMessage(request)}catch(error){if(n&&native===n){native=undefined;try{n.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}
+  })().catch(()=>end(true))});port.onDisconnect.addListener(()=>end());
+ });api.tabs.onUpdated.addListener((tabId:number,change:any)=>{if(change?.url)endTab(tabId,change.url)});api.tabs.onRemoved.addListener((tabId:number)=>endTab(tabId));return{endTab,sessionCount:()=>sessions.size};
 }
