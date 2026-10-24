@@ -15,7 +15,7 @@
 export function safeStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
-    const probe = '__ff_probe__';
+    const probe = '__treatable_probe__';
     window.localStorage.setItem(probe, '1');
     window.localStorage.removeItem(probe);
     return window.localStorage;

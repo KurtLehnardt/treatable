@@ -120,7 +120,7 @@ describe("the Search line's coverage", () => {
       assert.equal(starts, 1);
       assert.deepEqual(status.coverage, { withVectors: 4120, total: 4698, backfill: { running: true, done: 289, total: 578 } });
       const view = describeLocalSearchStatus(status)!;
-      assert.match(view.detail!, /4,120 of 4,698 grants are indexed for search/);
+      assert.match(view.detail!, /4,120 of 4,698 studies are indexed for search/);
       assert.match(view.detail!, /\(50%\)/);
     } finally {
       for (const [k, v] of saved) {

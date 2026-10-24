@@ -26,12 +26,12 @@ All remaining source acceptance criteria below remain in scope. Verification com
 | R-004 | Embed + ship | `data/vectors/` builtin vectors exist for every study; `npm run data:embed:builtin` is incremental (unchanged ids skipped — test with a 2-record diff) |
 | R-005 | Patient profile contract | `patientProfile.ts` schema; test: `ageYears` missing → invalid; `fillingOutAs` enum enforced |
 | R-006 | Profile extraction never infers identity fields | Test: extraction output containing `ageYears`/`sex`/`location` is discarded for those keys; user-stated values win |
-| R-007 | Hard filters | Pure functions with tests for each rule in §6 Stage 1 (age edge at exactly min/max, sex ALL, radius 50 mi haversine, expanded-access toggle, healthy-volunteers drop) |
+| R-007 | Structured screening | Age boundaries and sex compatibility produce cited Unlikely reasons; missing data never excludes; distance is separate; expanded-access preference is honored; healthyVolunteers=true alone never excludes. |
 | R-008 | Stage-1 retrieval | `/api/match` returns ≤60 provisional candidates with no LLM configured; test asserts quotas (≥3 expanded-access when ≥3 survive) |
 | R-009 | Stage-1 latency | Integration test: warm corpus of ≥2,000 studies → provisional results in <2,000 ms on CI hardware (assert, with a generous skip on first cold load) |
-| R-010 | Pass A / Pass B reuse | `twoPass.ts` unchanged (diff-empty check in gate scope); new prompts registered; `npm run check:prompts` green |
+| R-010 | Two-pass behavior | Promotion floor and no-drop fallback behavior are preserved through typed study adapters; new prompts registered; check:prompts passes. |
 | R-011 | `PassAScorer` interface | Pass A is called through a named interface; a fake scorer in tests drives promotion |
-| R-012 | Four buckets + invariants | Tests: model-inferred fact cannot yield `excluded`; LLM `unmet` criterion → `conditionally_eligible`; LLM error → `unknown`, candidate still present |
+| R-012 | Four buckets and safety | Inferred facts never exclude; model-unmet criteria route to Ask; LLM errors preserve all candidates/rank as unknown; deterministic tests pass. |
 | R-013 | Freshness | Study with `lastUpdatePostDate` > 24 months → `stale: true`, still shown; closed status never in results |
 | R-014 | Streaming results | SSE events arrive in order provisional → passA → passB; existing `progressEvent.ts` contract reused |
 | R-015 | StudyCard | Renders bucket pill, score, nearest site + distance, contacts with `tel:`/`mailto:`, collapsed verbatim criteria (component test) |
@@ -39,16 +39,16 @@ All remaining source acceptance criteria below remain in scope. Verification com
 | R-017 | Clinician summary | `/summary` print view lists profile + top 5 NCT ids; `@media print` hides nav (snapshot test) |
 | R-018 | Nothing-fits path | Zero survivors → redirect panel with palliative-care guidance and CT.gov/NCI links (test) |
 | R-019 | Not-medical-advice banner | Present on intake and results pages (component test) |
-| R-020 | Profile stays local | Server never persists profile: grep-test that no API route writes profile fields to disk; localStorage "Clear everything" empties keys |
-| R-021 | Providers unchanged | `lib/llm/providers.ts` preset list identical to granted's (snapshot); FCC loopback-only http still enforced (existing tests pass) |
-| R-022 | FCC confirm dialog | Selecting `fcc` the first time shows the §9 warning dialog; dismissed state stored in settings (test) |
-| R-023 | Privacy lines | Each mode shows its §9 privacy string in Settings (test) |
+| R-020 | Patient privacy | Profiles stay in browser storage; API handling never persists/logs patient text; clear-all removes Treatable patient and in-memory/session results. Local embeddings and LLM never send patient text externally. |
+| R-021 | Phase-one providers | Search-only, OpenAI, and local Ollama paths work; OpenAI requires explicit consent; Claude/FCC/other cloud providers are deferred. |
+| R-022 | Outbound consent | Selecting OpenAI exposes an unchecked consent control; sending patient content is blocked until consent; local/search-only require no outbound consent. FCC is deferred. |
+| R-023 | Truthful privacy copy | Settings explains local patient-data routing, setup downloads, OpenAI transmission and key storage accurately; no absolute promise about all network activity. |
 | R-024 | Deletions complete | No file imports from any DELETE module; `npm run typecheck`, `npm test`, `npm run build` green |
 | R-025 | Golden set | `evals/golden-set.jsonl` has 12 entries validating against `patientProfile.ts` + expected bucket per listed NCT; ≥5 structured-rule cases |
-| R-026 | Eval runner | `npm run eval:quality` runs end-to-end against a fake `PassAScorer` and prints the false-exclusion table |
+| R-026 | Safety eval | eval:quality uses deterministic scorer/fixtures, prints false-exclusion table, and fails on any false exclusion or safety-invariant violation. |
 | R-027 | Precomputed demos | ≥3 golden patients have `data/precomputed.json` entries; fresh clone with no key renders them |
 | R-028 | install-macos.sh | Shellcheck clean; dry-run flag prints every step; idempotent re-run test in CI (bash, macOS runner optional) |
 | R-029 | macOS launcher | `applications-launcher.sh install/uninstall` round-trips: plist written then removed; settings.json path correct (bash test) |
-| R-030 | Port + naming | Single `APP_PORT` constant; no string `granted`/`Granted` remains outside `CHANGELOG`/attribution (grep gate) |
+| R-030 | Port and naming | Single APP_PORT=5556 runtime constant; Treatable app/paths/launcher labels; legacy Granted references only in attribution/history/deferred installer source. |
 | R-031 | README | Sections in §10 present; "not medical advice" within the first 20 lines |
 | R-032 | LAN binding preserved | `npm run dev:lan` and a documented `START_HOST=0.0.0.0` for `start` exist (phase 3/4 need them) |

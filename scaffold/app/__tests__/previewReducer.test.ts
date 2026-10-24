@@ -2,7 +2,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { previewReducer, partitionPreview, isProvisional, type PreviewItem } from "@/lib/ui/previewReducer";
-import { CARD_CAP } from "@/components/OpportunityMap";
+// The reducer accepts its cap explicitly; keep this behavior test independent of UI.
+const CARD_CAP = 12;
 import type { Match, Opportunity } from "@/lib/types";
 
 /**

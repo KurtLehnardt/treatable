@@ -1,0 +1,10 @@
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { APP_PORT } from "../lib/runtime.mjs";
+const require = createRequire(import.meta.url);
+const command = process.argv[2] || "dev";
+const host = process.argv.includes("--lan") ? "0.0.0.0" : process.env.START_HOST || "127.0.0.1";
+if (!["127.0.0.1", "0.0.0.0", "localhost"].includes(host)) throw new Error("START_HOST must be 127.0.0.1, localhost, or 0.0.0.0");
+const child = spawn(process.execPath, [require.resolve("next/dist/bin/next"), command, "-H", host, "-p", String(APP_PORT)], { stdio: "inherit", env: process.env });
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
+child.on("exit", (code) => process.exit(code ?? 1));

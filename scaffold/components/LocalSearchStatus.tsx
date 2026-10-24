@@ -26,11 +26,11 @@ export function describeLocalSearchStatus(s: SearchStatus | undefined | null): L
   return extra ? { ...view, detail: view.detail ? `${view.detail} ${extra}` : extra } : view;
 }
 
-/** "4,120 of 4,698 grants are indexed for search; indexing the rest in the background (40%)." Empty when everything is indexed. */
+/** "4,120 of 4,698 studies are indexed for search; indexing the rest in the background (40%)." Empty when everything is indexed. */
 function coverageText(s: SearchStatus): string {
   const c = s.coverage;
   if (!c || c.withVectors >= c.total) return "";
-  const base = `${fmt(c.withVectors)} of ${fmt(c.total)} grants are indexed for search; the rest are found by keyword`;
+  const base = `${fmt(c.withVectors)} of ${fmt(c.total)} studies are indexed for search; the rest are found by keyword`;
   if (c.backfill?.running) {
     const pct = c.backfill.total ? Math.floor(((c.backfill.done ?? 0) / c.backfill.total) * 100) : 0;
     return `${base} until they're indexed, which is running in the background (${pct}%).`;
@@ -96,6 +96,8 @@ export default function LocalSearchStatus({
   useEffect(() => {
     if (initialStatus) setStatus(initialStatus);
   }, [initialStatus]);
+
+  useEffect(() => { if (initialStatus) return; let alive=true; fetch("/api/llm/embeddings").then(r=>r.ok?r.json():null).then(value=>{if(alive&&value)setStatus(value);}).catch(()=>{}); return()=>{alive=false;}; }, [initialStatus]);
 
   const downloading = status?.builtin.state === "downloading" || Boolean(status?.coverage?.backfill?.running);
   useEffect(() => {
