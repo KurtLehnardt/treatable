@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Treatable — private study finder",
+  "version": "0.1.0",
+  "description": "Private, local-first study matching for patients. No patient data sent to cloud services.",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvcOJ8uGg9hCXEaYn7urct1IO5H7i9VU+UVHNfdcuKfTcutfAzbPYAp3IGFezl8Jt2tPYBEyimBVDycEapCPKNJseuU/XmpX/uBV/SBixqfMJYjjoSIrXTDIl0GKMcTOTj/ZxhCrs95yK+so0x78IDdlqfMJK1CrSMMUTZ+LAVQWdGxDEi2T1qyrnO92PugAEMxVmh4ZtDxzd82QlMehsI6JmS60rJ1NrUJMfXrinLKRtw54vwamf6FH7vLT+yBfUOjRn4ON3HZmtF/0mA9eG3nG77Kb3vbL/QBI3U0qnTMC/HZIGPOSaUYixBRUqMVmKA/Ila0SRPzhmJ5xqaTqeCwIDAQAB",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "storage",
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Treatable"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self'; base-uri 'none'; frame-src 'none'"
+  }
+}

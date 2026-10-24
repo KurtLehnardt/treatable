@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "zod": [
+        "node_modules/zod"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "../scaffold/lib/contracts/patientProfile.ts",
+    "../scaffold/lib/contracts/study.ts",
+    "../scaffold/lib/contracts/studyMatch.ts",
+    "../scaffold/lib/eligibility/hardFilters.ts"
+  ]
+}
