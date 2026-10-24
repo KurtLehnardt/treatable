@@ -10,7 +10,9 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "pretest": "npm run build"
+    "pretest": "npm run build:all",
+    "build:b": "node scripts/build.mjs --variant=b",
+    "build:all": "npm run build && npm run build:b"
   },
   "dependencies": {
     "react": "18.3.1",
@@ -18,11 +20,13 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
-    "tsx": "4.23.12",
-    "typescript": "5.9.3",
+    "@types/node": "^22",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
-    "@types/node": "^22"
+    "@types/react-test-renderer": "^18.3.1",
+    "esbuild": "0.28.2",
+    "react-test-renderer": "^18.3.1",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3"
   }
 }

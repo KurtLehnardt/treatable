@@ -1,3 +1,6 @@
 node_modules/
 dist/
 treatable-extension.zip
+dist-b/
+treatable-extension-a.zip
+treatable-extension-b.zip
