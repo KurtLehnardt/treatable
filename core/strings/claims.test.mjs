@@ -501,16 +501,21 @@ function maskMechanismNames(text) {
 const RULES = [
   {
     id: 'compliance-label',
-    re: /\b(?:HIPAA|GDPR|CCPA|HITRUST|SOC\s?2|ISO\s?27001)[-\s]+(?:complian(?:t|ce)|ready|eligible|safe|certified|approved|aligned|conformant|friendly|grade|level)\b|\bcomplian(?:t|ce)\s+with\s+(?:HIPAA|GDPR|CCPA)\b|\b(?:meets?|satisf(?:y|ies)|fulfil(?:s|ls)?|complies\s+with|adheres?\s+to|conforms?\s+to|built\s+for|designed\s+for)\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b|\b(?:fully\s+)?complian(?:t|ce)\s+with\s+(?:\w+\s+){0,2}(?:privacy|data[-\s]protection|health)\s+(?:laws?|regulations?|rules)\b/gi,
+    re: /\b(?:HIPAA|GDPR|CCPA|HITRUST|SOC\s?2|ISO\s?27001)[-\s]+(?:complian(?:t|ce)|ready|eligible|safe|certified|approved|aligned|conformant|friendly|grade|level|aware|minded|conscious|focused|proof)\b|\bcomplian(?:t|ce)\s+with\s+(?:HIPAA|GDPR|CCPA)\b|\b(?:meets?|satisf(?:y|ies)|fulfil(?:s|ls)?|complies\s+with|adheres?\s+to|conforms?\s+to|built\s+for|designed\s+for)\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b|\b(?:fully\s+)?complian(?:t|ce)\s+with\s+(?:\w+\s+){0,2}(?:privacy|data[-\s]protection|health)\s+(?:laws?|regulations?|rules)\b|\b(?:with|keeping)\s+(?:HIPAA|GDPR|CCPA|privacy|security|compliance|data[-\s]protection)\s+in\s+mind\b|\b(?:aligned|consistent|in\s+line|in\s+accordance|in\s+compliance)\s+with\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b|\bfollows?\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b|\b(?:aligned|consistent|in\s+line|in\s+accordance|in\s+compliance)\s+with\s+(?:\w+\s+){0,2}(?:privacy|data[-\s]protection)\s+(?:laws?|regulations?|rules|standards?|requirements?)\b|\b(?:privacy|security|data[-\s]protection)[-\s]+complian(?:t|ce)\b|\bcomplian(?:t|ce)\s+by\s+design\b|\b(?:meets?|meeting|satisf(?:y|ies|ying)|exceeds?|exceeding|complies\s+with|adheres?\s+to|conforms?\s+to|built\s+to|designed\s+to\s+meet)\s+(?:all\s+)?(?:the\s+)?(?:\w+\s+){0,2}(?:privacy|security|data[-\s]protection|compliance)\s+(?:standards?|requirements?|regulations?|laws?|rules|guidelines|best\s+practices)\b/gi,
     negatable: true,
     bad: [
       'HIPAA compliant', 'a HIPAA-ready app', 'HIPAA eligible tool', 'SOC 2 certified', 'GDPR-compliant',
       'supports HIPAA compliance', 'compliant with HIPAA', 'HIPAA-aligned', 'Meets HIPAA requirements.', 'Complies with HIPAA.', 'Adheres to HIPAA.', 'HIPAA-conformant design.', 'Built for HIPAA.',
       'HIPAA-friendly', 'HIPAA-grade privacy', 'Treatable is fully compliant with privacy laws.', 'HIPAA\ncompliant', `HIPAA${cp(0x2011)}compliant`,
+      'Meets healthcare privacy standards.', 'Built with HIPAA in mind.', 'HIPAA-aware.', 'Designed with privacy in mind.',
+      'Treatable meets the strictest security requirements.', 'Exceeds industry privacy standards.', 'A HIPAA-minded design.',
+      'Aligned with HIPAA.', 'Follows HIPAA guidelines.', 'In line with privacy regulations.', 'Privacy compliant.', 'Compliant by design.',
     ],
     ok: [
       'Treatable is not HIPAA compliant.', 'Treatable makes no claim of HIPAA compliance or legal sufficiency.',
       'Treatable does not claim HIPAA compliance.', 'No HIPAA compliance is claimed.', 'Treatable does not meet HIPAA requirements.', 'Treatable does not adhere to HIPAA.',
+      'Treatable does not meet healthcare privacy standards.', 'The request meets the size requirements of the API.', 'Treatable is not aligned with HIPAA.',
+      'HHS de-identification guidance describes formal standards.', 'Participants must meet the medical requirements of the protocol.',
     ],
   },
   {
@@ -549,15 +554,16 @@ const RULES = [
   },
   {
     id: 'clinical-validity',
-    re: /\b(?:clinically[-\s]+(?:validated|proven|verified|tested|accurate|reliable|approved)|medically[-\s]+(?:validated|proven|accurate|reliable|approved|reviewed)|scientifically[-\s]+(?:validated|proven|verified|tested|backed))\b/gi,
+    re: /\b(?:clinically[-\s]+(?:validated|proven|verified|tested|accurate|reliable|approved)|medically[-\s]+(?:validated|proven|accurate|reliable|approved|reviewed)|scientifically[-\s]+(?:validated|proven|verified|tested|backed|sound|accurate)|clinically[-\s]+(?:relevant|meaningful|sound|appropriate)\s+(?:match\w*|scor\w*|rank\w*)|evidence[-\s]+based\s+(?:match\w*|scor\w*|rank\w*)|(?:safe|harmless)\s+for\s+(?:patients|everyone|children|kids))\b/gi,
     negatable: true,
     bad: [
       'clinically validated', 'a clinically proven method', 'Clinically tested', 'clinically\nvalidated', 'Medically accurate matches.', 'clinically accurate',
-      'Scientifically validated matching.',
+      'Scientifically validated matching.', 'Scientifically sound.', 'Evidence-based matching.', 'Clinically relevant matches.', 'Safe for patients.',
     ],
     ok: [
       'Treatable has not been clinically validated.', 'The score is not clinically validated.',
-      'Never described as clinically proven.',
+      'Never described as clinically proven.', 'The study reports clinically meaningful improvement in pain.',
+      'Sponsors describe evidence-based treatment.', 'The study follows evidence-based recommendations.',
     ],
   },
   {
@@ -583,7 +589,7 @@ const RULES = [
   },
   {
     id: 'data-stays-local',
-    re: /\b(?:nothing\s+(?:ever\s+)?leaves|no\s+(?:\w+\s+){0,2}(?:data|information|details)\s+(?:ever\s+)?leaves?|never\s+leaves?\s+(?:your|the|this)\s+\w+|(?:stays?|remains?)\s+(?:only\s+)?on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet)|(?:stored|kept|held|saved|processed)\s+(?:only\s+)?(?:locally|on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet))|stays?\s+local(?:ly)?|never\s+(?:sent|shared|uploaded|transmitted)\s+(?:anywhere|to\s+(?:anyone|any\s+server|the\s+cloud)))\b/gi,
+    re: /\b(?:nothing\s+(?:ever\s+)?leaves|no\s+(?:\w+\s+){0,2}(?:data|information|details)\s+(?:ever\s+)?leaves?|never\s+leaves?\s+(?:your|the|this)\s+\w+|(?:stays?|remains?)\s+(?:only\s+)?on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet)|(?:stored|kept|held|saved|processed)\s+(?:only\s+)?(?:locally|on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet))|stays?\s+local(?:ly)?|never\s+(?:sent|shared|uploaded|transmitted)\s+(?:anywhere|to\s+(?:anyone|any\s+servers?|our\s+servers?|the\s+cloud))|no\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:sent|uploaded|transmitted)\s+to\s+(?:our|any)\s+servers?|never\s+(?:touches|reaches|hits|goes\s+to)\s+(?:our|any|a)\s+servers?|(?:runs?|works?)\s+(?:entirely|fully|completely|100\s*%)\s+offline|(?:stays?|remains?|is\s+kept|are\s+kept)\s+with\s+you|(?:(?:all|every)\s+(?:\w+\s+)?(?:processing|analysis|computation)|everything)\s+(?:happens|is\s+done|takes\s+place|runs|occurs|is\s+performed|is\s+processed)\s+(?:only\s+|entirely\s+|locally\s+)?(?:on|in)\s+(?:your|the|this)\s+(?:own\s+)?(?:device|phone|computer|mac|pc|laptop|tablet|browser)|(?:data|information|entries|searches|symptoms|answers|details)\s+(?:is|are|will\s+be|gets?)\s+(?:only\s+used|used\s+only|used\s+solely|solely\s+used)\s+(?:for|to|in|by)|(?:only\s+used|used\s+only|used\s+solely|solely\s+used)\s+(?:for|to\s+run)\s+(?:this|your|the\s+current)\s+(?:search|session|request|match\w*))\b/gi,
     negatable: false,
     bad: [
       'Nothing leaves your phone.', 'no data leaves the app', 'Your data never leaves your device.', 'Everything stays on your device.',
@@ -591,10 +597,15 @@ const RULES = [
       'Data stays on-device.', 'Everything stays local.', 'Data is processed locally and never sent anywhere.',
       'Your data stays on your phone.', 'Everything stays on your computer.', 'Symptoms remain on your Mac.',
       'Your data is stored only on your device.', 'Your data is processed locally.', 'Your health data is kept on-device.',
+      'Your data stays with you.', 'All processing happens on your device.', 'Your data is only used for matching.',
+      'Your data is only used to find trials.', 'Used only for this search.', 'Everything runs on your phone.',
+      'No data is sent to our servers.', 'Your data never touches our servers.', 'Runs entirely offline.',
     ],
     ok: [
       'Searching does not send anything to OpenAI.', 'Treatable does not save your health entries.', 'OpenAI features stay locked.',
       'The key stays locked until you unlock the credential system.', 'Study contact details are never sent to OpenAI.',
+      'It is used only inside the app.', 'It is used only to turn a ZIP the user typed into approximate coordinates.',
+      'Screening runs inside the app.',
     ],
   },
   {
@@ -609,15 +620,23 @@ const RULES = [
   },
   {
     id: 'erasure-promise',
-    re: /\b(?:(?:instant(?:ly)?|immediate(?:ly)?|permanent(?:ly)?)[-\s]+(?:\w+[-\s]+)?(?:eras\w*|delet\w*|remov\w*|wip\w*)|(?:eras\w*|delet\w*|remov\w*|wip\w*)[-\s]+(?:\w+[-\s]+){0,2}(?:instant(?:ly)?|immediate(?:ly)?|permanent(?:ly)?))\b/gi,
+    // Removal described as instant or permanent, as happening right away, or as happening when the person ends the
+    // session or closes the app. "Removed from the app when you end the session" describes the app, so it passes.
+    re: /\b(?:(?:instant(?:ly)?|immediate(?:ly)?|permanent(?:ly)?)[-\s]+(?:\w+[-\s]+)?(?:eras\w*|delet\w*|remov\w*|wip\w*)|(?:eras\w*|delet\w*|remov\w*|wip\w*)[-\s]+(?:\w+[-\s]+){0,2}(?:instant(?:ly)?|immediate(?:ly)?|permanent(?:ly)?)|(?:eras|delet|remov|wip|purg|destr)\w*\s+(?:\w+\s+){0,2}?(?:right\s+away|straight\s+away|in\s+real\s+time|on\s+the\s+spot|without\s+a\s+trace|without\s+delay)|(?:eras|delet|remov|wip|purg|destr)\w*\s+(?!from\s+(?:the|this)\s+(?:app|device|screen)\b|from\s+memory\b)(?:\w+\s+){0,3}?(?:(?:when|as\s+soon\s+as|once|whenever|after)\s+(?:you\s+)?(?:end|close|quit|exit|leave|finish|log\s+out|sign\s+out)\w*|(?:when|as\s+soon\s+as|once|whenever|after)\s+the\s+(?:session|app)\s+(?:ends|closes|quits|is\s+(?:ended|closed))|(?:at|on|upon)\s+session\s+end))|(?:eras|delet|remov|wip|purg)(?:es|e)\s+(?:your|all|the)\s+(?:\w+\s+){0,2}(?:data|information|searches|entries|requests?|history)\s+(?:after|at\s+the\s+end\s+of)\s+(?:each|every|the)\b|(?:eras|delet|remov|wip|purg)(?:es|e)\s+(?:everything|all\s+(?:of\s+)?(?:your\s+)?(?:data|traces?|information))\b/gi,
     negatable: true,
     bad: [
       'Your data is deleted instantly.', 'Permanently erased after use.', 'instant erasure', 'immediately deletes your data',
-      'permanently deleted',
+      'permanently deleted', 'Sessions are deleted right away.', 'All traces are erased when you end the session.',
+      'Data is deleted when you close the app.', 'Deleted from OpenAI when you end the session.', 'Wiped without a trace.',
+      'OpenAI deletes your data after each request.', 'All data is removed when the session ends.', 'Ending the session erases everything.',
+      'Data is wiped from OpenAI at session end.',
     ],
     ok: [
       'Treatable does not promise instant physical erasure.', 'It cannot promise immediate erasure.',
       'Physical removal can happen later.', 'Treatable cannot promise that OpenAI has erased the data.',
+      'Your entries are removed from the app when you end the session.', 'Your data is not deleted when you close the app.',
+      'OpenAI states that deletion removes the session from the API and that physical cleanup may continue afterwards.',
+      'Changing an entry clears prepared consent at once.',
     ],
   },
   {
@@ -633,17 +652,25 @@ const RULES = [
   },
   {
     id: 'endorsement-claim',
-    re: /\b(?:doctor|physician|clinician|nurse|pharmacist|expert)s?[-\s]+(?:approved|recommended|endorsed|reviewed|verified|validated|tested|backed)\b|\b(?:trusted|approved|recommended|endorsed|reviewed|verified|validated|backed|used)\s+by\s+(?:\w+\s+){0,2}(?:doctors|physicians|clinicians|nurses|pharmacists|experts|hospitals|researchers)\b/gi,
+    re: /\b(?:doctor|physician|clinician|nurse|pharmacist|expert)s?[-\s]+(?:approved|recommended|endorsed|reviewed|verified|validated|tested|backed)\b|\b(?:trusted|approved|recommended|endorsed|reviewed|verified|validated|backed|used)\s+by\s+(?:\w+\s+){0,2}(?:doctors|physicians|clinicians|nurses|pharmacists|experts|hospitals|researchers)\b|\b(?:trusted|loved|recommended|endorsed|chosen|relied\s+on)\s+by\s+(?:\w+\s+){0,2}(?:patients|users|families|caregivers|people|thousands|millions)\b|\b(?:trustworthy|trusted)\s+(?:way|tool|app|application|partner|resource|guide|choice|name|companion)\b|\bverified\s+(?:clinical\s+)?(?:trials|studies|listings|matches)\b/gi,
     negatable: true,
     bad: [
       'Doctor approved.', 'Physician-reviewed matching.', 'Doctor-recommended app.', 'Clinician validated scores.', 'Trusted by doctors.',
-      'Reviewed by leading clinicians.',
+      'Reviewed by leading clinicians.', 'Trusted by patients.', 'A trustworthy way to find trials.', 'Verified studies only.',
+      'Loved by thousands of families.', 'A trusted tool for finding studies.',
     ],
-    ok: ['Treatable is not doctor approved.', 'The matching was not clinician reviewed.', 'The scores are not reviewed by clinicians.'],
+    ok: [
+      'Treatable is not doctor approved.', 'The matching was not clinician reviewed.', 'The scores are not reviewed by clinicians.',
+      'The key is sealed by the Trusted Platform Module.', 'Never load code from an untrusted source.',
+      'A profile fact is trustworthy enough to exclude a study.', 'The device was preferred by patients in an earlier study.',
+    ],
   },
   {
     id: 'collection-denial',
-    re: /\bno\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:collected|stored|retained|tracked|logged|kept)\b|\bwe\s+(?:never|don't|do\s+not)\s+(?:collect|store|track|log|sell|keep|see|share)\b|\bzero\s+data\s+collection\b|\bdata\s+not\s+collected\b|\bno\s+(?:data|information)\s+collection\b|\bnothing\s+(?:\w+\s+){0,3}?(?:is|gets)\s+(?:ever\s+)?(?:retained|stored|kept|saved|logged|sent|shared|uploaded)\b|\b(?:keeps?|stores?|retains?)\s+nothing\b|\b(?:does\s+not|doesn't|never)\s+(?:store|keep|retain|log)\s+your\s+(?:data|information)\b|\bno\s+logs\s+(?:are\s+)?kept\b|\bno\s+(?:PII|personally[-\s]+identifiable(?:\s+information)?|personal\s+(?:data|information))\s+(?:is|are)\s+(?:ever\s+)?(?:sent|shared|collected|stored|transmitted)\b|\b(?:data|information|entries|symptoms|searches|profiles?|history)\s+(?:is|are)\s+never\s+(?:shared|stored|sent|saved|kept|logged|retained|uploaded)\b/gi,
+    // Denials that data is collected, stored, retained, tracked, or shared. A "not" form ("Your searches are not
+    // stored") is flagged only when the clause ends there or continues with an absolute ("anywhere", "by anyone"),
+    // so a bounded fact ("is not retained after a 24-hour expiration") passes.
+    re: /\bno\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:collected|stored|retained|tracked|logged|kept|recorded|saved)\b|\bwe\s+(?:never|don't|do\s+not)\s+(?:collect|store|track|log|sell|keep|see|share|record|save)\b|\bzero\s+data\s+collection\b|\bdata\s+not\s+collected\b|\bno\s+(?:data|information)\s+collection\b|\bnothing\s+(?:\w+\s+){0,3}?(?:is|gets)\s+(?:ever\s+)?(?:retained|stored|kept|saved|logged|sent|shared|uploaded|recorded|collected|tracked|transmitted)\b|\b(?:keeps?|stores?|retains?|collects?|gathers?)\s+nothing\b|\b(?:never|does\s+not|doesn't|do\s+not|don't|will\s+not|won't)\s+(?:ever\s+)?(?:collects?|stores?|keeps?|retains?|logs?|records?|tracks?|sells?|shares?)\s+(?:any\s+(?:of\s+)?)?(?:your|user|users'|patient|personal)\s+(?:\w+\s+){0,2}?(?:data|information|PII)\b|\b(?:never|does\s+not|doesn't|do\s+not|don't|will\s+not|won't)\s+(?:keeps?|stores?|retains?|saves?)\s+(?:a\s+copy|copies|anything|any\s+(?:\w+\s+)?(?:copies|logs|records|data|information))\b|\b(?:collects?|stores?|keeps?|retains?|tracks?|saves?|gathers?)\s+(?:no|zero)\s+(?:\w+\s+){0,2}?(?:data|information|PII|logs)\b|\bno\s+logs\s+(?:are\s+)?kept\b|\bno\s+(?:PII|personally[-\s]+identifiable(?:\s+information)?|personal\s+(?:data|information))\s+(?:is|are)\s+(?:ever\s+)?(?:sent|shared|collected|stored|transmitted)\b|\bno\s+(?:personal|health|identifying)\s+(?:data|information|details)\s+(?:is\s+)?(?:required|needed|requested)\b|\bkeeps?\s+no\s+(?:\w+\s+)?records?\s+of\s+(?:your|you|what\s+you|who\s+you)\b|\b(?:data|information|entries|symptoms|searches|profiles?|history|names?|identity|answers|responses|queries)\s+(?:is|are|will\s+be|gets?)\s+never\s+(?:ever\s+)?(?:shared|stored|sent|saved|kept|logged|retained|uploaded|collected|recorded|tracked|sold)\b|\b(?:data|information|entries|symptoms|searches|profiles?|history|names?|identity)\s+(?:is|are|will\s+be|gets?)\s+not\s+(?:ever\s+)?(?:stored|saved|kept|logged|retained|collected|recorded|tracked|sold)(?=[ \t]*(?:[.;:!?)]|\n[ \t]*\n|$)|\s+(?:anywhere|at\s+all|ever|by\s+(?:us|anyone|OpenAI|Treatable|the\s+app)|on\s+(?:our|any)\s+servers?|in\s+the\s+cloud|permanently|long[-\s]term)\b)|\b(?:not|never)\s+(?:ever\s+)?(?:shared|sold|disclosed|given|sent|passed)\s+(?:with|to)\s+(?:anyone|anybody|any\s+third\s+part(?:y|ies)|third\s+parties|others|advertisers)\b|\bnot\s+(?:retained|stored|kept|logged|saved|recorded)\s+by\s+(?:OpenAI|the\s+provider|providers|ClinicalTrials\.gov|anyone|us|Treatable|the\s+app)\b|(?:^|(?<=\n))[ \t]*(?:[-*+][ \t]+)?(?:not|never|nothing)[ \t]+(?:stored|saved|kept|logged|retained|recorded|collected|tracked)[ \t]*\.?[ \t]*(?=\n|$)|\bno\s+(?:\w+\s+)?(?:tracking|trackers|cookies)\b|\bdata\s+(?:collection|storage|retention|sharing|tracking)\s*:\s*(?:none|no|zero|off|disabled|never)\b/gi,
     negatable: false,
     bad: [
       'No personal data is collected.', 'We never collect your data.', 'We do not collect any personal information.', 'Zero data collection.',
@@ -651,21 +678,33 @@ const RULES = [
       'OpenAI does not store your data.', 'No logs are kept.', 'No PII is sent.', 'No personally identifiable information is sent to OpenAI.', 'No data is stored.',
       'We never share your data.', 'Health data is never shared.', 'Your health data is never stored.', 'Nothing is ever stored.',
       'Nothing you type is stored.', 'Nothing is sent to the cloud.',
+      'Treatable never stores your health data.', 'Your searches are not stored anywhere.', 'We collect no data.', 'Collects nothing.',
+      'This app collects no personal data.', 'Your name is never collected.', 'Not stored.', 'Nothing is recorded.', 'No cookies, no tracking.',
+      'Your data is not shared with anyone.', 'Your information is never sold.', 'Not retained by OpenAI.', 'OpenAI does not keep a copy.',
+      'Data collection: none.', 'Your data is not stored.', '- Never logged', 'Treatable will not sell your personal information.',
+      'No personal data required.', 'Your answers are never saved.', 'OpenAI keeps no record of your searches.',
     ],
     ok: [
       'Treatable does not save your health entries, notes, searches, or profiles.', 'Study contact details are never sent to OpenAI.',
-      'Preparation failed. Nothing was sent to OpenAI.',
+      'Preparation failed. Nothing was sent to OpenAI.', 'That data is not retained after a 24-hour expiration.',
+      'Treatable has no saved profiles, notes, search history, analytics, or crash reporting.', 'No key is saved.',
+      'This acknowledgment lasts only for the current session and is not saved.', 'Your entries are not stored on disk.',
+      'Free-text symptoms are not sent to OpenAI.', 'Treatable keeps no persisted record of session IDs.',
+      'The logger logs nothing when the level is off.',
     ],
   },
   {
     id: 'invisibility-claim',
-    re: /\b(?:no\s*one|nobody)\s+(?:else\s+)?(?:can\s+|will\s+(?:ever\s+)?)?(?:identify|see|access|read|trace|know)s?\b|\bonly\s+(?:you|(?:your|the)\s+(?:\S+\s+){0,2}?\S+)\s+can\s+(?:see|read|access|decrypt|unlock|view|open)\b|\b(?:cannot|can't|can\s+not)\s+be\s+(?:traced|tracked|linked)|\bincognito\b|\bnever\s+(?:sees?|reads?|knows?|learns?)\s+(?:who\s+you\s+are|your|what\s+you)\b|\bidentity\s+is\s+(?:never\s+shared|hidden|masked)\b/gi,
+    re: /\b(?:no\s*one|nobody)\s+(?:else\s+|at\s+\w+\s+)?(?:can\s+|will\s+(?:ever\s+)?)?(?:identify|see|access|read|trace|know)s?\b|\bonly\s+(?:you|(?:your|the)\s+(?:\S+\s+){0,2}?\S+)\s+can\s+(?:see|read|access|decrypt|unlock|view|open)\b|\b(?:cannot|can't|can\s+not)\s+be\s+(?:traced|tracked|linked)|\bincognito\b|\bnever\s+(?:sees?|reads?|knows?|learns?)\s+(?:who\s+you\s+are|your|what\s+you)\b|\bidentity\s+is\s+(?:never\s+shared|hidden|masked)\b|\b(?:cannot|can't|can\s+not|will\s+not|won't)\s+(?:see|know|learn|tell|identify)\s+(?:who\s+you\s+are|your\s+(?:identity|name))\b|\b(?:cannot|can't|can\s+not|can\s+never|will\s+never|could\s+never)\s+(?:ever\s+)?be\s+(?:stolen|hacked|leaked|breached|intercepted|compromised|exposed|tampered\s+with|read\s+by|seen\s+by|accessed\s+by|viewed\s+by)|\b(?:other\s+(?:apps|applications|programs|processes|users)|anyone\s+else|hackers|attackers|malware|third\s+parties)\s+(?:cannot|can't|can\s+not|can\s+never|will\s+never|are\s+unable\s+to)\s+(?:\w+\s+)?(?:read|see|access|steal|reach|view|get|open|decrypt)\b/gi,
     negatable: false,
     bad: [
       'No one can identify you.', 'Nobody can see your searches.', 'Only you can see your results.',
       'Your searches cannot be traced back to you.', 'Incognito search.', 'OpenAI never sees who you are.',
       'Your identity is never shared.', 'Your identity is hidden.', 'No one sees your symptoms.', 'OpenAI never sees your symptoms.',
       'Only your device can read your entries.', 'Only the study team can see your matches.',
+      'Your key cannot be stolen.', 'Other apps cannot read your key.', 'The key can never be read by other apps.',
+      'Hackers can never access your searches.', 'Your data cannot be intercepted.', 'No one at Treatable can see your key.',
+      'OpenAI cannot see your identity.',
     ],
     ok: [
       'OpenAI can link these requests to your OpenAI account.', 'People who can view the logs of the project can see these traces.',
@@ -674,17 +713,59 @@ const RULES = [
   },
   {
     id: 'eligibility-claim',
-    re: /\bfind\s+out\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b|\bsee\s+which\s+(?:trials|studies)\s+you(?:'re|\s+are)\s+eligible\s+for\b|\bchecks?\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b/gi,
+    // Telling the person that they qualify, or that a study is the right one for them. "Whether you are eligible"
+    // and "if you qualify" are left to the first forms, so that "cannot tell you whether you are eligible" passes.
+    re: /\bfind\s+out\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b|\bsee\s+which\s+(?:trials|studies)\s+you(?:'re|\s+are)\s+eligible\s+for\b|\bchecks?\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b|(?<!\b(?:if|whether)\s)\byou(?:'re|\s+are|\s+will\s+be|'ll\s+be|\s+would\s+be|\s+may\s+be|\s+might\s+be|\s+could\s+be)\s+(?:likely\s+|probably\s+|definitely\s+|already\s+)?(?:eligible|qualified)\s+(?:for|to)\b|(?<!\b(?:if|whether)\s)\byou(?:'ll|\s+will|\s+would|\s+can|\s+may|\s+might|\s+could)?\s+qualify\s+for\b|\b(?:right|perfect|ideal|best)\s+(?:clinical\s+)?(?:trials?|stud(?:y|ies)|match(?:es)?)\s+for\s+(?:you|your)\b|\bperfect\s+match(?:es)?\b|\byou(?:'re|\s+are|\s+may\s+be|\s+might\s+be|\s+could\s+be)\s+(?:a\s+)?(?:good|great|strong|ideal|perfect|likely)\s+(?:candidate|fit|match)\b|\byou(?:'re|\s+are)\s+(?:likely|expected)\s+to\s+(?:qualify|be\s+eligible)\b|\bmatch(?:es)?\s+for\s+you\b|(?<!\b(?:if|whether)\s)\byou\s+match\s+(?:\d+|these|this|the|all)\b/gi,
     negatable: true,
-    bad: ['Find out if you qualify.', 'See which trials you are eligible for.', 'Treatable checks whether you are eligible.'],
-    ok: ['Treatable does not check whether you qualify.', 'Only the study team can confirm eligibility.'],
+    bad: [
+      'Find out if you qualify.', 'See which trials you are eligible for.', 'Treatable checks whether you are eligible.',
+      'You are eligible for these trials.', 'Matches you will qualify for.', 'Find the right trial for you.', 'Best match for your condition.',
+      'You may be eligible for this study.', 'Your perfect match.', 'You are a good candidate for this study.',
+      'Trials you are likely to qualify for.', 'These trials are a match for you.', 'You match 3 trials.',
+    ],
+    ok: [
+      'Treatable does not check whether you qualify.', 'Only the study team can confirm eligibility.',
+      'Treatable cannot tell you whether you are eligible for a study.', 'Ask the study team if you qualify for it.',
+      'If you match the criteria, ask the study team.', 'No match for your search.',
+    ],
   },
   {
     id: 'accuracy-claim',
-    re: /\b\d{2,3}\s*%\s+(?:accurate|accuracy|reliable|correct|precise)\b|\baccuracy\s+of\s+\d{2,3}\s*%/gi,
+    re: /\b\d{2,3}\s*%\s+(?:accurate|accuracy|reliable|correct|precise)\b|\baccuracy\s+of\s+\d{2,3}\s*%|\b(?:accurate|reliable|precise|dependable)\s+(?:\w+\s+)?(?:match(?:es|ing)?|results?|scor(?:e|es|ing)|rank(?:ing|ings)?|predictions?)\b|\bhigh[-\s]+(?:accuracy|precision|reliability)\s+(?:match\w*|scor\w*|rank\w*)\b|\bhighly\s+(?:accurate|reliable|precise)\s+(?:match\w*|scor\w*|rank\w*|results?)\b|\bproven\s+(?:\w+\s+)?(?:match\w*|scor\w*|rank\w*)\b|\b(?:backed|validated|proven)\s+by\s+(?:science|research|evidence|studies)\b/gi,
     negatable: true,
-    bad: ['Matches are 95% accurate.', 'An accuracy of 90 %.', '99 % reliable'],
-    ok: ['The score is not 100% accurate.'],
+    bad: [
+      'Matches are 95% accurate.', 'An accuracy of 90 %.', '99 % reliable', 'Accurate matching.', 'Reliable results.', 'Precise trial matching.',
+      'High-accuracy matching.', 'Reliable eligibility predictions.', 'Proven matching algorithm.', 'Backed by science.', 'Highly accurate results.',
+    ],
+    ok: ['The score is not 100% accurate.', 'Treatable does not promise accurate results.', 'The study tests a highly accurate blood test.'],
+  },
+  {
+    id: 'training-promise',
+    // A promise that data is not used for model training. OpenAI's own statement passes when it keeps its opt-in
+    // exception ("unless the account holder has opted in") in the same sentence.
+    re: /\b(?:never|will\s+not|won't|does\s+not|doesn't|do\s+not|don't|cannot|can't|is\s+not|are\s+not|isn't|aren't)\s+(?:be\s+|ever\s+|being\s+)?(?:train(?:s|ed)?\s+on|used\s+(?:for|to|in)\s+(?:\w+\s+)?(?:train\w*|improv\w*\s+(?:its|their|the|any)\s+(?:\w+\s+)?models?))\b(?![^.;!?]{0,300}\b(?:unless|by\s+default)\b)|\bno\s+(?:model\s+)?training\s+on\s+(?:your|user|customer)\b/gi,
+    negatable: false,
+    bad: [
+      'OpenAI will not train on your data.', 'Your data is never used for training.', 'Your data is not used to train models.',
+      'No training on your data.', 'Searches are never used to improve the models.',
+    ],
+    ok: [
+      'OpenAI states that data sent to its API is not used to train its models unless the account holder has opted in to share data with OpenAI.',
+      'Data sent to the OpenAI API is not used to train or improve OpenAI models (unless you explicitly opt in to share data).',
+      'API data is not used for training by default.',
+    ],
+  },
+  {
+    id: 'security-claim',
+    // Absolute or superlative security wording, and keys or data described as kept safely.
+    re: /\btamper[-\s]?(?:proof|resistant|resilient)\b|\b(?:hack|breach|leak|theft)[-\s]?proof\b|\b(?:unhackable|uncrackable|impenetrable|bulletproof)\b|\bzero[-\s]+knowledge\b|\block(?:s|ed)?\s+down\b|\b(?:industry[-\s]+(?:leading|standard|best)|best[-\s]+in[-\s]+class|state[-\s]+of[-\s]+the[-\s]+art|world[-\s]+class|top[-\s]+tier|cutting[-\s]+edge|advanced|robust|strong|maximum|strict|rigorous)\s+(?:protection|security|privacy|safeguards?|data\s+protection)\b|\bsafely\s+(?:stored|kept|held|saved|encrypted|transmitted|sent|handled|processed)\b|\b(?:stored|kept|held|saved|handled|transmitted|sent|processed)\s+safely\b|\bsafe\s+(?:storage|keeping)\b|\bsafekeeping\b|\bsafe\s+with\s+(?:us|Treatable|the\s+app)\b/gi,
+    negatable: true,
+    bad: [
+      'Tamper-proof.', 'Zero knowledge.', 'Zero-knowledge architecture.', 'Industry-leading protection.', 'Locked down.',
+      'Your API key is safely stored.', 'Keys are kept safely.', 'Strong privacy for your searches.', 'Unhackable storage.',
+      'State-of-the-art protection.', 'Your key is safe with us.',
+    ],
+    ok: ['Treatable is not tamper-proof.', 'There is no strong protection against malware.', 'OpenAI features stay locked.'],
   },
   {
     id: 'treatment-claim',
@@ -731,9 +812,13 @@ const RULES = [
   },
   {
     id: 'marketing-claims',
-    re: /\b(?:privacy[-\s]+(?:first|preserving|protected|focused|friendly|safe|by[-\s]+design|respecting|conscious|centric)|(?:military|bank)[-\s]+grade|100\s*%\s+(?:private|safe|secure|accurate|anonymous)|(?:FDA|CE)[-\s]+(?:approved|cleared))\b/gi,
+    re: /\b(?:privacy[-\s]+(?:first|preserving|protected|focused|friendly|safe|by[-\s]+design|respecting|conscious|centric)|(?:military|bank)[-\s]+(?:grade|level|strength)|you\s+(?:own|control)\s+your\s+(?:data|information)|your\s+(?:data|information)\s+(?:is|are)\s+yours|(?:in|under)\s+(?:full\s+|complete\s+|total\s+)?control\s+of\s+your\s+(?:data|information|privacy)|100\s*%\s+(?:private|safe|secure|accurate|anonymous)|(?:FDA|CE)[-\s]+(?:approved|cleared)|(?:respects?|values?|cares?\s+about|prioriti[sz]es?|puts?)\s+your\s+privacy|privacy\s+(?:comes\s+first|is\s+our\s+(?:top\s+)?priority|matters\s+to\s+us))\b/gi,
     negatable: true,
-    bad: ['privacy-first design', 'a privacy preserving app', 'Privacy by design.', 'A privacy-respecting app.', 'military-grade protection', 'bank grade', '100% accurate', 'Your data is 100 % safe.', 'FDA approved'],
+    bad: [
+      'privacy-first design', 'a privacy preserving app', 'Privacy by design.', 'A privacy-respecting app.', 'military-grade protection', 'bank grade',
+      '100% accurate', 'Your data is 100 % safe.', 'FDA approved', 'We respect your privacy.', 'Your privacy comes first.',
+      'Military-level security.', 'You own your data.', 'Your data is yours.', 'You are in control of your data.',
+    ],
     ok: ['Treatable is not FDA approved.', 'Treatable is not FDA cleared.'],
   },
   {
