@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import TestRenderer,{act} from 'react-test-renderer';
-import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';import {OverlayView} from '../src/overlay-view';import {installDom,settle} from './dom-harness';
+import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';import {OverlayView} from '../src/overlay-view';import {installDom,settle} from './dom-harness';import {DetailsContext,sessionDetailsStore} from '../src/your-details';
 import {normalizeApplyRecord,normalizeStudyBrief,studyPurposeText,PURPOSE_MAX_EXCERPTS} from '../shared/apply-record.mjs';import type {StudyBriefResult,PreparedStudyBrief} from '../shared/apply-contract.mjs';
 const IDS=['NCT99999990','NCT99999991'],NOW=Date.UTC(2026,9,24,15),EXPIRES=NOW+300000,TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
 let PURPOSE='A synthetic controlled study.',DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.';
@@ -241,3 +241,49 @@ test('the intro tour points at the right Treatable controls on a study page and 
   assert.equal(clicks,1*6,'only the six Next presses made by the test; the tour clicked no Treatable control');
  }finally{await settle(8);env.teardown()}
 });
+
+/* A blank name: nothing placeholder-like reaches the clipboard, the email-app link or the call script; the missing items are listed above the handoff buttons. */
+test('with a blank name no bracketed placeholder is copied, linked or scripted, and the missing items are listed above the handoff buttons',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;assert.equal(vm().patient.name,'');
+ const noPlaceholder=(where:string,text:string)=>{assert.doesNotMatch(text,/[\[\]]/,`${where} contains a bracket`);assert.doesNotMatch(text,/your name/i,where)};
+ for(const[where,text]of [['draft',vm().draft!.body],['email-app link',decodeURIComponent(vm().mailto!)],['call script',vm().callScript],['follow-up message',vm().followUpMessage]] as const)noPlaceholder(where,text);
+ assert.ok(vm().draft!.body.endsWith('\n\nThank you.'),'the sign-off reads naturally without a name');
+ await act(async()=>{vm().copyMessage();await flush()});await act(async()=>{vm().copyEmail();await flush()});await act(async()=>{vm().copyFollowUp();await flush()});
+ assert.equal(h.copies.length,3);h.copies.forEach((text,i)=>noPlaceholder(`clipboard ${i}`,text));
+ await act(async()=>{vm().edit('email','');vm().editDraft('body',vm().draft!.body+'\n'.repeat(1)+'More. '.repeat(1500))});assert.equal(vm().handoff?.mode,'copy');await act(async()=>{vm().copyAndOpenEmail();await flush()});noPlaceholder('long-draft clipboard',h.copies.at(-1)!);noPlaceholder('long-draft email-app link',decodeURIComponent(h.opened.at(-1)!));
+ await act(async()=>vm().updateDraft());
+ const missing=m.renderer.root.findByProps({className:'notice apply-missing'});const shown=renderedText(missing);
+ assert.match(shown,/Add your name to sign the email\./);assert.match(shown,/Enter a phone number or an email address so the study team can reach you\./);assert.equal(missing.findAllByType('li').length,2);
+ const page=html(vm());assert.ok(page.indexOf('apply-missing')>page.indexOf('Your email draft')&&page.indexOf('apply-missing')<page.indexOf('Open draft in my email app'),'the list sits above the handoff buttons');
+ await act(async()=>vm().edit('name','Morgan Example'));assert.doesNotMatch(renderedText(m.renderer.root.findByProps({className:'notice apply-missing'})),/name/);assert.equal(m.renderer.root.findByProps({className:'notice apply-missing'}).findAllByType('li').length,1);
+ await act(async()=>vm().edit('phone','208 555 0142'));assert.equal(m.renderer.root.findAllByProps({className:'notice apply-missing'}).length,0,'nothing is missing, so no list');assert.doesNotMatch(html(vm()),/apply-missing/);
+ await act(async()=>vm().edit('phone','12'));assert.match(renderedText(m.renderer.root.findByProps({className:'notice apply-missing'})),/Check the phone number\. Use 7 to 15 digits\./,'a problem with what was typed is listed too');
+}finally{m.unmount()}});
+
+test('"Personalize your email" opens by itself while no name is set and stays open while the name is typed',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,details=()=>m.renderer.root.findByProps({className:'apply-step apply-local-details'});
+ assert.equal(details().props.open,true);assert.match(html(vm()),/<details class="apply-step apply-local-details" open="">/);
+ await act(async()=>vm().edit('name','M'));assert.equal(details().props.open,true,'typing the first letter must not collapse the section the person is typing in');
+ await act(async()=>vm().edit('name','Morgan'));assert.equal(details().props.open,true);
+ await act(async()=>vm().edit('name',''));assert.equal(details().props.open,true);
+}finally{m.unmount()}});
+test('"Personalize your email" stays closed when Your details already has a name, and the missing list does not ask for one',async()=>{
+ const named=sessionDetailsStore();named.set({name:'Pat Doe'});const h=harness();let ref:{vm?:ApplyController}={},renderer!:TestRenderer.ReactTestRenderer;
+ function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
+ act(()=>{renderer=TestRenderer.create(React.createElement(DetailsContext.Provider,{value:named},React.createElement(Probe)))});
+ try{await act(flush);assert.equal(ref.vm!.phase,'ready');const details=renderer.root.findByProps({className:'apply-step apply-local-details'});assert.equal(details.props.open,undefined,'closed when Your details already has a name');
+  assert.deepEqual(ref.vm!.plan!.missing.filter(item=>/name/.test(item)),[],'and the missing list does not ask for it');assert.doesNotMatch(renderedText(renderer.root),/Add your name to sign the email/);
+  assert.match(ref.vm!.draft!.body,/My name is Pat Doe\./);
+ }finally{act(()=>renderer.unmount())}
+ const h2=harness(),m=mount(h2);try{await act(flush);assert.equal(m.renderer.root.findByProps({className:'apply-step apply-local-details'}).props.open,true,'a fresh session with no name opens it');}finally{m.unmount()}
+});
+
+test('dirty is true only while something typed or edited would be lost: fields, drafts, call scripts and follow-up messages',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;assert.equal(vm().dirty,false,'a fresh session has nothing to lose');
+ await act(async()=>vm().edit('name','M'));assert.equal(vm().dirty,true);await act(async()=>vm().edit('name',''));assert.equal(vm().dirty,false,'typing and deleting leaves nothing to lose');
+ await act(async()=>vm().edit('name','   '));assert.equal(vm().dirty,false,'spaces alone are not work');
+ await act(async()=>vm().answer('diagnosis_details','x'));assert.equal(vm().dirty,true,'a typed background answer counts');await act(async()=>vm().answer('diagnosis_details',''));assert.equal(vm().dirty,false);
+ for(const field of ['phone','email','bestTimes','zip'] as const){await act(async()=>vm().edit(field,'1'));assert.equal(vm().dirty,true,field);await act(async()=>vm().edit(field,''));assert.equal(vm().dirty,false,field)}
+ await act(async()=>vm().editDraft('body','My own wording'));assert.equal(vm().dirty,true,'an edited email draft counts');await act(async()=>vm().updateDraft());assert.equal(vm().dirty,false,'resetting the draft discards the edit');
+ await act(async()=>vm().editCallScript('My script'));assert.equal(vm().dirty,true);await act(async()=>vm().resetCallScript());assert.equal(vm().dirty,false);
+ await act(async()=>vm().editFollowUp('My follow-up'));assert.equal(vm().dirty,true);await act(async()=>vm().resetFollowUp());assert.equal(vm().dirty,false);
+ await act(async()=>{vm().selectStudies(IDS);await flush()});await act(async()=>vm().viewStudy(IDS[1]));await act(async()=>vm().edit('name','Second study'));await act(async()=>vm().viewStudy(IDS[0]));assert.equal(vm().dirty,true,'work on another selected study counts');
+ await act(async()=>vm().end());assert.equal(vm().dirty,false,'ending the session clears it');
+}finally{m.unmount()}});

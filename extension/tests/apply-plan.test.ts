@@ -1,5 +1,5 @@
 import test from'node:test';import assert from'node:assert/strict';
-import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,messageBody,hasHeaderLines,emailHandoff,shortTitle,EMAIL_QUESTION_LIMIT,EMAIL_TITLE_LIMIT,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
+import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,messageBody,hasHeaderLines,emailHandoff,shortTitle,EMAIL_QUESTION_LIMIT,EMAIL_TITLE_LIMIT,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS,defaultQuestionIds,hasSharedInfo,composePhoneScript,composeFollowUpMessage}from'../src/apply-plan';
 import{studyPageNctId}from'../src/apply-page';
 import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,type ApplyQuestionId,type ApplyPrescreenId}from'../shared/apply-contract.mjs';
 import{record,SALT_LAKE,TODAY,patient}from'./apply-fixture';
@@ -43,8 +43,8 @@ test('subject follows the site routing format and omits missing parts',()=>{
 test('email preserves the full local draft and only carries what the patient typed',()=>{
  const r=record(),plan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY});
  assert.match(plan.body,/^Hello Sam Lee,\n/);assert.match(plan.body,/at Wasatch Spine Research in Salt Lake City, Utah/);assert.match(plan.body,/- My diagnosis and when it was made: Disc degeneration diagnosed 2024/);assert.match(plan.body,/- How long I have had symptoms: About two years/);
- assert.doesNotMatch(plan.body,/84101|imaging|medicines/i,'no ZIP and no unanswered health items');DEFAULT_QUESTION_IDS.forEach((id,i)=>{assert.equal(plan.body.includes(APPLY_QUESTION_TEMPLATES[id]),i<EMAIL_QUESTION_LIMIT,`email carries only the first ${EMAIL_QUESTION_LIMIT} questions: ${id}`);assert.ok(plan.phoneScript.includes(APPLY_QUESTION_TEMPLATES[id]),`call script keeps ${id}`)});
- assert.deepEqual(plan.questionIds,[...DEFAULT_QUESTION_IDS]);assert.deepEqual(plan.prescreenIds,[...DEFAULT_PRESCREEN_IDS]);
+ assert.doesNotMatch(plan.body,/84101|imaging|medicines/i,'no ZIP and no unanswered health items');defaultQuestionIds(true).forEach((id,i)=>{assert.equal(plan.body.includes(APPLY_QUESTION_TEMPLATES[id]),i<EMAIL_QUESTION_LIMIT,`email carries only the first ${EMAIL_QUESTION_LIMIT} questions: ${id}`);assert.ok(plan.phoneScript.includes(APPLY_QUESTION_TEMPLATES[id]),`call script keeps ${id}`)});
+ assert.deepEqual(plan.questionIds,defaultQuestionIds(true),'this patient typed answers, so "Based on what I have shared" is included');assert.deepEqual(plan.prescreenIds,[...DEFAULT_PRESCREEN_IDS]);
  const many=Object.keys(APPLY_QUESTION_TEMPLATES).slice(0,8) as ApplyQuestionId[],long={...patient(),bestTimes:'x'.repeat(120),answers:Object.fromEntries(DEFAULT_PRESCREEN_IDS.map(id=>[id,'y'.repeat(400)]))};
  const body=composeEmail(r,r.sites[1],r.sites[1].contacts[0],long,many,DEFAULT_PRESCREEN_IDS);
  assert.match(body,/Thank you,\nMorgan Example$/);many.forEach((id,i)=>assert.equal(body.includes(APPLY_QUESTION_TEMPLATES[id]),i<EMAIL_QUESTION_LIMIT,id));for(const id of DEFAULT_PRESCREEN_IDS)assert.ok(body.includes('y'.repeat(160)),'what the patient typed is kept as typed (to the per-answer limit)'+id);
@@ -55,10 +55,10 @@ test('email preserves the full local draft and only carries what the patient typ
  assert.equal(contactHref('javascript:alert(1)','mailto:'),undefined);assert.equal(contactHref(plan.tel,'tel:'),plan.tel);
  assert.match(plan.phoneScript,/I am calling about the study NCT07254806/);assert.match(plan.phoneScript,/1\. Is the study still enrolling at this site\?/);for(const id of DEFAULT_PRESCREEN_IDS)assert.ok(plan.phoneScript.includes(APPLY_PRESCREEN_TEMPLATES[id]));
  const agentPlan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY,agent:{nctId:'NCT07254806',questionIds:['placebo','crossover','next_steps'],prescreenIds:['affected_area','recent_imaging'],flagIds:['near_completion','age_limit']}});assert.deepEqual(agentPlan.questionIds,['placebo','crossover','next_steps']);assert.deepEqual(agentPlan.answerIds,['affected_area','recent_imaging','diagnosis_details','symptom_duration']);assert.match(agentPlan.body,/- My diagnosis and when it was made: Disc degeneration diagnosed 2024/,'answers typed before the agent ran stay in the email');assert.deepEqual(agentPlan.flagIds,['near_completion','contact_inconsistent','age_limit']);
- const otherStudy=buildApplyPlan({record:r,patient:patient(),today:TODAY,agent:{nctId:'NCT00000001',questionIds:['placebo','crossover','results'],prescreenIds:['insurance','availability'],flagIds:['stale_record']}});assert.deepEqual(otherStudy.questionIds,[...DEFAULT_QUESTION_IDS],'agent output for another study is ignored');
+ const otherStudy=buildApplyPlan({record:r,patient:patient(),today:TODAY,agent:{nctId:'NCT00000001',questionIds:['placebo','crossover','results'],prescreenIds:['insurance','availability'],flagIds:['stale_record']}});assert.deepEqual(otherStudy.questionIds,defaultQuestionIds(true),'agent output for another study is ignored');
 });
 test('missing required input is reported in plain words',()=>{
- assert.deepEqual(missingInput(blankPatient()),['Enter your name.','Enter a phone number or an email address so the study team can reach you.']);
+ assert.deepEqual(missingInput(blankPatient()),['Add your name to sign the email.','Enter a phone number or an email address so the study team can reach you.']);
  assert.deepEqual(missingInput({...blankPatient(),name:'A',phone:'12',email:'nope'}),['Check the phone number. Use 7 to 15 digits.','Check the email address.']);assert.deepEqual(missingInput({...blankPatient(),name:'A',email:'a@b.co'}),[]);
 });
 test('follow-up plan is five business days out and the .ics carries no patient details',()=>{
@@ -114,7 +114,7 @@ test('default email stays short: study title, NCT ID and link, three questions a
  for(const [label,args] of Object.entries({'typed patient near me':{patient:patient(),origin:SALT_LAKE},'typed patient, no origin':{patient:patient()},'blank patient':{patient:blank},'name only':{patient:named},'agent questions':{patient:patient(),origin:SALT_LAKE,agent},'agent questions, blank':{patient:blank,agent}}) as [string,any][]){
   const plan=buildApplyPlan({record:r,today:TODAY,...args}),body=plan.body;
   assert.ok(body.length<=1800,`${label}: ${body.length} characters`);assert.ok(body.includes(r.title)&&body.includes('(NCT07254806)')&&body.includes('https://clinicaltrials.gov/study/NCT07254806'),`${label}: study title, NCT ID and link`);
-  assert.equal(body.split('\n').filter(l=>/^- /.test(l)&&Object.values(APPLY_QUESTION_TEMPLATES).some(q=>l===`- ${q}`)).length,EMAIL_QUESTION_LIMIT,`${label}: three questions`);assert.match(body,/I would be grateful for a reply/);assert.match(body,/Thank you,\n/);assert.match(body,/^Hello [^\n]+,\n\nMy name is /);
+  assert.equal(body.split('\n').filter(l=>/^- /.test(l)&&Object.values(APPLY_QUESTION_TEMPLATES).some(q=>l===`- ${q}`)).length,EMAIL_QUESTION_LIMIT,`${label}: three questions`);assert.match(body,/I would be grateful for a reply/);if(args.patient.name){assert.match(body,/Thank you,\n/);assert.match(body,/^Hello [^\n]+,\n\nMy name is /)}else{assert.match(body,/\n\nThank you\.$/,`${label}: no name, so a plain sign-off`);assert.match(body,/^Hello [^\n]+,\n\nI would like to learn/)}
   assert.ok(mailtoUrl(plan.primary!.email,plan.subject,body),`${label}: opens directly`);assert.ok(plan.mailto!.length<3000);
  }
  const agentPlan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY,agent});for(const id of agent.questionIds)assert.ok(agentPlan.body.includes(APPLY_QUESTION_TEMPLATES[id]));
@@ -123,4 +123,37 @@ test('default email stays short: study title, NCT ID and link, three questions a
  assert.ok(buildApplyPlan({record:r,patient:named,today:TODAY}).body.length<=700,'the template itself, before anything the patient types, is well under the target');
  const longTitle=buildApplyPlan({record:{...r,title:'Randomized trial of a very long study title '.repeat(40)},patient:patient(),today:TODAY});assert.ok(longTitle.body.length<=1800);assert.match(longTitle.body,/\.\.\."\s\(NCT07254806\)/,'a very long title is cut at a word with an ellipsis; the NCT ID and link still identify the study');
  assert.equal(shortTitle(r.title),r.title);assert.ok(shortTitle('word '.repeat(200)).length<=EMAIL_TITLE_LIMIT);assert.equal(shortTitle('x'.repeat(500)).length,EMAIL_TITLE_LIMIT);assert.ok(!shortTitle('word '.repeat(200)).includes('  '));
+});
+
+test('a blank name is left out of every draft: no "[your name]", no bracketed placeholder, and the sign-off still reads naturally',()=>{
+ const r=record(),strictlyNoPlaceholder=(where:string,text:string)=>{assert.doesNotMatch(text,/[\[\]]/,`${where} has a bracket`);assert.doesNotMatch(text,/your name/i,`${where} mentions a name placeholder`)};
+ for(const[label,blankName,args]of [['no origin','',{}],['near me','',{origin:SALT_LAKE}],['spaces only','   \t ',{}]] as [string,string,any][]){
+  const plan=buildApplyPlan({record:r,patient:{...patient(),name:blankName},today:TODAY,...args});
+  const handed={'email body':plan.body,'email-app link':decodeURIComponent(plan.mailto!),'call script':plan.phoneScript,'follow-up message':plan.followUpMessage,'subject':plan.subject};
+  for(const[where,text]of Object.entries(handed))strictlyNoPlaceholder(`${label} ${where}`,text);
+  assert.match(plan.body,/^Hello [^\n]+,\n\nI would like to learn whether I could take part in this study/,'the opening sentence starts at "I would like", not at an empty name');
+  assert.doesNotMatch(plan.body,/My name is/);assert.ok(plan.body.endsWith('\n\nThank you.'),'the email ends with "Thank you." and no empty signature line');assert.doesNotMatch(plan.body,/Thank you,/);
+  assert.match(plan.phoneScript,/^Say: Hello, I am calling about the study NCT07254806, /);assert.doesNotMatch(plan.phoneScript,/my name is/i);
+  assert.match(plan.followUpMessage,/^Hello [^\n]+,\n\nI am following up on my earlier message/);assert.ok(plan.followUpMessage.endsWith('\n\nThank you.'));
+  for(const text of [plan.body,plan.phoneScript,plan.followUpMessage])assert.equal(text,text.trimEnd(),'no trailing blank lines');
+  assert.deepEqual(plan.missing[0],'Add your name to sign the email.');
+ }
+ const direct=[composeEmail(r,r.sites[1],r.sites[1].contacts[0],blankPatient(),DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS),composePhoneScript(r,r.sites[1],blankPatient(),DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS),composeFollowUpMessage(r,r.sites[1],r.sites[1].contacts[0],blankPatient())];
+ direct.forEach((text,i)=>strictlyNoPlaceholder(`direct ${i}`,text));
+ const named=buildApplyPlan({record:r,patient:{...patient(),name:'  Morgan   Example '},today:TODAY});
+ assert.match(named.body,/My name is Morgan Example\. I would like to learn/);assert.ok(named.body.endsWith('\n\nThank you,\nMorgan Example'));assert.match(named.phoneScript,/^Say: Hello, my name is Morgan Example\. I am calling/);assert.match(named.followUpMessage,/My name is Morgan Example\. I am following up/);assert.deepEqual(named.missing,[]);
+ const fromDetails=buildApplyPlan({record:r,patient:{...patient(),name:''},details:{name:'Pat Doe',condition:'',extra:''},today:TODAY});
+ assert.match(fromDetails.body,/My name is Pat Doe\./);assert.ok(fromDetails.body.endsWith('Thank you,\nPat Doe'));assert.deepEqual(fromDetails.missing,[]);
+});
+test('"Based on what I have shared" is a default question only once the patient has shared something',()=>{
+ const r=record(),fit=APPLY_QUESTION_TEMPLATES.prescreen_fit;
+ assert.ok(!DEFAULT_QUESTION_IDS.includes('prescreen_fit'),'not in the base default list');assert.deepEqual([...DEFAULT_QUESTION_IDS],['still_enrolling','visits','costs','next_steps']);
+ const blank=buildApplyPlan({record:r,patient:blankPatient(),today:TODAY});
+ assert.deepEqual(blank.questionIds,['still_enrolling','visits','costs','next_steps']);for(const[where,text]of [['email',blank.body],['call script',blank.phoneScript]])assert.ok(!text.includes(fit),`${where} must not claim something was shared`);
+ for(const[label,args]of [['blank answers',{patient:{...blankPatient(),answers:{diagnosis_details:'   ',symptom_duration:''}}}],['only contact details',{patient:{...blankPatient(),name:'Morgan',phone:'208 555 0142'}}],['details name only',{patient:blankPatient(),details:{name:'Pat',condition:'',extra:''}}]] as [string,any][])assert.ok(!buildApplyPlan({record:r,today:TODAY,...args}).questionIds.includes('prescreen_fit'),label);
+ const shared=['ids',buildApplyPlan({record:r,patient:{...blankPatient(),answers:{diagnosis_details:'Disc degeneration'}},today:TODAY})] as const;
+ assert.deepEqual(shared[1].questionIds,['still_enrolling','prescreen_fit','visits','costs','next_steps']);assert.ok(shared[1].body.includes(fit)&&shared[1].phoneScript.includes(fit));
+ for(const details of [{name:'',condition:'Back pain',extra:''},{name:'',condition:'',extra:'I use a cane'}])assert.ok(buildApplyPlan({record:r,patient:blankPatient(),details,today:TODAY}).questionIds.includes('prescreen_fit'),'a reason or note from Your details is also something shared');
+ assert.equal(hasSharedInfo(blankPatient()),false);assert.equal(hasSharedInfo({...blankPatient(),answers:{recent_imaging:'MRI last year'}}),true);assert.deepEqual(defaultQuestionIds(false),[...DEFAULT_QUESTION_IDS]);assert.deepEqual(defaultQuestionIds(true).slice(0,3),['still_enrolling','prescreen_fit','visits']);
+ const agent=buildApplyPlan({record:r,patient:blankPatient(),today:TODAY,agent:{nctId:'NCT07254806',questionIds:['placebo','crossover','next_steps'],prescreenIds:['affected_area'],flagIds:[]}});assert.deepEqual(agent.questionIds,['placebo','crossover','next_steps'],'the generated brief still decides its own list');
 });
