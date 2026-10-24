@@ -1,4 +1,4 @@
-import {getDemoFixture,decisionsPayload,agentPayload,SCORING_LEVELS as LEVELS} from '../shared/demo-fixtures.mjs';
+import {getDemoFixture,decisionsPayload,agentPayload,demoToolResults,SCORING_LEVELS as LEVELS} from '../shared/demo-fixtures.mjs';
 export {decisionsPayload,agentPayload} from '../shared/demo-fixtures.mjs';
 import {QUESTION_TEMPLATES,CAUTION_TEMPLATES,exactKeys,isRecord,parseDemoResult} from '../shared/demo-contract.mjs';
 import {ApiError} from './transport.mjs';
@@ -15,8 +15,9 @@ function scoreValues(raw,fixture){if(!Array.isArray(raw?.answers)||raw.answers.l
 export function parseScores(raw,fixture,mode){return parseDemoResult({kind:'scoreDemo',fixtureId:fixture.id,mode,scores:scoreValues(raw,fixture)});}
 function parsePlan(text,fixture){if(typeof text!=='string'||Buffer.byteLength(text)>16000)throw new ApiError('INVALID_AGENT_OUTPUT');let v;try{v=JSON.parse(text);}catch{throw new ApiError('INVALID_AGENT_OUTPUT');}if(!exactKeys(v,['comparisons','cautionIds'])||!Array.isArray(v.comparisons)||v.comparisons.length!==fixture.studies.length||new Set(v.comparisons.map(x=>x.nctId)).size!==fixture.studies.length||v.comparisons.some(x=>!fixture.studies.some(s=>s.id===x.nctId))||!Array.isArray(v.cautionIds)||Object.keys(CAUTION_TEMPLATES).some(x=>!v.cautionIds.includes(x)))throw new ApiError('INVALID_AGENT_OUTPUT');return v;}
 export async function runScore(transport,payload,{signal,onTrace=()=>{}}={}){const fixture=fixtureFor(payload);onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',decisionsPayload(fixture),{signal,timeout:25000});const result=parseScores(raw,fixture,transport.mode);onTrace({stage:'decisions.complete'});return result;}
-async function runAgentContext(transport,fixture,requestBody,wrapResult,{signal,onTrace=()=>{}}={}){
+async function runAgentContext(transport,fixture,requestBody,toolResults,wrapResult,{signal,onTrace=()=>{}}={}){
  let sessionId,completed=false,text='',toolCalls=0,cleanup='failed',plan;const handled=new Set(),evidenceRead=new Set();const allowedIds=fixture.studies.map(x=>x.id);
+ if(!Array.isArray(toolResults)||toolResults.length!==allowedIds.length||toolResults.some(x=>!allowedIds.includes(x?.study?.id)))throw new ApiError('INVALID_TOOL_EVIDENCE');
  const remember=event=>{const id=event?.session?.id??event?.session_id;if(id!==undefined){if(!providerId(id)||sessionId&&sessionId!==id)throw new ApiError('INVALID_SESSION_ID');if(!sessionId){sessionId=id;onTrace({stage:'agent.session.created',sessionId});}}};
  const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000);
  onTrace({stage:'agent.request'});
@@ -26,10 +27,10 @@ async function runAgentContext(transport,fixture,requestBody,wrapResult,{signal,
    if(event.type==='agent.session.requires_action'){
     if(!sessionId)throw new ApiError('MISSING_SESSION_ID');const session=await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,{signal:combined});if(session.id!==sessionId||!Array.isArray(session.required_actions)||!session.required_actions.length||session.required_actions.length>6)throw new ApiError('INVALID_REQUIRED_ACTION');
     for(const action of session.required_actions){if(!exactKeys(action,['type','turn_id','call_id','name','arguments'])||action.type!=='function_call'||action.name!=='get_public_trial_evidence'||!providerId(action.turn_id)||!providerId(action.call_id))throw new ApiError('INVALID_TOOL_CALL');const key=`${action.turn_id}:${action.call_id}`;if(handled.has(key))throw new ApiError('DUPLICATE_TOOL_CALL');if(++toolCalls>6)throw new ApiError('TOOL_LIMIT');handled.add(key);
-     const nctId=toolArgumentNctId(action.arguments,allowedIds),study=nctId===undefined?undefined:fixture.studies.find(x=>x.id===nctId);
+     const nctId=toolArgumentNctId(action.arguments,allowedIds),evidence=nctId===undefined?undefined:toolResults.find(x=>x.study.id===nctId);
      // Invalid or non-selected arguments get the documented failed tool result (success:false + fixed error), never evidence.
-     if(!study){await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:false,error:TOOL_ARGUMENT_ERROR}]},{signal:combined});continue;}
-     onTrace({stage:'agent.tool.request',nctId});await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:true,output:JSON.stringify({public:true,study})}]},{signal:combined});evidenceRead.add(nctId);onTrace({stage:'agent.tool.result',nctId});}
+     if(!evidence){await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:false,error:TOOL_ARGUMENT_ERROR}]},{signal:combined});continue;}
+     onTrace({stage:'agent.tool.request',nctId});await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:true,output:JSON.stringify(evidence)}]},{signal:combined});evidenceRead.add(nctId);onTrace({stage:'agent.tool.result',nctId});}
    }else if(event.type==='agent.session.turn.output_text.delta'){if(typeof event.delta!=='string')throw new ApiError('INVALID_STREAM');text+=event.delta;if(Buffer.byteLength(text)>16000)throw new ApiError('OUTPUT_TOO_LARGE');}
    else if(event.type==='agent.session.turn.output_text.done'){if(typeof event.text!=='string'||Buffer.byteLength(event.text)>16000)throw new ApiError('INVALID_STREAM');text=event.text;}
    else if(event.type==='agent.session.turn.completed'){completed=true;break;}
@@ -46,6 +47,6 @@ async function runAgentContext(transport,fixture,requestBody,wrapResult,{signal,
  return wrapResult({mode:transport.mode,...plan,toolCalls,cleanup});
 }
 
-export function runAgent(transport,payload,options){const fixture=fixtureFor(payload);return runAgentContext(transport,fixture,agentPayload(fixture),v=>parseDemoResult({kind:'agentDemo',fixtureId:fixture.id,...v}),options);}
+export function runAgent(transport,payload,options){const fixture=fixtureFor(payload);return runAgentContext(transport,fixture,agentPayload(fixture),demoToolResults(fixture),v=>parseDemoResult({kind:'agentDemo',fixtureId:fixture.id,...v}),options);}
 export async function runPreparedScore(transport,prepared,{signal,onTrace=()=>{}}={}){onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',prepared.preview.decisionsRequest,{signal,timeout:25000});const result=parseRealResult({kind:'scoreReal',mode:transport.mode,consentDigest:prepared.consentDigest,scores:scoreValues(raw,prepared.context)});onTrace({stage:'decisions.complete'});return result;}
-export function runPreparedAgent(transport,prepared,options){return runAgentContext(transport,prepared.context,prepared.preview.agentsRequest,v=>parseRealResult({kind:'agentReal',consentDigest:prepared.consentDigest,...v}),options);}
+export function runPreparedAgent(transport,prepared,options){return runAgentContext(transport,prepared.context,prepared.preview.agentsRequest,prepared.preview.toolResults,v=>parseRealResult({kind:'agentReal',consentDigest:prepared.consentDigest,...v}),options);}
