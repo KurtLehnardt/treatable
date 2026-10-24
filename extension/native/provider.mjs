@@ -16,9 +16,17 @@ export function scoreValues(raw,fixture){if(!Array.isArray(raw?.answers)||raw.an
 export function parseScores(raw,fixture,mode){return parseDemoResult({kind:'scoreDemo',fixtureId:fixture.id,mode,scores:scoreValues(raw,fixture)});}
 function parsePlan(text,fixture){if(typeof text!=='string'||Buffer.byteLength(text)>16000)throw new ApiError('INVALID_AGENT_OUTPUT');let v;try{v=JSON.parse(text);}catch{throw new ApiError('INVALID_AGENT_OUTPUT');}if(!exactKeys(v,['comparisons','cautionIds'])||!Array.isArray(v.comparisons)||v.comparisons.length!==fixture.studies.length||new Set(v.comparisons.map(x=>x.nctId)).size!==fixture.studies.length||v.comparisons.some(x=>!fixture.studies.some(s=>s.id===x.nctId))||!Array.isArray(v.cautionIds)||Object.keys(CAUTION_TEMPLATES).some(x=>!v.cautionIds.includes(x)))throw new ApiError('INVALID_AGENT_OUTPUT');return v;}
 export async function runScore(transport,payload,{signal,onTrace=()=>{}}={}){const fixture=fixtureFor(payload);onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',decisionsPayload(fixture),{signal,timeout:25000});const result=parseScores(raw,fixture,transport.mode);onTrace({stage:'decisions.complete'});return result;}
-export async function runAgentContext(transport,fixture,requestBody,toolResults,wrapResult,{signal,onTrace=()=>{}}={}){
- let sessionId,completed=false,text='',toolCalls=0,cleanup='failed',plan;const handled=new Set(),evidenceRead=new Set();const allowedIds=fixture.studies.map(x=>x.id);
+export async function runAgentContext(transport,fixture,requestBody,toolResults,wrapResult,options){
+ const allowedIds=fixture.studies.map(x=>x.id);
  if(!Array.isArray(toolResults)||toolResults.length!==allowedIds.length||toolResults.some(x=>!allowedIds.includes(x?.study?.id)))throw new ApiError('INVALID_TOOL_EVIDENCE');
+ const answer=raw=>{const nctId=toolArgumentNctId(raw,allowedIds),evidence=nctId===undefined?undefined:toolResults.find(x=>x.study.id===nctId);return evidence?{key:nctId,output:JSON.stringify(evidence),trace:{nctId}}:undefined;};
+ const finish=(text,read)=>{if(fixture.studies.some(x=>!read.has(x.id)))throw new ApiError('INCOMPLETE_AGENT_TURN');return parsePlan(text,fixture);};
+ return runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult},options);
+}
+// Shared Agents session loop for every agent path. answer(arguments) maps one function call to a pinned output ({key,output,trace}) or
+// undefined (the fixed failed tool result, never echoed); finish(text,read) validates the completed turn given the keys read in first-read order.
+export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult,toolError=TOOL_ARGUMENT_ERROR},{signal,onTrace=()=>{}}={}){
+ let sessionId,completed=false,text='',toolCalls=0,cleanup='failed',plan;const handled=new Set(),read=new Set();
  const remember=event=>{const id=event?.session?.id??event?.session_id;if(id!==undefined){if(!providerId(id)||sessionId&&sessionId!==id)throw new ApiError('INVALID_SESSION_ID');if(!sessionId){sessionId=id;onTrace({stage:'agent.session.created',sessionId});}}};
  const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000);
  onTrace({stage:'agent.request'});
@@ -28,16 +36,16 @@ export async function runAgentContext(transport,fixture,requestBody,toolResults,
    if(event.type==='agent.session.requires_action'){
     if(!sessionId)throw new ApiError('MISSING_SESSION_ID');const session=await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,{signal:combined});if(session.id!==sessionId||!Array.isArray(session.required_actions)||!session.required_actions.length||session.required_actions.length>6)throw new ApiError('INVALID_REQUIRED_ACTION');
     for(const action of session.required_actions){if(!exactKeys(action,['type','turn_id','call_id','name','arguments'])||action.type!=='function_call'||action.name!=='get_public_trial_evidence'||!providerId(action.turn_id)||!providerId(action.call_id))throw new ApiError('INVALID_TOOL_CALL');const key=`${action.turn_id}:${action.call_id}`;if(handled.has(key))throw new ApiError('DUPLICATE_TOOL_CALL');if(++toolCalls>6)throw new ApiError('TOOL_LIMIT');handled.add(key);
-     const nctId=toolArgumentNctId(action.arguments,allowedIds),evidence=nctId===undefined?undefined:toolResults.find(x=>x.study.id===nctId);
+     const hit=answer(action.arguments);
      // Invalid or non-selected arguments get the documented failed tool result (success:false + fixed error), never evidence.
-     if(!evidence){await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:false,error:TOOL_ARGUMENT_ERROR}]},{signal:combined});continue;}
-     onTrace({stage:'agent.tool.request',nctId});await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:true,output:JSON.stringify(evidence)}]},{signal:combined});evidenceRead.add(nctId);onTrace({stage:'agent.tool.result',nctId});}
+     if(!hit){await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:false,error:toolError}]},{signal:combined});continue;}
+     onTrace({stage:'agent.tool.request',...hit.trace});await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:true,output:hit.output}]},{signal:combined});read.add(hit.key);onTrace({stage:'agent.tool.result',...hit.trace});}
    }else if(event.type==='agent.session.turn.output_text.delta'){if(typeof event.delta!=='string')throw new ApiError('INVALID_STREAM');text+=event.delta;if(Buffer.byteLength(text)>16000)throw new ApiError('OUTPUT_TOO_LARGE');}
    else if(event.type==='agent.session.turn.output_text.done'){if(typeof event.text!=='string'||Buffer.byteLength(event.text)>16000)throw new ApiError('INVALID_STREAM');text=event.text;}
    else if(event.type==='agent.session.turn.completed'){completed=true;break;}
    else if(['agent.session.turn.failed','agent.session.turn.cancelled','agent.session.failed'].includes(event.type))throw new ApiError(event.type.includes('cancelled')?'CANCELLED':'AGENT_FAILED');
   }
-  if(!completed||!sessionId||!toolCalls||fixture.studies.some(x=>!evidenceRead.has(x.id)))throw new ApiError('INCOMPLETE_AGENT_TURN');plan=parsePlan(text,fixture);wrapResult({mode:transport.mode,...plan,toolCalls,cleanup:'failed'});onTrace({stage:'agent.complete'});
+  if(!completed||!sessionId||!toolCalls)throw new ApiError('INCOMPLETE_AGENT_TURN');plan=finish(text,read);wrapResult({mode:transport.mode,...plan,toolCalls,cleanup:'failed'});onTrace({stage:'agent.complete'});
  }finally{
   if(sessionId){const budget=AbortSignal.timeout(5500),deadline=Date.now()+5500;const options=limit=>({signal:budget,timeout:Math.max(1,Math.min(limit,deadline-Date.now()))});
    // Acceptance of cancellation is not terminal completion. Never reuse the aborted work signal.
