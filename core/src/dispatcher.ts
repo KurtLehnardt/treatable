@@ -17,9 +17,10 @@
  * Operations owned by later tasks (searchTrials: A2, preview building and provider execution:
  * A2/A4, credential flow details: A6b) answer NOT_IMPLEMENTED until their pipelines are wired in.
  * The screenLocal pipeline from task A1b is built in and is the default; the host may still pass
- * its own. The transport port is guarded at construction (task A1b), so every outbound request
- * keeps the endpoint allowlist, origin pin, size cap, and header invariants whichever transport
- * the host injected. Pipelines never replace the consent checks in this file.
+ * its own. createCore wraps the host's transport port with the transport gate (task A1b,
+ * transport-gate.ts), so the core hands that port only requests that match the gate's exact rule
+ * table; what the port does with such a request is the host's responsibility. Pipelines never
+ * replace the consent checks in this file.
  */
 import { base64UrlEncode, utf8ByteLength } from './bytes.ts';
 import type { PinnedConsent } from './consent/store.ts';
@@ -157,8 +158,8 @@ function containsSecret(value: unknown, secrets: ReadonlySet<string>): boolean {
 }
 
 export function createCore(portsInput: CorePorts, options: CoreOptions): Core {
-  // Task A1b: the guard re-validates and rebuilds every outbound request before the port sees it,
-  // so no injected transport can widen the pinned outbound invariants.
+  // Task A1b: pipelines and the session get a frozen ports bundle whose transport is the gate, so
+  // the core hands the host's transport port only requests that match TRANSPORT_RULES.
   const ports = guardCorePorts(assertPorts(portsInput));
   if (!(MODES as readonly string[]).includes(options?.mode) || !(RUNTIMES as readonly string[]).includes(options?.runtime)) {
     throw new TypeError('Treatable core requires a mode and a runtime.');

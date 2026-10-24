@@ -58,8 +58,10 @@ export interface TransportResponse {
 /**
  * HTTPS transport. Implementations must validate server certificates, must not follow redirects,
  * must not add credentials or cookies of their own, and must reject (not resolve) on network
- * failure or cancellation. Endpoint allowlists, host pinning, and request size caps are enforced
- * by the core around this port (task A1b), so a transport cannot widen them.
+ * failure or cancellation. The core checks every request against its exact rule table (method,
+ * origin, path, query, headers, and body size; task A1b, transport-gate.ts) and calls this port
+ * only with requests that match. What an implementation does with such a request is the host's
+ * responsibility; the core cannot check it.
  */
 export interface Transport {
   request(request: TransportRequest): Promise<TransportResponse>;
