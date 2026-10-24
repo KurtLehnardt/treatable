@@ -67,9 +67,9 @@ const CTGOV_ORIGIN = 'https://clinicaltrials.gov';
 
 /**
  * Upper bound on the whole request URL. Task A2's ordinary first-page search URL is about 930 to
- * 1,000 characters. Its builder (buildStudiesUrl on feature/core-a2-fcc) can produce longer URLs
- * for five long search terms, non-ASCII terms, or a long page token; such a URL is refused here
- * with INVALID_ENDPOINT, and A2 must bound its inputs to fit (a reconciliation item).
+ * 1,000 characters, and A2's buildStudiesUrl (feature/core-a2-fcc at 8bc91f9) refuses to build a
+ * URL longer than its own CTGOV_MAX_URL_LENGTH, which is also 2,048. At reconciliation the two
+ * bounds should become one constant.
  */
 export const MAX_TRANSPORT_URL_CHARS = 2048;
 
@@ -108,10 +108,12 @@ export interface TransportRule {
 
 /**
  * The query parameter names task A2's live search sends, taken read-only from CTGOV_QUERY_PARAMS
- * in core/src/ctgov/query.ts on feature/core-a2-fcc (commit 1d9b3b6). When the branches are
- * reconciled, A2's isCtgovStudiesUrl and parseStudiesUrl must be reconciled with this grammar (one
- * list of names, the URL length bound above, and the percent-encoding alphabet below), so that the
- * two checks describe the same requests.
+ * in core/src/ctgov/query.ts on feature/core-a2-fcc (same list at commits 1d9b3b6 and 8bc91f9).
+ * When the branches are reconciled, A2's isCtgovStudiesUrl and parseStudiesUrl must be reconciled
+ * with this grammar (one list of names, one URL length bound, and the percent-encoding alphabet
+ * below), so that the two checks describe the same requests. A2's parseStudiesUrl is the stricter
+ * check (it rebuilds the URL byte for byte); this rule is the outer bound that the gate enforces
+ * for every request the core hands to the port.
  */
 const CTGOV_QUERY_PARAMETERS = [
   'format',

@@ -62,8 +62,9 @@ const BETA = 'agents=v1';
 const jsonBody = (text = '{"model":"gpt-6-luna"}') => utf8Encode(text);
 
 /**
- * The field list task A2 requests (CTGOV_FIELDS in core/src/ctgov/query.ts on feature/core-a2-fcc,
- * read-only), so the ClinicalTrials.gov fixtures have the real length and alphabet.
+ * The field list task A2 requests (CTGOV_FIELDS in core/src/ctgov/query.ts on feature/core-a2-fcc at
+ * 8bc91f9, read with git show only), so the ClinicalTrials.gov fixtures have the real length and
+ * alphabet.
  */
 const CTGOV_FIELDS = [
   'NCTId', 'BriefTitle', 'OfficialTitle', 'OverallStatus', 'StudyType', 'Phase', 'Condition', 'ConditionMeshTerm',

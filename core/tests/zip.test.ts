@@ -54,6 +54,44 @@ test('[ported tests/core.test.ts, clinical.test.ts "offline ZIP..."] resolveZip 
   }
 });
 
+test('[NIT-1] like the extension, resolveZip refuses control characters, tabs, and line breaks before trimming', async () => {
+  const table = await realTable();
+  for (const bad of ['83702\n', '83702\r\n', '\n83702', '\t83702', '83702\t', '83702\u0000', '83702\u007f', '‮83702', '83702\ud800']) {
+    assert.throws(() => resolveZip(bad, table), invalidRequest, JSON.stringify(bad));
+  }
+  // Plain spaces are still trimmed, as boundedText and the scaffold did.
+  assert.equal(resolveZip(' 83702 ', table).city, 'Boise');
+  assert.throws(() => resolveZip(83702 as never, table), invalidRequest, 'not a string');
+});
+
+test('[MINOR-3] APO/FPO ZIPs (empty state in the table) are refused, as the extension refused them', async () => {
+  const table = await realTable();
+  // 34002 (APO AA) has a centroid in Panama, 09001 (APO AE) one in Italy: neither may become a
+  // distance origin.
+  assert.deepEqual(table.zips['34002'], { city: 'APO AA', state: '', lat: 8.9733, lon: -79.5556 });
+  assert.throws(() => resolveZip('34002', table), invalidRequest);
+  assert.throws(() => resolveZip('34002-1234', table), invalidRequest);
+  assert.throws(() => resolveZip('09001', table), invalidRequest);
+  // Over the whole table: exactly the 509 empty-state entries are refused, all APO/FPO, and every
+  // other entry resolves with a two-letter state.
+  const refused: string[] = [];
+  for (const [zip, entry] of Object.entries(table.zips)) {
+    try {
+      const resolved = resolveZip(zip, table);
+      assert.match(resolved.state, /^[A-Z]{2}$/, zip);
+    } catch (error) {
+      assert.ok(invalidRequest(error), zip);
+      assert.equal(entry.state, '', zip);
+      assert.match(entry.city, /^(?:APO|FPO) /, zip);
+      refused.push(zip);
+    }
+  }
+  assert.equal(refused.length, 509);
+  // The two Marshall Islands entries carry state code MH and resolve, as they did in the extension.
+  // MH is not one of the protocol's US_STATES, so callers must not treat ResolvedZip.state as one.
+  assert.equal(resolveZip('96960', table).state, 'MH');
+});
+
 test('loadZipTable fails closed on unknown resources and tampered bytes', async () => {
   const ports = { loader: testPorts({ 'zip-centroids.v1.json': REAL_BYTES }).loader, sha256: nodeSha256 };
   assert.ok((await loadZipTable(ports)) !== undefined, 'sanity: the real table loads');
