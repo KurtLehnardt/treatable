@@ -152,7 +152,7 @@ node extension/native/credentials-setup.mjs configure
 node extension/native/credentials-setup.mjs status
 ```
 
-The installer pins the Node executable used to run it. Use a functioning runtime; rerun the installer after moving or replacing that runtime. Credential setup prompts with terminal echo disabled and saves only the dedicated macOS Keychain item. Never put the key in Chrome, arguments, environment variables, configuration files, chat or logs. `status` checks metadata; it does not verify account authorization. See [native setup and runtime recovery](native/API_SETUP.md).
+The installer pins the Node executable used to run it. Use a functioning runtime; rerun the installer after moving or replacing that runtime. Credential setup prompts with terminal echo disabled and saves only the dedicated macOS Keychain item. Never put the key in Chrome, arguments, environment variables, configuration files, chat or logs. `status` checks metadata; it does not verify account authorization. If you configured a key with an earlier version, reinstall the native helper and run `node extension/native/credentials-setup.mjs migrate` once: the Keychain item was renamed, and macOS may ask once to allow access while the key moves. See [native setup and runtime recovery](native/API_SETUP.md).
 
 ## Search the website
 

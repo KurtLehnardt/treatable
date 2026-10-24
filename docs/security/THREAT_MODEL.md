@@ -4,11 +4,11 @@
 |---|---|
 | Product | Treatable Chrome MV3 extension 0.1.0 (`extension/`), Node native-messaging host and Swift Keychain helper (`extension/native/`) |
 | Baseline source | `codex/treatable-mvp` @ `48c569e` (file:line references below point at that commit) |
-| Date | 2026-10-24 (hackathon demo day) |
+| Date | 2026-10-24 |
 | Operator | Kurt Lehnardt - Developer of Treatable · privacy/security contact privacy.6vpc5@mailer.me |
 | Method | STRIDE per trust boundary, OWASP Top 10 for LLM Applications 2025, HIPAA Safe Harbor identifier walkthrough, AI-assisted adversarial review plus SAST, dependency audit and secret scanning (see [SECURITY.md](../../SECURITY.md#release-gate)) |
 
-This is an engineering threat model for a hackathon MVP. It is not a certification, a legal opinion or proof that no vulnerability exists. **Treatable is not a HIPAA-covered product, no Business Associate Agreement (BAA) exists with OpenAI, no HIPAA compliance is claimed, and minimized health information is not anonymous.**
+This is an engineering threat model for a minimum viable product. It is not a certification, a legal opinion or proof that no vulnerability exists. **Treatable is not a HIPAA-covered product, no Business Associate Agreement (BAA) exists with OpenAI, no HIPAA compliance is claimed, and minimized health information is not anonymous.**
 
 Status labels used throughout:
 
@@ -29,7 +29,7 @@ Out of scope: the legacy `scaffold/` web app, `installer/` and the root `install
 |---|---|---|
 | A1. Patient free text: condition, notes, exact age, sex, ZIP | Mounted panel memory only (`src/patient-form.tsx`, `src/use-panel-controller.ts`) | Personal health information; the most sensitive asset |
 | A2. Minimized real packet: age band, optional state, optional sex, 1–6 catalog condition IDs, 1–2 public NCT IDs | Panel memory; native host memory for up to 5 minutes (`native/real.mjs:17-25`); OpenAI after explicit confirmation | Still health information; not anonymous |
-| A3. OpenAI API key | Dedicated Keychain item `com.treatable.hackathon.openai`/`api-key`; transient native memory during a request | Spend, account access, access to stored Agents sessions |
+| A3. OpenAI API key | Dedicated Keychain item `com.treatable.openai`/`api-key` (an item saved by an earlier version is copied into it and verified, then deleted); transient native memory during a request | Spend, account access, access to stored Agents sessions |
 | A4. Consent state: policy receipt, prepared token (32 random bytes), SHA-256 digest, per-operation one-use flags | Panel memory and native memory (`native/real.mjs:18-23`) | Binds what was shown to what is sent |
 | A5. Provider-side session state | OpenAI Agents session until DELETE; abuse-monitoring logs | Retention outside our control |
 | A6. Public catalog: 2,000 ClinicalTrials.gov records, 3,514 condition labels | Bundled, SHA-256 pinned (`scripts/build.mjs:22`, `native/real.mjs:10`) | Integrity of evidence and of tool output |
@@ -40,7 +40,7 @@ Out of scope: the legacy `scaffold/` web app, `installer/` and the root `install
 
 | Actor | Capability assumed | Main goals |
 |---|---|---|
-| External penetration tester / judge | Reads the public repo, installs their own copy, uses DevTools on their own profile, sends arbitrary native frames from their own machine | Find any path where data leaves the documented packet, where the key is exposed, or where model text reaches the UI |
+| External penetration tester / reviewer | Reads the public repo, installs their own copy, uses DevTools on their own profile, sends arbitrary native frames from their own machine | Find any path where data leaves the documented packet, where the key is exposed, or where model text reaches the UI |
 | Malicious web page | Arbitrary HTML/JS on any origin, including a lookalike of ClinicalTrials.gov | Get the extension to read, run or send something; message the extension |
 | Hostile or poisoned trial record | Controls text inside a public ClinicalTrials.gov record (title, summary, criteria), including Unicode tricks | Indirect prompt injection; misleading the patient; steering the agent's tool use |
 | Adversarial user | Full control of their own panel inputs | Steer the LLM, extract prompts, get free-form medical advice, smuggle free text into the API path, bypass consent |
@@ -65,7 +65,7 @@ flowchart LR
   subgraph MAC["macOS user account"]
     HOST["Native host (Node, stdio)<br/>consent store, provider client"]
     HELPER["Swift Keychain helper"]
-    KC[("Keychain item<br/>com.treatable.hackathon.openai")]
+    KC[("Keychain item<br/>com.treatable.openai")]
   end
   subgraph OAI["OpenAI, US data residency"]
     DEC["Decisions API<br/>POST /v1/decisions"]
@@ -134,13 +134,14 @@ Data flow in one paragraph: patient free text is typed into the panel and used t
 
 | STRIDE | Threat | Control (file:line) | Status |
 |---|---|---|---|
-| S | A same-user process runs `treatable-keychain read` with the pipe variable set and receives the key (the Keychain ACL trusts the helper; `credential.swift:53-64`) | Restricted-permission project key, low project budget, rotate after the event ([checklist](DEMO_DAY_CHECKLIST.md)) | Accepted risk |
+| S | A same-user process runs `treatable-keychain read` with the pipe variable set and receives the key (the Keychain ACL trusts the helper; `credential.swift:53-64`) | Restricted-permission project key, low project budget, key rotation | Accepted risk |
 | S | Same, mitigation | Installer helper-path restriction | In progress (native) |
 | T | Helper binary swapped | Install directory and helper are `0700` (`native/install.mjs:14,20`); host resolves the helper's real path and requires it inside its own directory (`native/host.mjs:12`); a replaced binary triggers Keychain re-approval | Existing |
 | T | Tighter installer permissions | Installer `chmod` hardening | In progress (native) |
 | I | Key in argv, env, config, logs or browser | Setup refuses key arguments (`native/credentials-setup.mjs:9`); helper env is fixed `PATH`/`HOME`/`TMPDIR` (`native/credentials.mjs:6`); launcher uses `env -i` (`native/install.mjs:23`); key dropped after building the transport and cleared in `finally` (`native/host.mjs:28,30`); Swift zeroes its buffers (`credential.swift:22,29,63`); item not synchronizable (`credential.swift:36`) | Existing |
 | I | JavaScript strings cannot be wiped from memory | None possible in JS | Accepted risk |
 | D | Keychain locked or approval declined | Fixed `KEY_MISSING` (`native/credentials.mjs:9`) | Existing |
+| T/I | Migration from the Keychain item of an earlier version (added after the baseline commit) | The copy happens only inside the helper process through Security framework calls; the key is never printed, logged, written to a file or passed through argv or environment variables. The new item uses the same non-synchronizable attributes as `configure`, is read back and compared before the earlier item is deleted. A failed copy or verification leaves the earlier item in place and in use; a failed deletion leaves both items, the new one in use, and `status` reports the pending migration (`credential.swift`, `migrate`). Tests run the logic against an in-memory store with the real Keychain calls compiled out (`native/test/credential-migration.test.mjs`); they need macOS and `swiftc`, so the Linux CI job skips them and they run only on macOS | Existing |
 | T | `getpass()` reads at most 128 characters on macOS, so a longer project key is silently truncated (`credential.swift:18`) | Key entry via `readpassphrase` with an explicit buffer | In progress (native) |
 
 ### B5. Native host ↔ OpenAI (network)
@@ -190,7 +191,7 @@ Reference: [OWASP GenAI Security Project, LLM Top 10 2025](https://genai.owasp.o
 | LLM07 | System Prompt Leakage | User or record tries to extract instructions | Prompts hold no secrets, keys, operator contact or patient data (`native/test/real.test.mjs:38`); prompts are public in the repository (`shared/demo-fixtures.mjs`, `native/real.mjs`); model text is never displayed, so an extraction has no output channel | Existing; dead local-prompt code (`src/core.ts:36-48`, used only by tests) removal In progress (panel) |
 | LLM08 | Vector and Embedding Weaknesses | The extension has no vector store, embeddings or RAG index | Local keyword search over the bundled snapshot (`src/core.ts:33`). The legacy `scaffold/` local embeddings are out of scope | Not applicable |
 | LLM09 | Misinformation | A patient reads a score as eligibility or a promise of benefit | Score labelled as a relevance index, not eligibility or enrollment probability (`src/demo-panel.tsx:17`); fixed caution templates incl. "Only the study team can confirm eligibility" (`shared/demo-contract.mjs:7`); unknowns stay unknown; eligibility/benefit claim filter (`src/core.ts:46`, `tests/core.test.ts:18`); links to the source record and snapshot staleness caution | Existing |
-| LLM10 | Unbounded Consumption | Cost or resource exhaustion | Timeouts 25 s / 90 s; 1 MB response, 128 KB SSE buffer, 16 KB agent text, 96 KB frames, max 6 tool calls (`native/transport.mjs:3,10,22`, `native/provider.mjs:11,15,22-23`); one operation at a time (`native/host.mjs:23`); max 4 pending in the worker (`src/background.ts:14`); dedicated project with a low budget and restricted key ([checklist](DEMO_DAY_CHECKLIST.md)). The Agents create schema has no max-output-token field, so these are not a provider billing cap | Existing; budget is an operator step |
+| LLM10 | Unbounded Consumption | Cost or resource exhaustion | Timeouts 25 s / 90 s; 1 MB response, 128 KB SSE buffer, 16 KB agent text, 96 KB frames, max 6 tool calls (`native/transport.mjs:3,10,22`, `native/provider.mjs:11,15,22-23`); one operation at a time (`native/host.mjs:23`); max 4 pending in the worker (`src/background.ts:14`); dedicated project with a low budget and restricted key. The Agents create schema has no max-output-token field, so these are not a provider billing cap | Existing; budget is an operator step |
 
 ## 6. Data minimization: HIPAA Safe Harbor identifiers
 
@@ -246,7 +247,7 @@ What the optional real path does send, after a scroll-gated notice, a checkbox, 
 
 Stated plainly, in rough order of importance:
 
-1. **Same-user local software can likely obtain the API key.** The Keychain ACL trusts the helper, and the helper's `read` check is an environment variable plus "stdout is not a terminal" (`credential.swift:53-55`). Any process running as the same macOS user can run it. Mitigation: a dedicated OpenAI project, a restricted-permission key, a low project budget and key rotation after the event. Helper-path restriction is In progress (native). **Accepted risk.**
+1. **Same-user local software can likely obtain the API key.** The Keychain ACL trusts the helper, and the helper's `read` check is an environment variable plus "stdout is not a terminal" (`credential.swift:53-55`). Any process running as the same macOS user can run it. Mitigation: a dedicated OpenAI project, a restricted-permission key, a low project budget and regular key rotation. Helper-path restriction is In progress (native). **Accepted risk.**
 2. **Agents API retention.** Sessions keep state until deleted, the API does not support Zero Data Retention and only US data residency is available ([FAQ](https://help.openai.com/fr-fr/articles/20001551-agents-api-beta-faq)). Deletion can fail, physical erasure is asynchronous, and a session lost before its ID arrives cannot be targeted. Default abuse-monitoring logs may keep content up to 30 days. Mitigation: never send identifiers; fictional fixture on stage; delete after every run and show the result. **Accepted risk.**
 3. **No BAA and no HIPAA claim.** OpenAI's Agents API FAQ says nothing about HIPAA or a BAA, and none is in place. Real health data on the optional path is minimized, not anonymous. **Accepted risk**, disclosed in the notice.
 4. **Indirect prompt injection is reduced, not eliminated.** A poisoned record can still bias a relevance score or which fixed question templates are chosen. It cannot produce free text in the UI, call other tools or reach other studies. Four bundled records contain bidi control characters (U+202A, U+202C: NCT04144972, NCT06370767, NCT06697548, NCT06888128); sanitization is In progress (native, panel).
@@ -255,7 +256,7 @@ Stated plainly, in rough order of importance:
 7. **Browser features outside our control.** Autofill and spellcheck are requested off on patient fields; Chrome Enhanced Spell Check sends typed text to Google if the user has enabled it. The operator turns it off for the demo profile; extension to every field is In progress (panel).
 8. **No durable consent record.** By design, consent and previews live only in memory, so a past disclosure cannot be audited or located later.
 9. **Known hardening gaps at `48c569e`, all In progress:** replay-ID set self-lockout after 1,000 requests (`native/host.mjs:18`); `getpass` 128-character truncation (`credential.swift:18`); strict object-only tool arguments (`native/provider.mjs:22`); non-constant-time token compare (`native/real.mjs:23`); CSP without `default-src 'none'`, `form-action` and `frame-ancestors` (`manifest.json:22`); `http:` links allowed (`src/core.ts:12`); all native failures collapse into one generic `OPERATION_FAILED` in the worker (`src/background.ts:11`), so "helper missing" is not distinguishable (specific codes incl. `NATIVE_HOST_MISSING` In progress (panel)); native tests not part of `npm test` (In progress (native); CI runs them separately).
-10. **Not verified here:** live OpenAI access and permissions, real Chrome installation and native handshake, real Chrome hide/close timing and autofill behavior, Keychain prompts on the presenter's Mac. Tests use stub transports and fake Keychain helpers.
+10. **Not verified here:** live OpenAI access and permissions, real Chrome installation and native handshake, real Chrome hide/close timing and autofill behavior, Keychain prompts on a user's Mac. Tests use stub transports and fake Keychain helpers.
 
 ## 10. Release gate and baseline scans
 
