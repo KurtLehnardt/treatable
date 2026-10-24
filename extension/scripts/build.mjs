@@ -11,7 +11,7 @@ const variant=explicitA?'a':'b';
 const output=explicitA?'dist-a':explicitB?'dist-b':'dist';
 await rm(path.join(root,output),{recursive:true,force:true});
 await mkdir(path.join(root,output,'data'),{recursive:true});
-await build({entryPoints:{panel:path.join(root,variant==='b'?'src/panel-b.tsx':'src/panel.tsx'),background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')}});
+await build({entryPoints:{panel:path.join(root,variant==='b'?'src/panel-b.tsx':'src/panel.tsx'),background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'private-match':path.join(root,'src/private-match.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')}});
 try{await readFile(path.join(root,'src/site-content.ts'));await build({entryPoints:[path.join(root,'src/site-content.ts')],outfile:path.join(root,output,'site-content.js'),bundle:true,format:'iife',platform:'browser',target:'chrome142',minify:true,legalComments:'eof'});}catch(error){if(error.code!=='ENOENT')throw error;}
 if(variant==='b')console.log('Building primary Version B presentation.');
 const sites=JSON.parse(await readFile(path.join(root,'sites.json'),'utf8'));
@@ -21,9 +21,12 @@ manifest.host_permissions=sites.origins.map(origin=>`${origin}/*`);
 manifest.web_accessible_resources=[{resources:['overlay.html','score-badge.html'],matches:manifest.host_permissions}];
 // Fail closed if the extension-page CSP drifts toward remote, inline, eval, data: or blob: sources.
 const csp=manifest.content_security_policy?.extension_pages??'';
-if(!/(^|; )default-src 'none'(;|$)/.test(csp)||!/(^|; )script-src 'self'(;|$)/.test(csp)||/https?:|\*|data:|blob:|'unsafe-/.test(csp))throw new Error('Extension-page CSP must stay self-only with default-src none');
+const ancestorRule="frame-ancestors https://clinicaltrials.gov https://www.clinicaltrials.gov";
+if(!csp.endsWith(ancestorRule))throw Error('Only the two named registry origins may embed public frames');
+const privateCsp=csp.replace(ancestorRule,"frame-ancestors 'none'");
+if(!/(^|; )default-src 'none'(;|$)/.test(privateCsp)||!/(^|; )script-src 'self'(;|$)/.test(privateCsp)||/https?:|\*|data:|blob:|'unsafe-/.test(privateCsp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
-for(const name of ['panel','overlay','score-badge'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
+for(const name of ['panel','overlay','score-badge','private-match'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
 for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,output,'data',name));
 const studyBytes=await readFile(path.join(root,output,'data/studies.json'));
 if(createHash('sha256').update(studyBytes).digest('hex')!==PUBLIC_CATALOG_METADATA.corpusSha256)throw Error('UI/native public corpus hash mismatch');

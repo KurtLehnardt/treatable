@@ -1,3 +1,4 @@
+import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-background';
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
@@ -36,8 +37,10 @@ function attachPanel(panel:any){
   let port:any;try{port=connection();port.postMessage(request)}catch(error){if(port&&native===port){native=undefined;try{port.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}});
  panel.onDisconnect.addListener(end);panels.set(panel,end);post({kind:'panelReady'});
 }
-chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name))attachPanel(port)});
-installSiteAssistant(chrome,{onProtectedEnd:tabId=>{for(const[panel,end]of [...panels])if(panel.sender?.tab?.id===tabId){try{panel.postMessage({kind:'endSession'})}catch{}end()}}});
+chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==PRIVATE_LIVE_PORT)attachPanel(port)});
+let liveBroker:ReturnType<typeof installLiveBroker>|undefined;
+const siteAssistant=installSiteAssistant(chrome,{onProtectedEnd:tabId=>{liveBroker?.endTab(tabId);for(const[panel,end]of [...panels])if(panel.sender?.tab?.id===tabId){try{panel.postMessage({kind:'endSession'})}catch{}end()}}});
+liveBroker=installLiveBroker(chrome,siteAssistant);
 async function readCurrentPage(){const[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||typeof tab.url!=='string'||!isSupportedSite(tab.url))throw new Error('Unsupported page');const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readPage,args:[[...TRIAL_ORIGINS]]});return parsePageSource(results?.[0]?.result)}
 // A manifest default_path is global. Keep the default disabled and opt in per tab.
 void chrome.sidePanel.setOptions({enabled:false}).catch(()=>{});

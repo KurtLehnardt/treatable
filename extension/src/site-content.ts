@@ -6,7 +6,7 @@ type Frame={element:HTMLIFrameElement;purpose:SitePurpose;nctId?:string};
 export function installSiteContent(win:Window,doc:Document,api:any){
  const extensionOrigin=api.runtime.getURL('').replace(/\/$/,'');
  const frames=new Set<Frame>();const inert=new Map<HTMLElement,boolean>();let overlay:Frame|undefined,collapsed=false,disposed=false,scheduled:ReturnType<typeof setTimeout>|undefined;
- const manager=new SiteCardManager(doc,()=>win.location.href,crypto.randomUUID()+':');
+ const manager=new SiteCardManager(doc,()=>win.location.href,crypto.randomUUID()+'-');
  const style=(element:HTMLElement,values:Record<string,string>)=>{for(const[k,v]of Object.entries(values))element.style.setProperty(k.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),v,'important')};
  function restoreInert(){for(const[element,previous]of inert){if(element.isConnected)element.inert=previous}inert.clear()}
  function modal(){restoreInert();if(!overlay||collapsed)return;for(const element of Array.from(doc.body.children)){if(element!==overlay.element&&element instanceof HTMLElement){inert.set(element,element.inert);element.inert=true}}}
