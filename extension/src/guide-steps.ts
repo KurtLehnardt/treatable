@@ -192,15 +192,24 @@ export const COPY = {
     back: 'Back',
     skip: 'Skip',
   },
+  applyFilters: {
+    title: 'Press “Apply Filters”',
+    body: [
+      'Your filters are ticked. Press the highlighted Apply Filters button so ClinicalTrials.gov updates the list.',
+      'The new results can take a moment to show.',
+    ],
+    next: 'Done',
+    skip: 'Skip',
+  },
   filtersDone: {
     title: 'All set',
-    body: ['ClinicalTrials.gov updates the results by itself. It can take a moment.'],
+    body: ['ClinicalTrials.gov is updating the results. It can take a moment.'],
   },
   results: {
     title: 'Open a study you are interested in',
     body: [
       'Choose a study from the list and open it. Then I will show you Treatable’s tools for that study.',
-      'ClinicalTrials.gov updates the list by itself after you change a filter or search, which can take a moment. Opening a study only lets you read about it.',
+      'ClinicalTrials.gov updates the list after you search or press Apply Filters, which can take a moment. Opening a study only lets you read about it.',
     ],
     back: 'Back',
     skip: 'Skip',

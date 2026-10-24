@@ -34,12 +34,15 @@ async function rig(html: string, options: { findTimeoutMs?: number; isRendered?:
     const input = env.document.getElementById(id) as HTMLInputElement;
     input.checked = true;
     input.dispatchEvent(new env.window.Event('change', { bubbles: true }));
+    // The site enables its Apply Filters button once a filter is staged.
+    env.document.getElementById('apply-filters')?.removeAttribute('disabled');
   };
+  const pressApply = () => { const apply = env.document.getElementById('apply-filters') as HTMLButtonElement; apply.setAttribute('disabled', ''); apply.dispatchEvent(new env.window.Event('click', { bubbles: true })); };
   const hostCount = () => env.document.querySelectorAll(`[${GUIDE_HOST_ATTRIBUTE}]`).length;
   const highlighted = () => [...env.document.querySelectorAll(HIGHLIGHT)].map(el => (el as HTMLElement).getAttribute('for') || el.id || el.tagName);
   /** Ends the guide and lets sweetalert2's own timers run out before the fake window goes away. */
   const close = async () => { guide.cancel(); await new Promise(r => setTimeout(r, 150)); env.teardown(); };
-  return { env, guide, events, pages, root, title, buttons, press, eventually, tick, hostCount, highlighted, close };
+  return { env, guide, events, pages, root, title, buttons, press, eventually, tick, pressApply, hostCount, highlighted, close };
 }
 
 /** The page outside the guide's own host, for proving the guide leaves the site untouched. */
@@ -77,6 +80,12 @@ test('Recruiting then Interventional: the guide waits for the person to tick eac
     assert.match(t.root()!.textContent!, /not medical advice/);
     assert.deepEqual(t.buttons(), ['Back', 'Skip']);
     t.tick('adv-check0-studyType0');
+    await t.eventually(() => t.title() === 'Press “Apply Filters”', 'apply step');
+    assert.deepEqual(t.highlighted(), ['apply-filters'], 'the site’s own Apply Filters button is pointed at');
+    assert.deepEqual(t.buttons(), ['Done', 'Skip']);
+    assert.equal(t.events.length, 0, 'not finished until the filters are applied');
+    assert.equal(clicks, 0);
+    t.pressApply();
     await t.eventually(() => t.title() === 'All set', 'confirmation');
     assert.deepEqual(t.events, [{ op: 'filters', action: 'done' }]);
     assert.deepEqual(t.highlighted(), [], 'no highlight is left after the last box');
@@ -337,6 +346,42 @@ test('a new command replaces the running one without reporting the old one', asy
   } finally { await t.close(); }
 });
 
+test('the Apply Filters step ends with Done or Skip, or when the address changes after the site applies the filters', async () => {
+  for (const [how, action] of [['done', 'done'], ['skip', 'skip'], ['url', 'done']] as const) {
+    const t = await rig(searchPage());
+    try {
+      t.tick('adv-check0-status1'); t.tick('adv-check0-studyType0');
+      t.guide.run({ op: 'filters', intro: false });
+      await t.eventually(() => t.title() === 'Recruiting is already ticked', 'status');
+      t.press('confirm');
+      await t.eventually(() => t.title() === 'Interventional is already ticked', 'type');
+      t.press('confirm');
+      await t.eventually(() => t.title() === 'Press “Apply Filters”', 'apply step');
+      if (how === 'done') t.press('confirm');
+      else if (how === 'skip') t.press('cancel');
+      else t.env.window.history.pushState({}, '', '/search?cond=asthma&aggFilters=status:rec,studyType:int');
+      await t.eventually(() => t.events.length === 1, 'report');
+      assert.deepEqual(t.events, [{ op: 'filters', action }], how);
+      assert.deepEqual(t.highlighted(), [], how + ': highlight removed');
+    } finally { await t.close(); }
+  }
+});
+
+test('with nothing staged, the Apply Filters button is not pointed at', async () => {
+  const t = await rig(searchPage());
+  try {
+    (t.env.document.getElementById('adv-check0-status1') as HTMLInputElement).checked = true;
+    (t.env.document.getElementById('adv-check0-studyType0') as HTMLInputElement).checked = true;
+    t.guide.run({ op: 'filters', intro: false });
+    await t.eventually(() => t.title() === 'Recruiting is already ticked', 'status');
+    t.press('confirm');
+    await t.eventually(() => t.title() === 'Interventional is already ticked', 'type');
+    t.press('confirm');
+    await t.eventually(() => t.title() === 'All set', 'straight to the confirmation');
+    assert.deepEqual(t.highlighted(), []);
+  } finally { await t.close(); }
+});
+
 test('a step that starts while the closing confirmation is still showing is not torn down by the old one', async () => {
   const t = await rig(searchPage());
   try {
@@ -375,6 +420,8 @@ test('the whole guide makes no network call and writes no storage or cookie', as
     t.tick('adv-check0-status1');
     await t.eventually(() => t.title() === 'Tick “Interventional”', 'type');
     t.tick('adv-check0-studyType0');
+    await t.eventually(() => t.title() === 'Press “Apply Filters”', 'apply');
+    t.pressApply();
     await t.eventually(() => t.title() === 'All set', 'done');
     t.guide.cancel();
     assert.deepEqual(calls, []);

@@ -147,7 +147,14 @@ export function findFiltersToggle(root: ParentNode): HTMLElement | null {
     const show = Array.from(panel.querySelectorAll<HTMLElement>('button')).find(button => /^show$/i.test(accessibleName(button)));
     if (show) return show;
   }
-  return buttons.find(button => /\b(focus your search|filters?)\b/i.test(accessibleName(button)) && !/glossary|close|clear/i.test(accessibleName(button))) ?? null;
+  // Only buttons that open the panel qualify; the panel's own Clear Filters and Apply Filters buttons do not.
+  return buttons.find(button => /^(focus your search|show filters|open filters|filters?|refine search)\b/i.test(accessibleName(button))) ?? null;
+}
+
+/** The site's own "Apply Filters" button. The filters only take effect once the person presses it. */
+export function findApplyFilters(root: ParentNode): HTMLButtonElement | null {
+  const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('button'));
+  return buttons.find(button => /^apply filters$/i.test(accessibleName(button))) ?? root.querySelector<HTMLButtonElement>('button#apply-filters');
 }
 
 /** True when the element takes up space on screen. A hidden checkbox input is judged by its anchor, not itself. */

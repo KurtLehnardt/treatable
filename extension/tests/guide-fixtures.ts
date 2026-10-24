@@ -18,7 +18,7 @@ export interface SearchPageOptions { status?: string; type?: string; form?: stri
 /** A wide search page: the Focus Your Search panel is open and shows the search fields and both filter groups. */
 export function searchPage(options: SearchPageOptions = {}) {
   const { status = STATUS_LIVE, type = TYPE_LIVE, form = SEARCH_FORM_LIVE } = options;
-  return shell(`<main id="app"><ctg-focus-your-search-panel><div class="filters-panel"><div class="filters-panel-header"><div class="show-hide-container"><button class="usa-button usa-button--unstyled expand-button"><span>Hide</span></button></div></div><div id="panel-body">${form}${status}${type}</div></div></ctg-focus-your-search-panel><div id="results"><ctg-search-hit-card><a href="/study/NCT00000001">A study</a></ctg-search-hit-card></div></main>`);
+  return shell(`<main id="app"><ctg-focus-your-search-panel><div class="filters-panel"><div class="filters-panel-header"><div class="show-hide-container"><button class="usa-button usa-button--unstyled expand-button"><span>Hide</span></button></div></div><div id="panel-body">${form}${status}${type}</div><div class="filters-panel-footer"><button type="button" id="clear-filters" class="usa-button secondary-button">Clear Filters (0)</button><button type="button" id="apply-filters" class="usa-button primary-button" disabled>Apply Filters</button></div></div></ctg-focus-your-search-panel><div id="results"><ctg-search-hit-card><a href="/study/NCT00000001">A study</a></ctg-search-hit-card></div></main>`);
 }
 
 /** The home page: only the search form, with no checkbox filters. */

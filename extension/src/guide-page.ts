@@ -1,7 +1,7 @@
 import { createGuideMount, type GuideChoice, type GuideDialog, type GuideMount } from './guide-mount';
 import { createHighlighter } from './guide-highlight';
 import {
-  findConditionField, findFiltersToggle, findInterventional, findRecruiting, isRendered, pageKind, type FoundControl,
+  findApplyFilters, findConditionField, findFiltersToggle, findInterventional, findRecruiting, isRendered, pageKind, type FoundControl,
 } from './guide-finders';
 import { COPY, type StepCopy } from './guide-steps';
 import type { PageGuideAction, PageGuideCommand, PageGuideEvent, PageGuideOp } from './guide-protocol';
@@ -297,6 +297,19 @@ export function createPageGuide(deps: PageGuideDeps): PageGuide {
     }
     if (run.cancelled) return;
     highlighter.clear();
+    // Ticking only stages the filters on ClinicalTrials.gov; the results change when its own button is pressed.
+    const apply = findApplyFilters(doc);
+    if (apply && !apply.disabled && env.isRendered(apply)) {
+      reveal(apply);
+      highlighter.apply(apply);
+      const urlBefore = win.location.href;
+      // Pressing it applies the filters: the button is disabled again, redrawn, or the address changes.
+      const pressed = until(run, () => { const latest = findApplyFilters(doc); return !latest || latest.disabled || win.location.href !== urlBefore; });
+      const choice = await ask(run, dialogFrom(COPY.applyFilters, { target: apply }), pressed);
+      highlighter.clear();
+      if (choice === 'closed') return;
+      if (choice === 'skip' || choice === 'back') { finish(run, 'filters', 'skip'); return; }
+    }
     run.finishing = true;
     emitReport('filters', 'done');
     // The confirmation outlives the report so the panel can come back while it is still showing.

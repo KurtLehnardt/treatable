@@ -119,8 +119,20 @@ test('the filters toggle is found by name: Show on a wide screen, Focus Your Sea
   const expanded = installDom(searchPage());
   try {
     const toggle = findFiltersToggle(expanded.document);
-    assert.ok(!toggle || !/^hide$/i.test(toggle.textContent!.trim()), 'the Hide button is not a way to open the filters');
+    assert.equal(toggle, null, 'an open panel has no opener: Hide, Clear Filters and Apply Filters are not ways to open it');
   } finally { expanded.teardown(); }
+});
+
+test('the Apply Filters button is found by name, with the known id as a fallback', async () => {
+  const { findApplyFilters } = await finders();
+  const env = installDom(searchPage());
+  try {
+    assert.equal(findApplyFilters(env.document)!.id, 'apply-filters');
+    env.document.getElementById('apply-filters')!.textContent = 'Go';
+    assert.equal(findApplyFilters(env.document)!.id, 'apply-filters', 'id fallback');
+    env.document.getElementById('apply-filters')!.remove();
+    assert.equal(findApplyFilters(env.document), null);
+  } finally { env.teardown(); }
 });
 
 test('page kind recognises the home, search and study pages only on exact paths', async () => {
