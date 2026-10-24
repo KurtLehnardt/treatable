@@ -65,5 +65,5 @@ test('follow-up plan is five business days out and the .ics carries no patient d
  const ics=buildFollowUpIcs(plan,Date.UTC(2026,9,24,15,15));assert.match(ics,/^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\n/);assert.match(ics,/\r\nDTSTART;VALUE=DATE:20261030\r\nDTEND;VALUE=DATE:20261031\r\n/);assert.match(ics,/\r\nDTSTAMP:20261024T151500Z\r\n/);assert.match(ics,/SUMMARY:Follow up on study NCT07254806/);assert.ok(ics.endsWith('END:VCALENDAR\r\n'));
  const unfolded=ics.replace(/\r\n /g,'');assert.match(unfolded,/Study contact: Sam Lee\\, 801-555-0100\\, slee@wasatchspine\.org/);assert.match(unfolded,/https:\/\/clinicaltrials\.gov\/study\/NCT07254806/);
  for(const line of ics.split('\r\n'))assert.ok(new TextEncoder().encode(line).length<=75,line);
- for(const secret of [p.name,'Morgan',p.phone,'0142',p.email,p.zip,p.bestTimes,p.answers.diagnosis_details,p.answers.symptom_duration])assert.ok(!unfolded.includes(secret),`ics leaked ${secret}`);
+ for(const secret of [p.name,'Morgan',p.phone,'0142',p.email,p.zip,p.bestTimes,p.answers.diagnosis_details!,p.answers.symptom_duration!])assert.ok(!unfolded.includes(secret),`ics leaked ${secret}`);
 });

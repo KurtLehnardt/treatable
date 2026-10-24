@@ -1,7 +1,9 @@
 import {TRIAL_ORIGINS} from './sites';
 import {SITE_FILTERS} from './site-filter-catalog';
 import {SITE_MAX_MESSAGE_BYTES,siteBytes} from './site-contract';
-import type {OverlayReady,OverlaySnapshot} from './overlay-types';
+import type {OverlayReady,OverlaySnapshot,OverlayStudy} from './overlay-types';
+/** Study page binding chosen by the background from the validated tab URL; only a strict public NCT ID is accepted. */
+export function parseStudy(v:unknown):OverlayStudy|undefined{return object(v)&&Object.keys(v).length===1&&typeof v.nctId==='string'&&/^NCT[0-9]{8}$/.test(v.nctId)?{nctId:v.nctId}:undefined}
 export type SitePurpose='overlay'|'badge';
 export interface SitePort {postMessage:(v:unknown)=>void;disconnect:()=>void;onMessage:{addListener:(f:(v:any)=>void)=>void};onDisconnect:{addListener:(f:()=>void)=>void}}
 export interface SiteRuntime {connect:(options:{name:string})=>SitePort}
@@ -36,8 +38,9 @@ export class SiteClient {
  const port=this.runtime.connect({name:this.purpose==='overlay'?'treatable.site.overlay.v1':'treatable.site.badge.v1'});this.port=port;
  return new Promise((resolve,reject)=>{const authTimer=setTimeout(()=>{this.disconnect();reject(Error('Open Treatable from its toolbar button on ClinicalTrials.gov.'))},8000);this.cancelAuth=()=>{clearTimeout(authTimer);reject(Error('The activation session ended.'))};
  port.onMessage.addListener((v:any)=>{if(this.ended||this.port!==port||!object(v)||siteBytes(v)>SITE_MAX_MESSAGE_BYTES)return;
-  if(v.type==='site.ready'){try{const snapshot=parseSnapshot(v.snapshot);if(!Array.isArray(v.filters)||v.filters.length>100)throw Error();this.ready=true;clearTimeout(authTimer);this.cancelAuth=undefined;resolve({snapshot,filters:SITE_FILTERS.map(f=>({...f,options:f.options?.map(o=>({...o}))})),search:object(v.search)?v.search:undefined,compact:v.compact===true});this.emit(v)}catch{this.disconnect();reject(Error('The site connection was rejected.'))}return}
+  if(v.type==='site.ready'){try{const snapshot=parseSnapshot(v.snapshot);if(!Array.isArray(v.filters)||v.filters.length>100)throw Error();this.ready=true;clearTimeout(authTimer);this.cancelAuth=undefined;const study=parseStudy(v.study);resolve({snapshot,filters:SITE_FILTERS.map(f=>({...f,options:f.options?.map(o=>({...o}))})),search:object(v.search)?v.search:undefined,compact:v.compact===true,...(study?{study}:{})});this.emit(v)}catch{this.disconnect();reject(Error('The site connection was rejected.'))}return}
   if(v.type==='site.snapshot'){try{this.emit({...v,snapshot:parseSnapshot(v.snapshot)})}catch{}return}
+  if(v.type==='site.study'){if(this.ready)this.emit({type:'site.study',study:parseStudy(v.study)});return}
   if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
   if(typeof v.id!=='string')return;const item=this.pending.get(v.id);if(!item)return;clearTimeout(item.timer);this.pending.delete(v.id);v.ok===true?item.resolve(v.result):item.reject(Error('The site action did not complete. Your local inputs were not sent.'));
  });
