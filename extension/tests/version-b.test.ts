@@ -23,7 +23,7 @@ const runtime={getURL:(path:string)=>path,sendMessage:async(message:any)=>{
  messages.push(message);
  if(message.kind==='readPage')return await new Promise(resolve=>{pendingPage=resolve});
  if(message.kind==='nativeDisconnect')return{ok:true};
- if(message.request?.type==='status')return{ok:true,models:[{name:'installed:local'}],message:'Local model available.'};
+ if(message.request?.type==='status')return{id:message.request.id,type:'status',ok:true,models:[{name:'installed:local'}],message:'Local model available.'};
  if(message.request?.type==='generate')return await new Promise(resolve=>{pendingGenerate=resolve});
  return{ok:true};
 }};
