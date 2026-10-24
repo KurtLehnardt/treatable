@@ -79,7 +79,7 @@ test("already the latest: says so", async () => {
 });
 
 test("an older, prerelease or non-version 'latest' never downgrades or side-grades", async () => {
-  for (const body of [{ tag_name: "v0.0.9" }, { tag_name: "v9.0.0", prerelease: true }, { tag_name: "hackathon-deadline" }]) {
+  for (const body of [{ tag_name: "v0.0.9" }, { tag_name: "v9.0.0", prerelease: true }, { tag_name: "nightly-build" }]) {
     const api = await serveLatest(200, body);
     await openCheckScreen({ GRANTED_RELEASE_TAG: "v0.1.0", GRANTED_RELEASES_API: api });
     await expect(note(), JSON.stringify(body)).toHaveText("Granted v0.1.0 is the latest version.");

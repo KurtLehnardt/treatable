@@ -21,10 +21,10 @@
 // JSON-writing logic still runs and can be sanity-checked without keys; the
 // per-case try/catch below records the error and moves on).
 //
-// The five cases below are intentionally DIFFERENT from the five judged
+// The five cases below are intentionally DIFFERENT from the five standard
 // cases in scripts/dev-calibrate.mjs and scripts/4-precompute.mjs
 // (ai-healthcare / manufacturing / water / cyber / marketplace) — this is
-// R4b's own measurement set, not the frozen demo-day cache, so a reviewer
+// R4b's own measurement set, not the frozen precomputed cache, so a reviewer
 // can't mistake this script's output for that precomputed set.
 //
 // Run:

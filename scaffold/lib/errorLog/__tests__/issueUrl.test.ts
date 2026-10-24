@@ -130,8 +130,8 @@ describe("no secrets leave in the link", () => {
   test("even if the log somehow held them (sanitized again here), with this computer's own context too", () => {
     const errors = [
       err(1, {
-        message: "401 from provider: sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZ for kurt@example.com at https://llm.acme-corp.example/v1",
-        stack: "at C:\\Users\\kurt\\treatable\\scaffold\\lib\\llm\\client.ts:1:1",
+        message: "401 from provider: sk-ant-api03-ZZZZZZZZZZZZZZZZZZZZ for jane@example.com at https://llm.acme-corp.example/v1",
+        stack: "at C:\\Users\\jane\\treatable\\scaffold\\lib\\llm\\client.ts:1:1",
       }),
       err(2, { message: "GET https://x.example/v1?key=AIzaSyA1234567890abcdefghijkl failed; my-own-secret-xyz" }),
     ];
@@ -139,21 +139,21 @@ describe("no secrets leave in the link", () => {
       context,
       errors,
       errorId: errors[0].id,
-      sanitize: { user: "kurt", secrets: ["my-own-secret-xyz"], hosts: ["llm.acme-corp.example"] },
+      sanitize: { user: "jane", secrets: ["my-own-secret-xyz"], hosts: ["llm.acme-corp.example"] },
     });
     const decoded = decodeURIComponent(url);
-    for (const leak of ["sk-ant-api03", "ZZZZZZZZ", "kurt@example.com", "C:\\Users\\kurt", "AIzaSy", "my-own-secret-xyz", "acme-corp"]) {
+    for (const leak of ["sk-ant-api03", "ZZZZZZZZ", "jane@example.com", "C:\\Users\\jane", "AIzaSy", "my-own-secret-xyz", "acme-corp"]) {
       assert.ok(!decoded.includes(leak), `leaked ${leak}`);
     }
-    assert.ok(!/\bkurt\b/i.test(decoded), "user name leaked");
+    assert.ok(!/\bjane\b/i.test(decoded), "user name leaked");
     assert.match(decoded, /\[redacted-key\]/);
     assert.match(decoded, /https:\/\/\[private-host\]\/v1/);
     assert.match(parse(url).title, /\[redacted-key\]/);
   });
 
   test("context values are sanitized too", () => {
-    const { url } = buildIssueUrl({ context: { ...context, os: "linux /home/kurt/x" }, errors: [] });
-    assert.doesNotMatch(decodeURIComponent(url), /kurt/);
+    const { url } = buildIssueUrl({ context: { ...context, os: "linux /home/jane/x" }, errors: [] });
+    assert.doesNotMatch(decodeURIComponent(url), /jane/);
   });
 
   test("the title is short", () => {

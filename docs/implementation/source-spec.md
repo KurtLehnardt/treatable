@@ -271,7 +271,7 @@ inference — those stay user-stated or empty.
 
 ---
 
-## 9. Providers and the hackathon hooks
+## 9. Providers and extension seams
 
 **Settings → Model** keeps granted's three modes verbatim:
 

@@ -156,7 +156,7 @@ describe("sanitize: email addresses", () => {
     assert.equal(s("from jane.doe+treatable@mail.example.co.uk to ops@example.com"), "from [email] to [email]");
   });
   test("an address inside a message", () => {
-    assert.equal(s("User <kurt@example.org> not found"), "User <[email]> not found");
+    assert.equal(s("User <jane@example.org> not found"), "User <[email]> not found");
   });
   test("not an email: a decorator or a version", () => {
     assert.equal(s("@huggingface/transformers@4.3.0"), "@huggingface/transformers@4.3.0");

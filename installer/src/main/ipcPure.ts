@@ -730,7 +730,7 @@ export function isNewerRelease(a: string | null, b: string | null): boolean {
 /**
  * GitHub's "latest release" API response → its tag, if it's a published,
  * stable release tag (anything else — a draft, a prerelease, a tag like
- * "hackathon-deadline" — is not something to update to).
+ * "nightly-build" — is not something to update to).
  */
 export function parseLatestRelease(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;

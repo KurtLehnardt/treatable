@@ -40,7 +40,7 @@ test("a start that fails is logged, and the job carries the entry's id", async (
     host: "http://127.0.0.1:1",
     fetch: nothingListening,
     launch: () => {
-      throw new Error("spawn C:\\Users\\kurt\\AppData\\Local\\Programs\\Ollama\\ollama.exe ENOENT");
+      throw new Error("spawn C:\\Users\\jane\\AppData\\Local\\Programs\\Ollama\\ollama.exe ENOENT");
     },
   });
   assert.equal(up, false);

@@ -173,7 +173,7 @@ export const FLAG_REGISTRY: Record<FlagName, FlagDefinition> = {
     name: "commercial_ui",
     requirement: "COMM",
     description:
-      "Commercial / demo scaffolding in the UI: currently just the hackathon-judge demo sign-in " +
+      "Commercial / demo scaffolding in the UI: currently just the demo sign-in " +
       "toggle on the login screen. Default OFF so a self-hosted / run-it-locally user sees real " +
       "sign-in only; the underlying code stays in place. Flip ON to restore the demo toggle.",
     envVar: "NEXT_PUBLIC_FLAG_COMMERCIAL_UI",

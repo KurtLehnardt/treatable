@@ -289,8 +289,8 @@ test.fixme("interview: a short description shows the pre-search interview before
 });
 
 // Journey 5 — Sign-in / demo (needs mock auth on).
-test.fixme("sign-in/demo: entering demo mode shows the Hackathon Judge identity", async ({ page }) => {
+test.fixme("sign-in/demo: entering demo mode shows the demo identity", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: /demo|judge/i }).click();
-  await expect(page.getByText(/judge/i)).toBeVisible();
+  await page.getByRole("button", { name: /demo/i }).click();
+  await expect(page.getByText(/demo/i)).toBeVisible();
 });

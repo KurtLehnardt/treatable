@@ -1,6 +1,6 @@
 # Security policy
 
-Treatable's demoed product is a Chrome MV3 extension ([`extension/`](extension/README.md)) with a local Node native-messaging host and a Swift macOS Keychain helper ([`extension/native/`](extension/native/API_SETUP.md)). It helps patients explore public clinical studies and handles personal health information that people type into it. It is a hackathon MVP maintained by one developer.
+Treatable's primary product is a Chrome MV3 extension ([`extension/`](extension/README.md)) with a local Node native-messaging host and a Swift macOS Keychain helper ([`extension/native/`](extension/native/API_SETUP.md)). It helps patients explore public clinical studies and handles personal health information that people type into it. It is a minimum viable product maintained by one developer.
 
 Treatable is not a HIPAA-covered product. No Business Associate Agreement exists with OpenAI, no HIPAA compliance or certification is claimed, and minimized health information is not anonymous. Design details, trust boundaries and accepted risks are in the [threat model](docs/security/THREAT_MODEL.md).
 
@@ -75,13 +75,13 @@ Out of scope (documented in [threat model §9](docs/security/THREAT_MODEL.md#9-r
 
 Our pre-release practice is inspired by Anthropic's **Project Glasswing**, a restricted-access program in which partners use the Claude Mythos model to find and patch vulnerabilities before release. Treatable is not a Glasswing partner and did not use Mythos, which is not publicly available. We emulate the practice: **AI-assisted adversarial review plus SAST, dependency audit and secret scanning as a gate before each release.**
 
-A release (a demo build, a ZIP under `extension/artifacts/`, or a merge to the release branch) requires all of:
+A release (a build for distribution, a ZIP under `extension/artifacts/`, or a merge to the release branch) requires all of:
 
 1. The CI job [`extension-security`](.github/workflows/extension-security.yml) is green: `npm ci`, typecheck, both builds, extension tests, native tests, `npm audit --audit-level=high`, gitleaks over the full history, and Semgrep (`p/javascript`, `p/typescript`, `p/secrets`, `--error`).
 2. An AI-assisted adversarial review of the diff against the [threat model](docs/security/THREAT_MODEL.md) (trust boundaries, STRIDE rows, OWASP LLM mapping), with every finding triaged true or false positive with file:line, and either fixed or recorded as an accepted risk.
 3. The threat model is updated when a boundary, payload field, permission, endpoint, tool, model or retention behavior changes.
 4. No new claims of HIPAA compliance, certification, anonymity, eligibility or benefit; the repository's claim-filter tests pass.
 5. Manual check: manifest permissions and host permissions unchanged or justified; CSP unchanged or stricter; native `allowed_origins` still a single exact origin.
-6. On demo day, the operator follows the [demo-day checklist](docs/security/DEMO_DAY_CHECKLIST.md).
+6. Before running a build against a live OpenAI project, the operator uses a dedicated project with a restricted key and a low budget, and revokes or rotates the key afterwards (see [API setup](extension/native/API_SETUP.md)).
 
 The gate lowers risk. It does not prove the absence of vulnerabilities. The 2026-10-24 baseline results are in [threat model §10](docs/security/THREAT_MODEL.md#10-release-gate-and-baseline-scans).
