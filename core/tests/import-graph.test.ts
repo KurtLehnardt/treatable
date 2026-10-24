@@ -60,6 +60,17 @@ const PLANTED: [file: string, source: string, rule: RuleId][] = [
   ['triple-slash.ts', '/// <reference types="node" />\nexport const x = 1;\n', 'triple-slash'],
   ['nocheck.ts', '// @ts-nocheck\nexport const x = 1;\n', 'ts-directive'],
   ['declare.ts', 'declare const process: { env: Record<string, string> };\nexport {};\n', 'declare-global'],
+  ['indirect-eval.ts', "export const v = (0, eval)('1');\n", 'eval'],
+  ['function-alias.ts', 'const F = Function;\nexport const f = F;\n', 'eval'],
+  ['constructor-call.ts', "export const f = (async () => undefined).constructor('return 1');\n", 'eval'],
+  ['constructor-key.ts', "const g = () => undefined;\nexport const f = (g as unknown as Record<string, (s: string) => unknown>)['constructor']!('return 1');\n", 'eval'],
+  ['self.ts', 'export const s = self;\n', 'host-global'],
+  ['url.ts', "export const u = new URL('https://example.invalid');\n", 'host-global'],
+  ['url-search.ts', "export const q = new URLSearchParams('a=1');\n", 'host-global'],
+  ['microtask.ts', 'queueMicrotask(() => undefined);\n', 'host-global'],
+  ['weak-ref.ts', 'export const w = new WeakRef({});\n', 'host-global'],
+  ['intl.ts', "export const n = new Intl.NumberFormat('en-US');\n", 'host-global'],
+  ['atob.ts', "export const t = atob('eA==');\n", 'host-global'],
 ];
 
 const CLEAN = `import { z } from 'zod';

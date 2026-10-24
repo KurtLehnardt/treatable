@@ -193,6 +193,11 @@ const HOST_GLOBALS = [
   'EventSource', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate',
   'performance', 'crypto', 'TextEncoder', 'TextDecoder', 'structuredClone', 'AbortController', 'AbortSignal',
   'localStorage', 'sessionStorage', 'indexedDB', '__dirname', '__filename', 'module', 'exports', 'Deno', 'Bun',
+  // Not available, or not complete, on every target runtime (Hermes in particular): web platform
+  // objects, scheduling and memory APIs, internationalization, and engine or React Native globals.
+  'self', 'URL', 'URLSearchParams', 'Headers', 'Request', 'Response', 'FormData', 'Blob', 'atob', 'btoa',
+  'queueMicrotask', 'requestAnimationFrame', 'requestIdleCallback', 'WebAssembly', 'Worker', 'WeakRef',
+  'FinalizationRegistry', 'SharedArrayBuffer', 'Atomics', 'Intl', 'HermesInternal', 'nativeModuleProxy',
 ];
 const HOST_GLOBAL_PATTERN = new RegExp(`(?<![\\w$.])(${HOST_GLOBALS.join('|')})\\b`, 'g');
 const CODE_RULES: { rule: RuleId; pattern: RegExp; detail: string }[] = [
@@ -201,7 +206,8 @@ const CODE_RULES: { rule: RuleId; pattern: RegExp; detail: string }[] = [
   { rule: 'import-meta', pattern: /(?<![\w$.])import\s*\.\s*meta\b/g, detail: 'import.meta' },
   { rule: 'chrome', pattern: /(?<![\w$.])(?:chrome|browser)\s*[.[]/g, detail: 'chrome.*' },
   { rule: 'extension-identity', pattern: /\b(?:EXTENSION_ID|HOST_NAME|validateOrigin)\b/g, detail: 'extension identity' },
-  { rule: 'eval', pattern: /(?<![\w$.])(?:eval\s*\(|new\s+Function\b|Function\s*\()/g, detail: 'dynamic code' },
+  { rule: 'eval', pattern: /(?<![\w$.])(?:eval|Function)\b/g, detail: 'dynamic code (eval or Function, also aliased or indirect)' },
+  { rule: 'eval', pattern: /\.\s*constructor\s*\(/g, detail: 'dynamic code through a constructor property' },
   { rule: 'host-global', pattern: /\bMath\s*\.\s*random\b/g, detail: 'Math.random' },
   { rule: 'host-global', pattern: /\bDate\s*\.\s*now\b/g, detail: 'Date.now' },
   { rule: 'host-global', pattern: /\bnew\s+Date\s*\(\s*\)/g, detail: 'new Date()' },
@@ -231,6 +237,8 @@ export function scanSource(file: string, source: string, srcRoot: string): Viola
 
   for (const literal of literals) {
     if (IDENTITY_VALUES.some(v => literal.value.includes(v))) add(literal.start, 'extension-identity', 'identity string');
+    // obj['constructor'](...) reaches the Function constructor without the word appearing in code.
+    if (literal.value === 'constructor') add(literal.start, 'eval', 'constructor by string key');
     if (literal.kind !== 'string') continue;
     const position = isSpecifierPosition(code, literal.start);
     if (!position) continue;
