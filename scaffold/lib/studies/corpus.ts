@@ -1,4 +1,4 @@
-import {readFileSync} from "node:fs";import path from "node:path";import type {Study} from "../contracts/study";
+import {readFileSync} from "node:fs";import path from "node:path";import {STUDY_EMBEDDING_CONFIG} from "../../scripts/lib/studyEmbedder.mjs";import type {Study} from "../contracts/study";
 let cache:Study[]|undefined;export function loadStudies():Study[]{if(!cache)cache=JSON.parse(readFileSync(path.join(process.cwd(),"data/studies.json"),"utf8"));return cache!;}
-export interface StudyVectors{model:string;modelRevision:string;dims:number;hashes:Record<string,string>;vectors:Record<string,number[]>}
-let vectors:StudyVectors|null|undefined;export function loadStudyVectors():StudyVectors|null{if(vectors===undefined){try{vectors=JSON.parse(readFileSync(path.join(process.cwd(),"data/vectors/builtin.json"),"utf8"));}catch{vectors=null;}}return vectors!;}
+export interface StudyVectors{model:string;modelRevision:string;dims:number;config?:unknown;hashes:Record<string,string>;vectors:Record<string,number[]>}
+let vectors:StudyVectors|null|undefined;export function loadStudyVectors():StudyVectors|null{if(vectors===undefined){try{vectors=JSON.parse(readFileSync(path.join(process.cwd(),"data/vectors/builtin.json"),"utf8"));if(JSON.stringify(vectors?.config)!==JSON.stringify(STUDY_EMBEDDING_CONFIG))vectors=null;}catch{vectors=null;}}return vectors!;}

@@ -1,3 +1,4 @@
+import {loadStudies,loadStudyVectors} from "../studies/corpus";
 import { activeSearchSpace, type SearchEmbeddingsSetting, type SpaceId } from "./spaces";
 import { builtinModelStatus, type BuiltinModelStatus } from "./builtin";
 import { builtinBackfillStatus, startBuiltinVectorBackfill, type BackfillStatus } from "./backfill";
@@ -38,6 +39,7 @@ export function buildSearchStatus(
     startBackfill?: () => void;
   } = {},
 ): SearchStatus {
+  if(Object.keys(deps).length===0){const studies=loadStudies(),vectors=loadStudyVectors();return {space:"builtin",label:"Built-in, on this computer",model:"nomic-embed-text-v1.5 (128 tokens)",reason:"Treatable keeps all patient search embeddings on this computer",setting:"builtin",builtin:builtinModelStatus(),coverage:{withVectors:studies.filter(s=>vectors?.vectors[s.id]?.length===768).length,total:studies.length},note:"Keyword matching remains available if the local model is missing."};}
   const { space, reason, setting } = activeSearchSpace();
   let info: Pick<CorpusInfo, "space" | "withVectors" | "opportunities" | "note"> | null = null;
   try {
