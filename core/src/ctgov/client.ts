@@ -182,7 +182,7 @@ function discardBody(response: TransportResponse): void {
       const iterator = (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
       void iterator.return?.()?.catch?.(() => {});
     } catch {
-      // Nothing else to release.
+      // The iterator has no other resource to release.
     }
   }
 }

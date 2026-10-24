@@ -7,7 +7,7 @@
  *   - the URL is https://clinicaltrials.gov/api/v2/studies with exactly the query that
  *     buildStudiesUrl produces (parseStudiesUrl in query.ts re-derives the query and requires the
  *     same URL byte for byte): search terms, the United States, at most one state name, fixed
- *     parameters, a page size, and a ClinicalTrials.gov page token, and nothing else;
+ *     parameters, a page size, and a ClinicalTrials.gov page token, with no other parameter;
  *   - exactly one header, Accept: application/json (no credentials, cookies, or custom headers);
  *   - only the cancellation signal is passed on.
  * A rejected request throws INVALID_ENDPOINT and never reaches the port.
@@ -45,7 +45,7 @@ export function assertCtgovRequest(request: TransportRequest): string {
   return url;
 }
 
-/** The guarded transport for ClinicalTrials.gov. The returned port can reach nothing else. */
+/** The guarded transport for ClinicalTrials.gov: it forwards only requests that pass assertCtgovRequest. */
 export function createCtgovTransport(raw: Transport): Transport {
   return {
     request(request: TransportRequest): Promise<TransportResponse> {

@@ -217,7 +217,7 @@ function decodeComponent(text: string): string {
 
 /**
  * Recovers the StudiesQuery from a request URL and proves that the URL is exactly what
- * buildStudiesUrl produces for it: same parameters, same order, same encoding, and nothing else.
+ * buildStudiesUrl produces for it: same parameters, same order, same encoding, and no other parameter.
  * The transport seam runs this on every ClinicalTrials.gov request, so a URL that carries anything
  * beyond the search terms, the United States, at most one state, the fixed parameters, a page size,
  * and a ClinicalTrials.gov page token never reaches the transport port. Throws INVALID_ENDPOINT.

@@ -11,7 +11,7 @@
  *      the protocol schema already rejects longer terms instead of shortening them), so it is public
  *      ClinicalTrials.gov vocabulary and never text the user typed;
  *   4. every study object in the preview is toModelStudy(held record), so the preview holds exactly
- *      the allowlisted public fields of the records the user saw, and nothing else;
+ *      the allowlisted public fields of the records the user saw, with no other key;
  *   5. (session adapter) the session subject digest equals the record-set digest, which the consent
  *      digest covers.
  * The core functions take a RecordLookup, not a session, so a dispatcher-owned canonical record index
