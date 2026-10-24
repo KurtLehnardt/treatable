@@ -14,7 +14,8 @@
   "scripts": {
     "test": "tsx --test \"tests/**/*.test.ts\" \"strings/*.test.mjs\"",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.src.json",
-    "drift-check": "node scripts/drift-check.mjs"
+    "drift-check": "node scripts/drift-check.mjs",
+    "smoke:ctgov-live": "tsx scripts/ctgov-live-smoke.ts"
   },
   "dependencies": {
     "zod": "4.6.7"
