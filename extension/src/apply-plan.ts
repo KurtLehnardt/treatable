@@ -120,8 +120,8 @@ export function mailtoIssue(email:string|null|undefined,subject:string,body:stri
  if(/[\r\n\u0000]/.test(subject)||subject.length>2200)return 'Use a single-line subject of no more than 2,200 characters.';
  if(!subject.trim()||!body.trim())return 'Add a subject and message before opening your email app.';
  if(body.length>DRAFT_BODY_LIMIT)return 'Keep the message within 16,000 characters.';
- const at=email.lastIndexOf('@'),recipient=encodeURIComponent(email.slice(0,at))+'@'+email.slice(at+1);
- const url=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
+ let recipient:string;try{const at=email.lastIndexOf('@');recipient=encodeURIComponent(email.slice(0,at))+'@'+email.slice(at+1)}catch{return 'Check the email address for unsupported characters.'}
+ let url:string;try{url=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`}catch{return 'Check the subject and message for unsupported characters.'}
  return url.length>MAILTO_URL_LIMIT?'This draft is too long for a reliable email-app link. Copy the full email below and paste it into your email app.':undefined;
 }
 export function mailtoUrl(email:string|null|undefined,subject:string,body:string){

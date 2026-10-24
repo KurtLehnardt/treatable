@@ -76,5 +76,6 @@ test('mailto handoff encodes recipient percent signs once and rejects header inj
  for(const address of ['a@example.org\r\nBcc:x@example.org','a@example.org?bcc=x@example.org','a@example.org,b@example.org'])assert.equal(mailtoUrl(address,'s','Hello'),undefined);
  for(const subject of ['s\rBcc: x@example.org','s\nBcc: x@example.org','s\u0000'])assert.equal(mailtoUrl('a@example.org',subject,'Hello'),undefined);
  assert.equal(mailtoUrl('a@example.org','s','中'.repeat(800)),undefined,'encoded UTF-8 length is bounded');
+ assert.equal(mailtoUrl('a@example.org','s','\ud800'),undefined,'malformed Unicode does not crash rendering');
  assert.equal(mailtoUrl('a@example.org','','Hello'),undefined);assert.equal(mailtoUrl('a@example.org','s','  '),undefined);
 });
