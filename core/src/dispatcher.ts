@@ -14,9 +14,15 @@
  *   - every response and event is validated against the protocol schemas and size bounds before it
  *     leaves the core, and a response or event that contains the credential is replaced by an
  *     error.
- * Operations owned by later tasks (searchTrials: A2, screenLocal: A1b, preview building and
- * provider execution: A2/A4, credential flow details: A6b) answer NOT_IMPLEMENTED until their
- * pipelines are wired in. Pipelines never replace the consent checks in this file.
+ * Operations owned by later tasks (screenLocal: A1b, provider execution: A4, credential flow
+ * details: A6b) answer NOT_IMPLEMENTED until their pipelines are wired in. Pipelines never replace
+ * the consent checks in this file.
+ *
+ * Task A2 wires two built-in pipelines (see the "A2 built-ins" block in createCore): searchTrials is
+ * the live ClinicalTrials.gov search (src/ctgov), and the prepareReal builder is record-set pinning
+ * (src/pinning). Hosts may still pass their own pipelines (tests do), but prepareReal always runs
+ * verifyPinnedPreview on the built preview, so no builder can bypass the session record-set pin
+ * (docs/apps/record-set-pinning.md).
  */
 import { base64UrlEncode, utf8ByteLength } from './bytes.ts';
 import type { PinnedConsent } from './consent/store.ts';
@@ -60,6 +66,8 @@ import {
   type TraceEvent,
 } from './protocol.ts';
 import { createSession, type Session } from './session.ts';
+import { createSearchTrialsPipeline } from './ctgov/search.ts';
+import { buildPinnedPreview, verifyPinnedPreview } from './pinning/preview.ts';
 
 /** Host side of credential.request. The desktop helper forwards it over stdio; the mobile app reads the platform credential store. */
 export interface CredentialBroker {
@@ -156,7 +164,12 @@ export function createCore(portsInput: CorePorts, options: CoreOptions): Core {
   if (!(MODES as readonly string[]).includes(options?.mode) || !(RUNTIMES as readonly string[]).includes(options?.runtime)) {
     throw new TypeError('Treatable core requires a mode and a runtime.');
   }
-  const pipelines: Partial<Pipelines> = { ...(options.pipelines ?? {}) };
+  // A2 built-ins: live ClinicalTrials.gov search and the record-set pinned preview builder.
+  const builtins: Partial<Pipelines> = {
+    searchTrials: createSearchTrialsPipeline(ports),
+    buildPreview: async (ctx, packet) => buildPinnedPreview(ctx.session, packet),
+  };
+  const pipelines: Partial<Pipelines> = { ...builtins, ...(options.pipelines ?? {}) };
   const sessionOptions = options.consentTtlMs !== undefined ? { ttlMs: options.consentTtlMs } : {};
   let session = createSession(ports, sessionOptions);
 
@@ -243,6 +256,9 @@ export function createCore(portsInput: CorePorts, options: CoreOptions): Core {
       if (!preview.success || !jsonEqual(preview.data.packet, packet) || !jsonEqual(preview.data.delivery, DELIVERY_POLICY)) {
         throw new CoreError('INTERNAL_ERROR');
       }
+      // A2 record-set pinning, enforced for every builder: the preview must equal the one derived
+      // from the pinned session records (membership, condition term, exact public study fields).
+      verifyPinnedPreview(s, packet, built.preview);
       // Anything that cleared consent or changed the subject while building wins over this preparation.
       if (s.consent.generation() !== generation || s.subjectDigest() !== subject) throw new CoreError('CANCELLED');
       const prepared = await s.consent.prepare({

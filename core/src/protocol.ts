@@ -62,6 +62,17 @@ export const MAX_CONDITION_TERM_BYTES = 200;
 /** A session accepts at most this many requests; endSession starts a new count. */
 export const MAX_REQUESTS_PER_SESSION = 1000;
 
+/**
+ * Live ClinicalTrials.gov search bounds (task A2). One searchTrials request asks ClinicalTrials.gov
+ * for at most MAX_SEARCH_PAGES_PER_REQUEST pages (to skip empty or unreadable pages) and returns at
+ * most MAX_SEARCH_PAGE_SIZE records. Each record shown to the user is capped at
+ * MAX_STUDY_RECORD_BYTES of serialized UTF-8, so a full page of records always fits the searchTrials
+ * response budget (MAX_RESPONSE_BYTES); fields shortened to fit are listed in truncatedFields.
+ */
+export const MAX_SEARCH_PAGE_SIZE = 25;
+export const MAX_SEARCH_PAGES_PER_REQUEST = 3;
+export const MAX_STUDY_RECORD_BYTES = 40 * 1024;
+
 /** R4 bounds (final-plan.md): Decisions <= 10 studies, one request per study, <= 3 at a time. */
 export const MAX_SCORE_STUDIES = 10;
 export const MAX_DECISIONS_CONCURRENCY = 3;
@@ -245,7 +256,17 @@ export const ModeSchema = z.enum(MODES);
 export const ConsentOperationSchema = z.enum(CONSENT_OPERATIONS);
 export const ErrorCodeSchema = z.enum(ERROR_CODES);
 
-const SearchTermSchema = inputText(1, 100).refine(v => !hasContactLikeContent(v));
+/**
+ * A search term must be safe to place inside one double-quoted ClinicalTrials.gov Essie phrase
+ * (task A2): no double quote or backslash, which could end the phrase and add search operators.
+ * It must also not name a study ID ("NCT" followed by digits), because ClinicalTrials.gov ignores
+ * every filter, including the United States and state filters, when a query holds only study IDs.
+ */
+export function isSendableSearchTerm(text: string): boolean {
+  return !/["\\]/.test(text) && !/nct\s*\d/i.test(text);
+}
+
+const SearchTermSchema = inputText(1, 100).refine(v => !hasContactLikeContent(v) && isSendableSearchTerm(v));
 /**
  * A condition term the user picked from ClinicalTrials.gov vocabulary. It is validated exactly as
  * received and never normalized, trimmed, or shortened, because task A2 must match it byte for byte
@@ -601,6 +622,15 @@ export const StudyContactSchema = z.strictObject({
   email: outputText(1, 254).optional(),
 });
 
+/**
+ * Fields of a StudyRecord that the core may have shortened while reading a live record (text cut by
+ * UTF-8 bytes, list entries dropped) so that the record fits MAX_STUDY_RECORD_BYTES or a field cap.
+ * The full record is always available at sourceUrl.
+ */
+export const STUDY_RECORD_TRUNCATABLE_FIELDS = [
+  'title', 'sponsor', 'summary', 'criteria', 'conditions', 'meshTerms', 'locations', 'contacts',
+] as const;
+
 /** A public ClinicalTrials.gov record as shown to the user. Every record carries sourceUrl and retrievedAt. */
 export const StudyRecordSchema = z
   .strictObject({
@@ -625,8 +655,10 @@ export const StudyRecordSchema = z
     lastUpdatePostDate: z.string().regex(CTGOV_DATE_PATTERN).nullable(),
     sourceUrl: z.string().max(80),
     retrievedAt: IsoTimestampSchema,
+    truncatedFields: uniqueArray(z.enum(STUDY_RECORD_TRUNCATABLE_FIELDS), 0, STUDY_RECORD_TRUNCATABLE_FIELDS.length),
   })
-  .refine(record => record.sourceUrl === `https://clinicaltrials.gov/study/${record.nctId}`);
+  .refine(record => record.sourceUrl === `https://clinicaltrials.gov/study/${record.nctId}`)
+  .refine(record => utf8ByteLength(JSON.stringify(record)) <= MAX_STUDY_RECORD_BYTES);
 export type StudyRecord = z.infer<typeof StudyRecordSchema>;
 
 // ---------------------------------------------------------------------------------------------
@@ -646,8 +678,9 @@ export const SearchTrialsPayloadSchema = z.strictObject({
     .max(5)
     .refine(terms => new Set(terms.map(t => t.toLowerCase())).size === terms.length),
   state: UsStateSchema.optional(),
+  /** Only the nextPageToken the core returned for the same conditionTerms and state in this session. */
   pageToken: PageTokenSchema.optional(),
-  pageSize: z.number().int().min(1).max(25).optional(),
+  pageSize: z.number().int().min(1).max(MAX_SEARCH_PAGE_SIZE).optional(),
 });
 
 /** Screening input. Exact age and location are used only by local screening; no operation forwards them to a remote service. */
@@ -716,11 +749,13 @@ export const StatusResultSchema = z.strictObject({
 
 export const SearchTrialsResultSchema = z
   .strictObject({
-    records: z.array(StudyRecordSchema).max(25),
+    records: z.array(StudyRecordSchema).max(MAX_SEARCH_PAGE_SIZE),
     nextPageToken: PageTokenSchema.optional(),
     totalCount: z.number().int().min(0).max(10_000_000).optional(),
     retrievedAt: IsoTimestampSchema,
     source: z.enum(['live', 'public_cache']),
+    /** Returned studies that were not shown: unreadable, outside the requested filters, or repeated. */
+    skippedRecords: z.number().int().min(0).max(MAX_SEARCH_PAGE_SIZE * MAX_SEARCH_PAGES_PER_REQUEST),
     /** Exactly what ClinicalTrials.gov received, so the UI can show it. */
     query: z.strictObject({
       conditionTerms: z.array(outputText(1, 100)).min(1).max(5),

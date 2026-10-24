@@ -44,3 +44,5 @@ export {
   type PreparedConsent,
 } from './consent/index.ts';
 export { loadJsonResource, loadResource, RESOURCE_ID_PATTERN, MAX_RESOURCE_BYTES, type ResourceSpec } from './resources.ts';
+export * from './ctgov/index.ts';
+export * from './pinning/index.ts';

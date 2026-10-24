@@ -3,7 +3,6 @@
  * A4 (provider execution) so the consent gate in the dispatcher can be exercised end to end without
  * any network access. Nothing here is product behavior.
  */
-import { createHash } from 'node:crypto';
 import { createCore, type CoreOptions, type CredentialBroker, type ExecuteContext, type Pipelines } from '../../src/dispatcher.ts';
 import {
   CAUTION_IDS,
@@ -16,7 +15,8 @@ import {
   type OperationResult,
 } from '../../src/protocol.ts';
 import { testPorts, type TestPorts } from './fakes.ts';
-import { FICTIONAL_IDS, makePreview } from './preview.ts';
+import { FICTIONAL_IDS } from './preview.ts';
+import { prepareRecordMerge } from '../../src/pinning/record-set.ts';
 
 export const receipt = { policyVersion: CONSENT_POLICY_VERSION, accepted: true } as const;
 export const FAKE_KEY = 'sk-test-not-a-real-credential-0001';
@@ -25,7 +25,7 @@ export function req(op: string, payload: unknown, id: string) {
   return { v: CONTRACT_VERSION, type: 'request', id, op, payload };
 }
 
-export function fakeRecord(nctId: string) {
+export function fakeRecord(nctId: string, terms: readonly string[] = ['seasonal allergic rhinitis']) {
   return {
     nctId,
     title: `Fictional study ${nctId}`,
@@ -34,7 +34,7 @@ export function fakeRecord(nctId: string) {
     phases: ['PHASE2'],
     conditions: ['Seasonal Allergic Rhinitis'],
     meshTerms: ['Rhinitis, Allergic, Seasonal'],
-    summary: 'Fictional public summary.',
+    summary: `Fictional public summary found for ${terms.join(', ')}.`,
     eligibility: { criteria: 'Inclusion Criteria:\n* Fictional', minimumAge: '18 Years', maximumAge: null, sex: 'ALL', healthyVolunteers: false },
     sponsor: null,
     locations: [{ city: 'Boise', state: 'Idaho', country: 'United States', geo: { lat: 43.6, lon: -116.2 } }],
@@ -42,6 +42,7 @@ export function fakeRecord(nctId: string) {
     lastUpdatePostDate: '2026-09-30',
     sourceUrl: `https://clinicaltrials.gov/study/${nctId}`,
     retrievedAt: '2026-10-24T08:00:00.000Z',
+    truncatedFields: [],
   };
 }
 
@@ -97,18 +98,19 @@ export function harness(opts: HarnessOptions = {}) {
   };
   const pipelines: Partial<Pipelines> = {
     async searchTrials(ctx, payload): Promise<OperationResult<'searchTrials'>> {
-      // Stand-in for A2: the subject digest covers the returned record set.
+      // Mocked stand-in for the live search: fictional records go into the real session record set,
+      // so prepareReal runs the real record-set pinning (built-in builder and verifyPinnedPreview).
       const ids = FICTIONAL_IDS.slice(0, payload.pageSize ?? 3);
-      ctx.session.setSubjectDigest(createHash('sha256').update(JSON.stringify([payload.conditionTerms, ids])).digest('hex'));
+      const records = ids.map(id => fakeRecord(id, payload.conditionTerms)) as OperationResult<'searchTrials'>['records'];
+      const commit = await prepareRecordMerge(ctx.session, ctx.ports.sha256, records);
+      commit();
       return {
-        records: ids.map(fakeRecord) as OperationResult<'searchTrials'>['records'],
+        records,
         retrievedAt: '2026-10-24T08:00:00.000Z',
         source: 'live',
+        skippedRecords: 0,
         query: { conditionTerms: payload.conditionTerms, ...(payload.state ? { state: payload.state } : {}), country: 'US' },
       };
-    },
-    async buildPreview(_ctx, packet) {
-      return { preview: makePreview(packet), context: { built: true } };
     },
     executeReal: ctx => (opts.execute ?? defaultExecute)(ctx, log),
     ...(opts.pipelines ?? {}),
