@@ -38,7 +38,7 @@ export class SiteClient {
  port.onMessage.addListener((v:any)=>{if(this.ended||this.port!==port||!object(v)||siteBytes(v)>SITE_MAX_MESSAGE_BYTES)return;
   if(v.type==='site.ready'){try{const snapshot=parseSnapshot(v.snapshot);if(!Array.isArray(v.filters)||v.filters.length>100)throw Error();this.ready=true;clearTimeout(authTimer);this.cancelAuth=undefined;resolve({snapshot,filters:SITE_FILTERS.map(f=>({...f,options:f.options?.map(o=>({...o}))})),search:object(v.search)?v.search:undefined,compact:v.compact===true});this.emit(v)}catch{this.disconnect();reject(Error('The site connection was rejected.'))}return}
   if(v.type==='site.snapshot'){try{this.emit({...v,snapshot:parseSnapshot(v.snapshot)})}catch{}return}
-  if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
+  if(v.type==='site.matchingEnded'){this.emit(v);return}if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
   if(typeof v.id!=='string')return;const item=this.pending.get(v.id);if(!item)return;clearTimeout(item.timer);this.pending.delete(v.id);v.ok===true?item.resolve(v.result):item.reject(Error('The site action did not complete. Your local inputs were not sent.'));
  });
  port.onDisconnect.addListener(()=>{clearTimeout(authTimer);this.cancelAuth=undefined;this.port=undefined;this.ready=false;this.rejectPending();if(!this.ended)this.emit({type:'site.ended'});reject(Error('The site session closed.'))});
