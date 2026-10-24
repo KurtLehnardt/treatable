@@ -5,7 +5,7 @@ import{siteLocationStatus,validLocalOrigin,type LocalOrigin}from'./local-distanc
 import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplyResult,type ApplySite}from'../shared/apply-contract.mjs';
 export const DEFAULT_QUESTION_IDS:readonly ApplyQuestionId[]=Object.freeze(['still_enrolling','prescreen_fit','visits','costs','next_steps']);
 export const DEFAULT_PRESCREEN_IDS:readonly ApplyPrescreenId[]=Object.freeze(['diagnosis_details','symptom_duration','recent_imaging','prior_treatments','medication_list']);
-export const MAILTO_BODY_LIMIT=1800,ANSWER_LIMIT=160,NEAR_COMPLETION_DAYS=120,STALE_DAYS=365,FOLLOW_UP_BUSINESS_DAYS=5;
+export const MAILTO_BODY_LIMIT=1800,MAILTO_URL_LIMIT=2000,DRAFT_BODY_LIMIT=16000,ANSWER_LIMIT=160,NEAR_COMPLETION_DAYS=120,STALE_DAYS=365,FOLLOW_UP_BUSINESS_DAYS=5;
 const DAY=86400000;
 export interface ApplyPatient{name:string;phone:string;email:string;bestTimes:string;zip:string;answers:Partial<Record<ApplyPrescreenId,string>>}
 export const blankPatient=():ApplyPatient=>({name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}});
@@ -78,7 +78,7 @@ export function deterministicFlags(record:ApplyRecord,site:ApplySite|undefined,t
 /** Agent and deterministic flags, de-duplicated, in the fixed catalog order. */
 export function mergeFlags(...lists:readonly ApplyFlagId[][]):ApplyFlagId[]{const all=new Set(lists.flat());return(Object.keys(APPLY_FLAG_TEMPLATES) as ApplyFlagId[]).filter(id=>all.has(id))}
 /** The site's own routing format: "NCT ID, org study ID (or acronym), official title (or brief title)". */
-export function emailSubject(record:ApplyRecord){return[record.nctId,record.orgStudyId??record.acronym,record.officialTitle??record.title].filter((v):v is string=>!!v).join(', ')}
+export function emailSubject(record:ApplyRecord){return[record.nctId,record.orgStudyId??record.acronym,record.officialTitle??record.title].filter((v):v is string=>!!v).map(v=>clean(v,2000)).join(', ')}
 /** Fixed pronoun swap so catalog pre-screen labels read in the patient's voice. */
 export function firstPerson(text:string){return text.replace(/\bto you\b/g,'to me').replace(/\bYour\b/g,'My').replace(/\byour\b/g,'my').replace(/\byou\b/g,'I')}
 const place=(s?:ApplySite)=>s?[s.facility,[s.city,s.state].filter(Boolean).join(', ')].filter(Boolean).join(' in '):'';
@@ -87,16 +87,10 @@ function reachLine(p:ApplyPatient){const phone=clean(p.phone,40),email=clean(p.e
 /** Pre-screen items to ask about: the selected ones, plus anything the patient already answered (so a later agent
  * selection never silently drops what they typed). */
 export function answerIds(prescreenIds:readonly ApplyPrescreenId[],patient:ApplyPatient):ApplyPrescreenId[]{return[...prescreenIds,...(Object.keys(APPLY_PRESCREEN_TEMPLATES) as ApplyPrescreenId[]).filter(id=>!prescreenIds.includes(id)&&clean(patient.answers[id],ANSWER_LIMIT))]}
-export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[],limit=MAILTO_BODY_LIMIT){
+export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[]){
  const name=clean(patient.name,120)||'[your name]',where=place(site);
  const answered=answerIds(prescreenIds,patient).flatMap(id=>{const a=clean(patient.answers[id],ANSWER_LIMIT);return a?[{label:firstPerson(APPLY_PRESCREEN_TEMPLATES[id]),answer:a}]:[]});
- const build=(questions:number,answerMax:number)=>[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,300)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer.slice(0,answerMax)}`)]:[]),...(questions?['','My questions:',...questionIds.slice(0,questions).map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
- // Measured as sent in a mailto: URL, where each line break becomes CRLF.
- const size=(b:string)=>b.length+(b.match(/\n/g)?.length??0);let questions=questionIds.length,answerMax=ANSWER_LIMIT,body=build(questions,answerMax);
- while(size(body)>limit&&questions>1)body=build(--questions,answerMax);
- while(size(body)>limit&&answerMax>40)body=build(questions,answerMax-=40);
- while(size(body)>limit)body=body.slice(0,body.length-(size(body)-limit));
- return body;
+ return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,1000)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer}`)]:[]),...(questionIds.length?['','My questions:',...questionIds.map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
 }
 export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[]){
  const name=clean(patient.name,120)||'[your name]',where=place(site);
@@ -120,7 +114,21 @@ export function buildFollowUpIcs(plan:Pick<ApplyPlan,'nctId'|'title'|'sourceUrl'
  const description=[`Study ${plan.nctId}: ${clean(plan.title,300)}`,plan.site?`Site: ${place(plan.site)}`:'',who,plan.followUp,plan.sourceUrl].filter(Boolean).join('\n');
  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Treatable//Help me apply//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',`UID:${plan.nctId}-${day}-follow-up@treatable.invalid`,`DTSTAMP:${stamp(now)}`,`DTSTART;VALUE=DATE:${day}`,`DTEND;VALUE=DATE:${next}`,`SUMMARY:${icsText(`Follow up on study ${plan.nctId}`)}`,`DESCRIPTION:${icsText(description)}`,`URL:${plan.sourceUrl}`,'BEGIN:VALARM','TRIGGER:PT9H','ACTION:DISPLAY',`DESCRIPTION:${icsText(`Follow up on study ${plan.nctId}`)}`,'END:VALARM','END:VEVENT','END:VCALENDAR'].map(fold).join('\r\n')+'\r\n';
 }
-export function mailtoUrl(email:string|null|undefined,subject:string,body:string){if(!email||!validEmail(email))return;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n').slice(0,MAILTO_BODY_LIMIT))}`}
+/** Conservative handoff limit, not a universal mail-client maximum. The full editable draft is never shortened. */
+export function mailtoIssue(email:string|null|undefined,subject:string,body:string):string|undefined{
+ if(!email||!validEmail(email))return 'Choose a valid email address listed in the official record.';
+ if(/[\r\n\u0000]/.test(subject)||subject.length>2200)return 'Use a single-line subject of no more than 2,200 characters.';
+ if(!subject.trim()||!body.trim())return 'Add a subject and message before opening your email app.';
+ if(body.length>DRAFT_BODY_LIMIT)return 'Keep the message within 16,000 characters.';
+ const at=email.lastIndexOf('@'),recipient=encodeURIComponent(email.slice(0,at))+'@'+email.slice(at+1);
+ const url=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
+ return url.length>MAILTO_URL_LIMIT?'This draft is too long for a reliable email-app link. Copy the full email below and paste it into your email app.':undefined;
+}
+export function mailtoUrl(email:string|null|undefined,subject:string,body:string){
+ if(mailtoIssue(email,subject,body))return;
+ const at=email!.lastIndexOf('@'),recipient=encodeURIComponent(email!.slice(0,at))+'@'+email!.slice(at+1);
+ return `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
+}
 /** Link target for a contact action: only a mailto: or tel: URL built above, never any other scheme. */
 export function contactHref(value:string|undefined,scheme:'mailto:'|'tel:'){return typeof value==='string'&&value.startsWith(scheme)&&!/[\s<>"]/.test(value)?value:undefined}
 export function telUrl(phone:string|null|undefined){const d=phoneDigits(phone);return d?`tel:${d}`:undefined}

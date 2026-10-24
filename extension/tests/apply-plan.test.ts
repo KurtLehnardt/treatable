@@ -1,5 +1,5 @@
 import test from'node:test';import assert from'node:assert/strict';
-import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
+import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
 import{studyPageNctId}from'../src/apply-page';
 import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,type ApplyQuestionId}from'../shared/apply-contract.mjs';
 import{record,SALT_LAKE,TODAY,patient}from'./apply-fixture';
@@ -40,14 +40,16 @@ test('subject follows the site routing format and omits missing parts',()=>{
  assert.equal(emailSubject({...r,orgStudyId:null}),'NCT07254806, IDCT, A Prospective, Randomized, Double-Blinded, Sham-Controlled, Multicenter Study of IDCT');
  assert.equal(emailSubject({...r,orgStudyId:null,acronym:null,officialTitle:null}),`NCT07254806, ${r.title}`);
 });
-test('email is short, fixed-template, capped at 1,800 characters, and only carries what the patient typed',()=>{
+test('email preserves the full local draft and only carries what the patient typed',()=>{
  const r=record(),plan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY});
  assert.match(plan.body,/^Hello Sam Lee,\n/);assert.match(plan.body,/at Wasatch Spine Research in Salt Lake City, Utah/);assert.match(plan.body,/- My diagnosis and when it was made: Disc degeneration diagnosed 2024/);assert.match(plan.body,/- How long I have had symptoms: About two years/);
  assert.doesNotMatch(plan.body,/84101|imaging|medicines/i,'no ZIP and no unanswered health items');for(const id of DEFAULT_QUESTION_IDS)assert.ok(plan.body.includes(APPLY_QUESTION_TEMPLATES[id]),id);
  assert.deepEqual(plan.questionIds,[...DEFAULT_QUESTION_IDS]);assert.deepEqual(plan.prescreenIds,[...DEFAULT_PRESCREEN_IDS]);
  const many=Object.keys(APPLY_QUESTION_TEMPLATES).slice(0,8) as ApplyQuestionId[],long={...patient(),bestTimes:'x'.repeat(120),answers:Object.fromEntries(DEFAULT_PRESCREEN_IDS.map(id=>[id,'y'.repeat(400)]))};
- const body=composeEmail(r,r.sites[1],r.sites[1].contacts[0],long,many,DEFAULT_PRESCREEN_IDS),sent=decodeURIComponent(mailtoUrl('slee@wasatchspine.org','s',body)!.split('&body=')[1]);assert.ok(sent.length<=MAILTO_BODY_LIMIT,String(sent.length));assert.equal(sent,body.replace(/\n/g,'\r\n'),'nothing cut after the cap');assert.match(body,/Thank you,\nMorgan Example$/);
- const url=mailtoUrl('slee@wasatchspine.org',plan.subject,'a'.repeat(5000))!;assert.ok(url.startsWith('mailto:slee@wasatchspine.org?subject=NCT07254806%2C%20'));assert.equal(decodeURIComponent(url.split('&body=')[1]).length,MAILTO_BODY_LIMIT);
+ const body=composeEmail(r,r.sites[1],r.sites[1].contacts[0],long,many,DEFAULT_PRESCREEN_IDS);
+ assert.ok(body.length>MAILTO_BODY_LIMIT,'full draft is preserved, not silently shortened');assert.match(body,/Thank you,\nMorgan Example$/);for(const id of many)assert.ok(body.includes(APPLY_QUESTION_TEMPLATES[id]));
+ assert.equal(mailtoUrl('slee@wasatchspine.org','s',body),undefined);assert.match(mailtoIssue('slee@wasatchspine.org','s',body)!,/Copy the full email/);
+ const short=mailtoUrl('slee@wasatchspine.org','Study enquiry','Hello\nThank you')!;assert.ok(short.length<=MAILTO_URL_LIMIT);assert.equal(decodeURIComponent(short.split('&body=')[1]),'Hello\r\nThank you');
  assert.equal(mailtoUrl('bad address@x',plan.subject,'b'),undefined);assert.equal(plan.mailto?.startsWith('mailto:slee@wasatchspine.org?'),true);assert.equal(plan.tel,'tel:8015550100');assert.equal(telUrl('12'),undefined);assert.equal(telUrl('+44 20 7946 0000'),'tel:+442079460000');
  assert.equal(contactHref('javascript:alert(1)','mailto:'),undefined);assert.equal(contactHref(plan.tel,'tel:'),plan.tel);
  assert.match(plan.phoneScript,/I am calling about the study NCT07254806/);assert.match(plan.phoneScript,/1\. Is the study still enrolling at this site\?/);for(const id of DEFAULT_PRESCREEN_IDS)assert.ok(plan.phoneScript.includes(APPLY_PRESCREEN_TEMPLATES[id]));
@@ -66,4 +68,13 @@ test('follow-up plan is five business days out and the .ics carries no patient d
  const unfolded=ics.replace(/\r\n /g,'');assert.match(unfolded,/Study contact: Sam Lee\\, 801-555-0100\\, slee@wasatchspine\.org/);assert.match(unfolded,/https:\/\/clinicaltrials\.gov\/study\/NCT07254806/);
  for(const line of ics.split('\r\n'))assert.ok(new TextEncoder().encode(line).length<=75,line);
  for(const secret of [p.name,'Morgan',p.phone,'0142',p.email,p.zip,p.bestTimes,p.answers.diagnosis_details!,p.answers.symptom_duration!])assert.ok(!unfolded.includes(secret),`ics leaked ${secret}`);
+});
+
+test('mailto handoff encodes recipient percent signs once and rejects header injection or oversized URLs',()=>{
+ const address='a%0d%0abcc%3ax@example.org',url=mailtoUrl(address,'Study enquiry','Hello')!;
+ assert.ok(url.startsWith('mailto:a%250d%250abcc%253ax@example.org?'));assert.doesNotMatch(decodeURIComponent(url.split('?')[0]),/[\r\n]/);
+ for(const address of ['a@example.org\r\nBcc:x@example.org','a@example.org?bcc=x@example.org','a@example.org,b@example.org'])assert.equal(mailtoUrl(address,'s','Hello'),undefined);
+ for(const subject of ['s\rBcc: x@example.org','s\nBcc: x@example.org','s\u0000'])assert.equal(mailtoUrl('a@example.org',subject,'Hello'),undefined);
+ assert.equal(mailtoUrl('a@example.org','s','中'.repeat(800)),undefined,'encoded UTF-8 length is bounded');
+ assert.equal(mailtoUrl('a@example.org','','Hello'),undefined);assert.equal(mailtoUrl('a@example.org','s','  '),undefined);
 });
