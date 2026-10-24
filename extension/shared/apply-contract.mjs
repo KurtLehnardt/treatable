@@ -105,6 +105,8 @@ export function parseApplyReply(v,expectedId){
 export const STUDY_BRIEF_REQUEST_TYPES=Object.freeze(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief']);
 export const STUDY_BRIEF_CATEGORIES=Object.freeze(['overview','timeline','design','eligibility','contact']);
 export const STUDY_BRIEF_ROUTES=Object.freeze(['answered_by_record','ask_patient','ask_coordinator']);
+// Upper bound for one public brief including its sourced claims; claims that would exceed it are dropped, never the whole result.
+export const STUDY_BRIEF_MAX_BYTES=24*1024;
 export function briefNctIds(v){if(!Array.isArray(v)||v.length<1||v.length>2||new Set(v).size!==v.length)throw Error('Choose one or two current public studies');v.forEach(applyNctId);return v;}
 export function parseStudyBriefRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid study brief operation');const p=v.payload;
@@ -118,7 +120,7 @@ export function parsePublicStudyBrief(v){
  if(v.sourceUrl!==`https://clinicaltrials.gov/study/${v.nctId}`||!Number.isSafeInteger(v.fetchedAt)||!Array.isArray(v.items)||v.items.length>36||!Array.isArray(v.unknowns)||v.unknowns.length>8||v.unknowns.some(x=>!str(x,180,false)))throw Error('Invalid study sources');
  for(const i of v.items)if(!exactKeys(i,['id','category','label','field','text','sourceUrl','context','dateType'])||typeof i.id!=='string'||!/^e[1-9][0-9]?$/.test(i.id)||!STUDY_BRIEF_CATEGORIES.includes(i.category)||!str(i.label,100,false)||!str(i.field,160,false)||!/^protocolSection\.[A-Za-z0-9_.\[\]]+$/.test(i.field)||!str(i.text,2200,false)||i.sourceUrl!==v.sourceUrl||i.context!==undefined&&!['inclusion','exclusion','eligibility_unspecified','registry_milestone','participant_schedule'].includes(i.context)||i.dateType!==undefined&&!['ACTUAL','ESTIMATED','UNSPECIFIED'].includes(i.dateType))throw Error('Invalid source item');
  if(v.claims!==undefined){if(!Array.isArray(v.claims)||v.claims.length>8)throw Error('Invalid sourced claims');const source=new Map(v.items.map(i=>[i.id,i]));for(const c of v.claims){if(!exactKeys(c,['id','category','text','evidenceIds','sourceQuotes'])||typeof c.id!=='string'||!/^claim[1-8]$/.test(c.id)||!STUDY_BRIEF_CATEGORIES.includes(c.category)||!str(c.text,2200,false)||!Array.isArray(c.evidenceIds)||c.evidenceIds.length!==1||new Set(c.evidenceIds).size!==c.evidenceIds.length||!Array.isArray(c.sourceQuotes)||c.sourceQuotes.length!==c.evidenceIds.length||c.evidenceIds.some((id,i)=>!source.has(id)||c.sourceQuotes[i]!==source.get(id).text||c.text!==source.get(id).text||c.category!==source.get(id).category))throw Error('Invalid claim citations');}if(new Set(v.claims.map(c=>c.id)).size!==v.claims.length)throw Error('Duplicate sourced claims');}
- if(new Set(v.items.map(i=>i.id)).size!==v.items.length||utf8Bytes(v)>24*1024)throw Error('Invalid study brief bounds');return v;
+ if(new Set(v.items.map(i=>i.id)).size!==v.items.length||utf8Bytes(v)>STUDY_BRIEF_MAX_BYTES)throw Error('Invalid study brief bounds');return v;
 }
 export function parsePreparedStudyBrief(v){
  if(!exactKeys(v,['kind','token','digest','expiresAt','records','briefs'])||v.kind!=='preparedStudyBrief'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Number.isSafeInteger(v.expiresAt)||!Array.isArray(v.records)||!Array.isArray(v.briefs))throw Error('Invalid prepared study brief');
