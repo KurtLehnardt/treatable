@@ -1,5 +1,5 @@
 import test from'node:test';import assert from'node:assert/strict';
-import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
+import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,messageBody,hasHeaderLines,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
 import{studyPageNctId}from'../src/apply-page';
 import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,type ApplyQuestionId}from'../shared/apply-contract.mjs';
 import{record,SALT_LAKE,TODAY,patient}from'./apply-fixture';
@@ -48,7 +48,7 @@ test('email preserves the full local draft and only carries what the patient typ
  const many=Object.keys(APPLY_QUESTION_TEMPLATES).slice(0,8) as ApplyQuestionId[],long={...patient(),bestTimes:'x'.repeat(120),answers:Object.fromEntries(DEFAULT_PRESCREEN_IDS.map(id=>[id,'y'.repeat(400)]))};
  const body=composeEmail(r,r.sites[1],r.sites[1].contacts[0],long,many,DEFAULT_PRESCREEN_IDS);
  assert.ok(body.length>MAILTO_BODY_LIMIT,'full draft is preserved, not silently shortened');assert.match(body,/Thank you,\nMorgan Example$/);for(const id of many)assert.ok(body.includes(APPLY_QUESTION_TEMPLATES[id]));
- assert.equal(mailtoUrl('slee@wasatchspine.org','s',body),undefined);assert.match(mailtoIssue('slee@wasatchspine.org','s',body)!,/Copy the full email/);
+ assert.equal(mailtoUrl('slee@wasatchspine.org','s',body),undefined);assert.match(mailtoIssue('slee@wasatchspine.org','s',body)!,/Use Copy message/);
  const short=mailtoUrl('slee@wasatchspine.org','Study enquiry','Hello\nThank you')!;assert.ok(short.length<=MAILTO_URL_LIMIT);assert.equal(decodeURIComponent(short.split('&body=')[1]),'Hello\r\nThank you');
  assert.equal(mailtoUrl('bad address@x',plan.subject,'b'),undefined);assert.equal(plan.mailto?.startsWith('mailto:slee@wasatchspine.org?'),true);assert.equal(plan.tel,'tel:8015550100');assert.equal(telUrl('12'),undefined);assert.equal(telUrl('+44 20 7946 0000'),'tel:+442079460000');
  assert.equal(contactHref('javascript:alert(1)','mailto:'),undefined);assert.equal(contactHref(plan.tel,'tel:'),plan.tel);
@@ -78,4 +78,18 @@ test('mailto handoff encodes recipient percent signs once and rejects header inj
  assert.equal(mailtoUrl('a@example.org','s','中'.repeat(800)),undefined,'encoded UTF-8 length is bounded');
  assert.equal(mailtoUrl('a@example.org','s','\ud800'),undefined,'malformed Unicode does not crash rendering');
  assert.equal(mailtoUrl('a@example.org','','Hello'),undefined);assert.equal(mailtoUrl('a@example.org','s','  '),undefined);
+});
+
+const mailtoParts=(url:string)=>{const[target,query]=url.slice('mailto:'.length).split('?');const params=Object.fromEntries(query.split('&').map(kv=>{const at=kv.indexOf('=');return[kv.slice(0,at),decodeURIComponent(kv.slice(at+1))]}));return{to:decodeURIComponent(target),params}};
+test('generated email body holds only the message; To and Subject travel as separate mailto parameters',()=>{
+ for(const origin of [SALT_LAKE,undefined]){const plan=buildApplyPlan({record:record(),patient:patient(),origin,today:TODAY}),to=plan.primary!.email!;
+  for(const body of [plan.body,mailtoParts(plan.mailto!).params.body]){assert.doesNotMatch(body,/^\s*(?:To|Subject|Cc|Bcc|From)\s*:/im,'no header lines');assert.ok(!body.includes(to),'recipient address is not repeated in the body');assert.ok(!body.includes(plan.subject),'subject line is not repeated in the body')}
+  const parts=mailtoParts(plan.mailto!);assert.equal(parts.to,to);assert.equal(parts.params.subject,plan.subject);assert.deepEqual(Object.keys(parts.params),['subject','body']);assert.equal(parts.params.body,plan.body.replace(/\n/g,'\r\n'))}
+});
+test('header lines pasted at the top of a message are left out of the email-app handoff; later text is untouched',()=>{
+ const pasted='To: trials@discgenics.com\nSubject: NCT07254806, IDCT-001-US, Study\n\nHello team,\nSubject: this line is part of my message.';
+ assert.equal(hasHeaderLines(pasted),true);assert.equal(hasHeaderLines('\n  to:  x@example.org\nHi'),true);assert.equal(hasHeaderLines('Hello,\nTo: whom it may concern'),false);
+ assert.equal(messageBody(pasted),'Hello team,\nSubject: this line is part of my message.');assert.equal(messageBody('Hello\r\nThanks'),'Hello\r\nThanks','bodies without header lines are returned unchanged');
+ const parts=mailtoParts(mailtoUrl('trials@discgenics.com','Study enquiry',pasted)!);assert.equal(parts.params.body,'Hello team,\r\nSubject: this line is part of my message.');assert.doesNotMatch(parts.params.body,/^To:|trials@discgenics\.com/m);
+ assert.equal(mailtoUrl('trials@discgenics.com','Study enquiry','To: trials@discgenics.com\nSubject: Study enquiry\n'),undefined,'a body with only header lines has no message to send');
 });

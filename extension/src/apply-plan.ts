@@ -114,19 +114,33 @@ export function buildFollowUpIcs(plan:Pick<ApplyPlan,'nctId'|'title'|'sourceUrl'
  const description=[`Study ${plan.nctId}: ${clean(plan.title,300)}`,plan.site?`Site: ${place(plan.site)}`:'',who,plan.followUp,plan.sourceUrl].filter(Boolean).join('\n');
  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Treatable//Help me apply//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',`UID:${plan.nctId}-${day}-follow-up@treatable.invalid`,`DTSTAMP:${stamp(now)}`,`DTSTART;VALUE=DATE:${day}`,`DTEND;VALUE=DATE:${next}`,`SUMMARY:${icsText(`Follow up on study ${plan.nctId}`)}`,`DESCRIPTION:${icsText(description)}`,`URL:${plan.sourceUrl}`,'BEGIN:VALARM','TRIGGER:PT9H','ACTION:DISPLAY',`DESCRIPTION:${icsText(`Follow up on study ${plan.nctId}`)}`,'END:VALARM','END:VEVENT','END:VCALENDAR'].map(fold).join('\r\n')+'\r\n';
 }
-/** Conservative handoff limit, not a universal mail-client maximum. The full editable draft is never shortened. */
-export function mailtoIssue(email:string|null|undefined,subject:string,body:string):string|undefined{
+/** Email header lines (To, Subject, Cc, Bcc, From) at the very top of a message. The recipient and subject have their own
+ * fields, so these lines never belong in the message body. */
+const HEADER_LINE=/^[ \t]*(?:to|subject|cc|bcc|from)[ \t]*:.*$/i;
+export function hasHeaderLines(body:string){const first=body.replace(/^(?:[ \t]*\r?\n)+/,'').split(/\r?\n/,1)[0]??'';return HEADER_LINE.test(first)}
+/** The message body only: removes any To/Subject/Cc/Bcc/From lines at the top (for example a pasted "Copy full email"),
+ * plus the blank lines that follow them. Text after the first non-header line is never changed. */
+export function messageBody(body:string){
+ if(!hasHeaderLines(body))return body;
+ const lines=body.split(/\r?\n/);let i=0;
+ while(i<lines.length&&(!lines[i].trim()||HEADER_LINE.test(lines[i])))i++;
+ return lines.slice(i).join('\n');
+}
+/** Conservative handoff limit, not a universal mail-client maximum. The full editable draft is never shortened.
+ * The recipient, subject and body are separate mailto parameters; the body carries no header lines. */
+export function mailtoIssue(email:string|null|undefined,subject:string,draftBody:string):string|undefined{
+ const body=messageBody(draftBody);
  if(!email||!validEmail(email))return 'Choose a valid email address listed in the official record.';
  if(/[\r\n\u0000]/.test(subject)||subject.length>2200)return 'Use a single-line subject of no more than 2,200 characters.';
  if(!subject.trim()||!body.trim())return 'Add a subject and message before opening your email app.';
  if(body.length>DRAFT_BODY_LIMIT)return 'Keep the message within 16,000 characters.';
  let recipient:string;try{const at=email.lastIndexOf('@');recipient=encodeURIComponent(email.slice(0,at))+'@'+email.slice(at+1)}catch{return 'Check the email address for unsupported characters.'}
  let url:string;try{url=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`}catch{return 'Check the subject and message for unsupported characters.'}
- return url.length>MAILTO_URL_LIMIT?'This draft is too long for a reliable email-app link. Copy the full email below and paste it into your email app.':undefined;
+ return url.length>MAILTO_URL_LIMIT?'This draft is too long for a reliable email-app link. Use Copy message, paste it into a new email, and put the recipient and subject in their own fields.':undefined;
 }
-export function mailtoUrl(email:string|null|undefined,subject:string,body:string){
- if(mailtoIssue(email,subject,body))return;
- const at=email!.lastIndexOf('@'),recipient=encodeURIComponent(email!.slice(0,at))+'@'+email!.slice(at+1);
+export function mailtoUrl(email:string|null|undefined,subject:string,draftBody:string){
+ if(mailtoIssue(email,subject,draftBody))return;
+ const body=messageBody(draftBody),at=email!.lastIndexOf('@'),recipient=encodeURIComponent(email!.slice(0,at))+'@'+email!.slice(at+1);
  return `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
 }
 /** Link target for a contact action: only a mailto: or tel: URL built above, never any other scheme. */
