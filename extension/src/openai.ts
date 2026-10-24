@@ -15,7 +15,7 @@ export const OPENAI_ORIGIN = 'https://api.openai.com';
 export const DECISIONS_MODEL = 'gpt-6-luna';
 export const AGENT_MODEL = 'gpt-6-astra';
 
-export type FailureKind = 'missing_key' | 'consent' | 'unauthorized' | 'forbidden' | 'rate_limited' | 'timeout' | 'offline' | 'malformed' | 'server' | 'bad_request' | 'agent_failed';
+export type FailureKind = 'missing_key' | 'consent' | 'unauthorized' | 'forbidden' | 'rate_limited' | 'timeout' | 'offline' | 'malformed' | 'server' | 'bad_request' | 'agent_failed' | 'agents_disabled';
 
 export const FAILURE_MESSAGES: Record<FailureKind, string> = {
   missing_key: 'No OpenAI API key is set. Add your key in Settings, or switch to Local LLM or Send nothing.',
@@ -29,6 +29,7 @@ export const FAILURE_MESSAGES: Record<FailureKind, string> = {
   server: 'OpenAI had a server error. Try again shortly.',
   bad_request: 'OpenAI rejected the request (400).',
   agent_failed: 'The OpenAI agent task did not complete.',
+  agents_disabled: 'The OpenAI Agents API checklist is turned off in organization (HIPAA gate) mode: OpenAI does not list /v1/agents as eligible for Zero Data Retention or Private Retention. Use Local LLM for the checklist.',
 };
 
 export class ProviderError extends Error {
@@ -52,6 +53,10 @@ export interface OpenAIOptions {
   agentTimeoutMs?: number;
   /** Delete the agent session after reading its result, so OpenAI does not keep it. */
   deleteSessions?: boolean;
+  /** Pin every request to this organization with the OpenAI-Organization header. OpenAI rejects keys from other organizations. */
+  organizationId?: string;
+  /** False disables the Agents API checklist (Phase 2: /v1/agents is not listed as eligible for PHI configurations). */
+  agentsAllowed?: boolean;
 }
 
 const RETRYABLE = new Set<FailureKind>(['rate_limited', 'timeout', 'offline', 'server']);
@@ -82,7 +87,8 @@ export class OpenAIProvider implements ScoringProvider {
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
-    return {Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json', ...extra};
+    const org: Record<string, string> = this.options.organizationId ? {'OpenAI-Organization': this.options.organizationId} : {};
+    return {Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json', ...org, ...extra};
   }
 
   /** One attempt plus at most one retry with backoff, for transient failures only. */
@@ -133,6 +139,7 @@ export class OpenAIProvider implements ScoringProvider {
   }
 
   async checklist(evidence: SharedEvidence, signal?: AbortSignal): Promise<ProviderChecklistResult> {
+    if (this.options.agentsAllowed === false) throw new ProviderError('agents_disabled');
     const input = checklistInput(evidence);
     const body = {
       agent: {model: AGENT_MODEL, instructions: CHECKLIST_INSTRUCTIONS, reasoning: {effort: 'low'}, text: {format: {type: 'json_schema', schema: CHECKLIST_JSON_SCHEMA}}},
@@ -232,4 +239,37 @@ async function consume(reader: ReadableStreamDefaultReader<Uint8Array>, holder: 
   const text = finalText || lastText;
   if (!text) throw new ProviderError('malformed', 'The agent returned no output.');
   return {text, sessionId: holder.sessionId};
+}
+
+export type OrgCheck = 'match' | 'mismatch';
+
+/**
+ * Checks that an API key belongs to a given OpenAI organization. It sends one synthetic
+ * Decisions request (no patient data) pinned with the documented OpenAI-Organization request
+ * header; OpenAI answers 401 "mismatched_organization" when the key belongs to another
+ * organization. This verifies organization membership only. It does NOT verify a BAA,
+ * Modified Retention, or endpoint coverage: OpenAI documents no API for that.
+ * Any other failure throws, so callers fail closed.
+ */
+export async function verifyOrganization(apiKey: string, organizationId: string, doFetch: typeof fetch = (i, n) => fetch(i, n), timeoutMs = 15000): Promise<OrgCheck> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await doFetch(`${OPENAI_ORIGIN}/v1/decisions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json', 'OpenAI-Organization': organizationId},
+      body: JSON.stringify({model: DECISIONS_MODEL, input: 'Organization check. This request contains no patient data.', questions: [{type: 'predicate', name: 'org_check', instructions: 'Is this text an organization check?'}]}),
+    });
+    if (response.ok) return 'match';
+    if (response.status === 401) {
+      let code = '';
+      try { code = (await response.json())?.error?.code || ''; } catch { /* fall through */ }
+      if (code === 'mismatched_organization') return 'mismatch';
+    }
+    throw new ProviderError(classifyStatus(response.status));
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    throw new ProviderError(controller.signal.aborted ? 'timeout' : 'offline');
+  } finally { clearTimeout(timer); }
 }

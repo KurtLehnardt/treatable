@@ -43,6 +43,42 @@ Choose one in Settings. Until you choose, results stay unrefined and nothing is 
 
 If a provider fails (missing key, 401, 403, 429, timeout, malformed response, offline, or a local model error), the panel shows a specific message and falls back to the clearly labeled unrefined list. Each OpenAI request is retried at most once, with backoff, and only for transient failures.
 
+## Release phases
+
+`src/config.ts` holds one constant, `PHASE`. Changing it is a one-line switch.
+
+- **Phase 1, `PHASE = 'demo'` (current build).** OpenAI is the default provider. A persistent banner says this is a synthetic demo: enter synthetic example data only. The consent screen and key entry still come first; nothing is sent without consent.
+- **Phase 2, `PHASE = 'hipaa'`.** Local LLM is the default, and a first-run screen says so. OpenAI mode unlocks only through an **organization policy gate plus attestation**. Treatable never defaults to sending data to OpenAI in this phase.
+
+To switch to Phase 2, set `export const PHASE: Phase = 'hipaa';` in `src/config.ts`, then run `npm run build`.
+
+### What the Phase 2 gate checks, and what it does not
+
+OpenAI documents no API that tells a client whether an API key's organization has an executed BAA, Modified Retention, or confirmed endpoint coverage. The gate therefore does **not** verify a BAA. It requires all of the following, and any missing, malformed, or mismatched input keeps OpenAI locked and falls back to Local LLM with a message:
+
+1. A managed policy deployed by an IT admin through Chrome enterprise policy (`chrome.storage.managed`, schema in `managed_schema.json`), with `hipaaOpenAIEnabled: true` and `allowedOpenAIOrgIds` (OpenAI organization IDs, `org-...`).
+2. The user ticks the BAA attestation checkbox.
+3. The API key belongs to an allowed organization. Treatable sends one synthetic Decisions request (no patient data) with the documented `OpenAI-Organization` request header; OpenAI rejects a key from another organization with `401 mismatched_organization`. Every later request is pinned to that organization with the same header. The result is cached in memory for the panel session only. A network or API error keeps the gate locked.
+
+In Phase 2 the Agents API checklist is turned off for OpenAI, because OpenAI's data-controls table lists `/v1/agents` as not eligible for Zero Data Retention or Private Retention. Use Local LLM for the checklist.
+
+### Deploying the managed policy (IT admin)
+
+The extension ID is `lmgmjeabbalehlcakdbolielnfgchojf`. Set the policy under Chrome's `3rdparty` extension policy for that ID. Example policy value:
+
+```json
+{
+  "hipaaOpenAIEnabled": {"Value": true},
+  "allowedOpenAIOrgIds": {"Value": ["org-YourOrganizationId"]}
+}
+```
+
+- Google Admin console: Devices > Chrome > Apps & extensions > select the extension > Policy for extensions, and paste the JSON without the `Value` wrappers: `{"hipaaOpenAIEnabled": true, "allowedOpenAIOrgIds": ["org-..."]}`.
+- Windows: registry key `HKLM\Software\Policies\Google\Chrome\3rdparty\extensions\lmgmjeabbalehlcakdbolielnfgchojf\policy`, with a `hipaaOpenAIEnabled` DWORD and an `allowedOpenAIOrgIds` subkey holding numbered string values.
+- macOS: a configuration profile for the `com.google.Chrome.extensions.lmgmjeabbalehlcakdbolielnfgchojf` domain with the two keys.
+
+Check the result at `chrome://policy`. Setting this policy is the organization's statement that its OpenAI agreement and configuration cover this use. The extension makes no HIPAA compliance claim.
+
 ## Privacy boundaries
 
 - **OpenAI mode is opt-in.** It stays off until you accept a consent screen. That screen lists exactly what is sent: your condition as typed, a five-year age band (not your exact age), your sex for study criteria, your spine region, and the public study text. Treatable never sends your ZIP code, name, notes, or saved studies.

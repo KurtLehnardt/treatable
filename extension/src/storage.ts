@@ -10,7 +10,7 @@ export async function clearState(session:StorageArea,local:StorageArea){await Pr
 /** Non-patient preferences. Consent and threshold persist in local storage; they contain no health data. */
 export const SETTINGS_KEY = 'treatable.settings.v1';
 export type ProviderChoice = 'openai' | 'local' | 'none';
-export interface Settings {provider?: ProviderChoice; openaiConsent: boolean; minMatch: 50 | 65 | 80; rememberKey: boolean; localModel?: string}
+export interface Settings {provider?: ProviderChoice; openaiConsent: boolean; minMatch: 50 | 65 | 80; rememberKey: boolean; localModel?: string; firstRunSeen?: boolean}
 export const DEFAULT_SETTINGS: Settings = {openaiConsent: false, minMatch: 80, rememberKey: false};
 export async function loadSettings(local: StorageArea): Promise<Settings> {
   const raw = (await local.get(SETTINGS_KEY))[SETTINGS_KEY];
@@ -22,6 +22,7 @@ export async function loadSettings(local: StorageArea): Promise<Settings> {
     minMatch: v.minMatch === 50 || v.minMatch === 65 || v.minMatch === 80 ? v.minMatch : 80,
     rememberKey: v.rememberKey === true,
     localModel: typeof v.localModel === 'string' && v.localModel.length <= 150 ? v.localModel : undefined,
+    firstRunSeen: v.firstRunSeen === true,
   };
 }
 export async function saveSettings(local: StorageArea, settings: Settings) { await local.set({[SETTINGS_KEY]: settings}); }

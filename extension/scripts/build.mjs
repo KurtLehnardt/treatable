@@ -12,6 +12,7 @@ const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8')
 manifest.host_permissions=[...sites.origins.map(origin=>`${origin}/*`),'https://api.openai.com/*'];
 await writeFile(path.join(root,'dist/manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 await cp(path.join(root,'public/panel.html'),path.join(root,'dist/panel.html'));
+await cp(path.join(root,'managed_schema.json'),path.join(root,'dist/managed_schema.json'));
 for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,'dist/data',name));
 const studies=JSON.parse(await readFile(path.join(root,'dist/data/studies.json'),'utf8'));
 if(studies.length!==2000)throw new Error(`Expected 2,000 shipped studies, got ${studies.length}`);

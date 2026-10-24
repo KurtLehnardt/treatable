@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "hipaaOpenAIEnabled": {
+      "title": "Allow OpenAI mode for this organization",
+      "description": "Set to true only if your organization has an executed OpenAI BAA with Modified Retention and has confirmed endpoint coverage. Treatable does not verify the BAA.",
+      "type": "boolean"
+    },
+    "allowedOpenAIOrgIds": {
+      "title": "Allowed OpenAI organization IDs",
+      "description": "OpenAI organization IDs (org-...) whose API keys may be used. Each request is pinned to the matching ID with the OpenAI-Organization header, so keys from other organizations are rejected by OpenAI.",
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

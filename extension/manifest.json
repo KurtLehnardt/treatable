@@ -23,5 +23,8 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://api.openai.com; base-uri 'none'; frame-src 'none'"
+  },
+  "storage": {
+    "managed_schema": "managed_schema.json"
   }
 }
