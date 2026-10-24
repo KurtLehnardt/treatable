@@ -6,3 +6,6 @@ treatable-extension-a.zip
 treatable-extension-b.zip
 
 artifacts/
+
+# Explicit reference UI build
+/dist-a/
