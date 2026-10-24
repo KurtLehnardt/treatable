@@ -4,7 +4,8 @@ export const HOST_NAME='com.treatable.local';
 export const EXTENSION_ID='lmgmjeabbalehlcakdbolielnfgchojf';
 export const ID_PATTERN=/^[A-Za-z0-9_-]{1,80}$/;
 import {parseLiveRequest,LIVE_REQUEST_TYPES} from '../shared/live-analysis-contract.mjs';
-export function validateRequest(v){return LIVE_REQUEST_TYPES.includes(v?.type)?parseLiveRequest(v):parseDemoRequest(v);}
+import {parseApplyRequest,APPLY_REQUEST_TYPES} from '../shared/apply-contract.mjs';
+export function validateRequest(v){return LIVE_REQUEST_TYPES.includes(v?.type)?parseLiveRequest(v):APPLY_REQUEST_TYPES.includes(v?.type)?parseApplyRequest(v):parseDemoRequest(v);}
 export function validateOrigin(origin,extensionId=EXTENSION_ID){return typeof extensionId==='string'&&/^[a-p]{32}$/.test(extensionId)&&origin===`chrome-extension://${extensionId}/`;}
 export function encodeMessage(message){const body=Buffer.from(JSON.stringify(message),'utf8');if(!body.length||body.length>MAX_MESSAGE_BYTES)throw new Error('Invalid frame size');const header=Buffer.alloc(4);header.writeUInt32LE(body.length);return Buffer.concat([header,body]);}
 export class MessageDecoder{
