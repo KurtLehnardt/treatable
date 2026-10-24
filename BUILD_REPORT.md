@@ -15,8 +15,9 @@ US-only clinical-study finder adapted from Granted. OpenAI is the exposed cloud 
 ## Verification evidence
 
 - Source baseline:2,116tests/342suites passed before domain adaptation.
-- Final retained suite before the last targeted SSE completion fix: **1,550tests/255suites,1,550pass,0fail,0skip,0cancel**,9.09s. Exact output: `/private/tmp/treatable-final-tests.log`.
-- Last SSE fix: focused **3/3** regressions passed (manual abort, SSE error then normal EOF, and incomplete EOF), preserving IDs/order/scores/buckets and clearing provisional flags. Typecheck passed afterward.
+- Final retained suite after reviewed security fixes and compatible dependency patches: **1,561tests/255suites,1,561pass,0fail,0skip,0cancel**,9.09s. Exact output: `/private/tmp/treatable-final-tests.log`.
+- SSE completion regressions passed (manual abort, SSE error then normal EOF, incomplete EOF), preserving IDs/order/scores/buckets and clearing provisional flags. The Stop button settles results synchronously to avoid abort timing races.
+- Both new paid/patient endpoints enforce same-origin loopback checks, JSON content type, body-size bounds, rate limits, and explicit OpenAI consent. Cross-site text/plain JSON cannot invoke a saved-key provider. Focused endpoint/security/stream tests passed; independent reviewer reran20focused checks successfully.
 - `npm run check:prompts`: passed; no inline prompts or definitive eligibility claims.
 - `npm run eval:quality`: **12fictional profiles,0false exclusions,0bucket mismatches**.
 - `npm run typecheck`: passed. Production build passed after required cleanup; canonical final build/runtime evidence is recorded below after assembly.
@@ -48,7 +49,7 @@ PASS means implemented and locally tested; PARTIAL marks a verification/deployme
 | R-014 | PASS | Provisional→passA→passB→complete SSE, source API tests and browser client. |
 | R-015 | PASS | Render tests for contacts, exact collapsed criteria, score/status/bucket; nearest-site regression. |
 | R-016 | PASS | Five-line patient-aware fallback and model call-script handling tested. |
-| R-017 | PASS | Session-only summary/top5/print CSS; final rendered inspection performed independently. |
+| R-017 | PASS | Session-only summary/top5/print CSS and render tests. Prior rendered review performed; final fixed-build rendered recheck was unavailable (see limits). |
 | R-018 | PASS | Empty results show care-team/palliative-care guidance and CTgov/NCI links. |
 | R-019 | PASS | Standing medical notice appears on intake/results/summary. |
 | R-020 | PASS | No-retention guards, route tests, explicit consent, local ZIP/model paths, browser clear-all; no telemetry. |
@@ -71,9 +72,31 @@ PASS means implemented and locally tested; PARTIAL marks a verification/deployme
 - No real patient data was used. Safety fixtures are deterministic engineering checks, not clinical validation of matching quality.
 - Live OpenAI inference was not run because no new credentials were copied or supplied. Full OpenAI-embedding agreement needs a separately generated OpenAI-space corpus; `eval:builtin` currently reports local-semantic/keyword overlap and labels that limitation.
 - Local narration depends on the installed model/hardware; the tiny smoke-test model has limited narrative quality. Local chat weights are downloaded by setup rather than committed/bundled.
-- Existing dependency versions were preserved. `npm ci` reported7inherited audit findings (3moderate,3high,1critical); dependency upgrades require a separate verified change.
+- Compatible security patches were applied: Zod4.6.7 (requested range^4.6.6) and source-map-js1.2.2. Final `npm ci` reports5remaining audit findings (3moderate,1high,1critical). Next14 remains on the inherited major; the unused image optimizer is disabled and returns404. See the advisory-surface matrix below. This is not a zero-vulnerability claim; upgrade the framework before public/untrusted-LAN/Windows distribution.
 - Root installer/legacy Windows assets remain deferred. App publishing, fresh-machine distribution, live cloud credentials, and clinician acceptance remain unperformed.
 
 ## Canonical runtime
 
-Final canonical build, branch commit, detached server PID/log, HTTP smoke, and independent rendered-review evidence are appended after assembly. This report does not substitute for those checks.
+- Canonical project: `/Users/LenovoT440p/work/treatable`, feature branch `codex/phase-one`. Production code commit `8965fa8` (subsequent commits only append verification documentation).
+- Own locked dependencies installed with `npm ci`; canonical production `npm run build` passed, including type validation and all11static generation steps. No build skip flags.
+- Local app: `http://127.0.0.1:5556`, bound only to127.0.0.1. Detached npm process PID55118, log `/private/tmp/treatable-server.log`, PID record `/private/tmp/treatable-server.pid`. The process is independent of worker tool sessions.
+- Homepage HTTP200; `/_next/image?url=%2Ficon.svg&w=64&q=75` returns404; compiled Server Actions manifest has0node/0edgeactions (no encryption key copied into this report).
+- Canonical search status: builtin, ready,2,000/2,000vectors. Verified ignored search assets: `/Users/LenovoT440p/work/treatable/scaffold/models/nomic-ai/nomic-embed-text-v1.5`.
+- Independent final HTTP/API smoke: ordinary non-demo ZIP83702 resolves to Boise43.6322,-116.2052;60candidates have known distances,59are outside the selected radius,0remain provisional; SSE provisional→complete; corpus2,000; builtinsemanticmode. Both paid routes reject cross-site requests403, wrong content type415, and missing OpenAI consent403.
+- Final rendered fixed-build browser/screenshot recheck was unavailable because the CUA context failed and one permitted reset did not recover it. No alternate-browser bypass was attempted. Prior rendered review, focused UI regressions and final independent HTTP/API checks provide the recorded evidence; no final screenshot is claimed.
+- Source Granted working tree remains clean. Manual git worktrees `codex/domain` and `codex/foundation` are retained for inspection; they are not Codex-managed attachments. Needed search model assets and standalone dependencies are preserved in canonical paths. No credentials, environment files, private logs or patient state were copied.
+
+## Remaining dependency-advisory surfaces
+
+Independent reviewer inspected the primary descriptions for all25Next advisory entries in the audit result. Mitigations reduce active local surfaces; they do not remove the package-level findings.
+
+| Surface | Current handling | Primary evidence |
+|---|---|---|
+| SVG/AVIF image optimization | No remote images or image component; `images.unoptimized=true`; optimizer runtime404. | [SVG advisory](https://github.com/advisories/GHSA-2464-fhr4-w9xw), [AVIF advisory](https://github.com/advisories/GHSA-2xp9-vwfh-vxw4) |
+| Windows optimizer paths | Windows distribution deferred; framework upgrade required before enabling it. | [Windows advisory](https://github.com/advisories/GHSA-p293-qw3h-jr36) |
+| Server Actions/RSC action deserialization and disclosure | No `use server`/`use cache` actions; compiled node/edgeaction manifests empty. No custom action server or Edge runtime. | Independent primary-advisory review + compiled manifest counts. |
+| Rewrite, dynamic-host, middleware and i18n paths | No rewrites/redirects/middleware/i18n configured. | Current next.config and source inventory. |
+| CSP nonce, beforeInteractive scripts and shared-cache variants | No nonce integration, beforeInteractive script or shared production cache; patient APIs use no-store. | Current config/source/API headers. |
+| WebSocket proxy SSRF | No WebSocket feature; server binds loopback by default. Do not expose this inherited framework on public/untrusted networks; a major upgrade remains required. | [WebSocket advisory](https://github.com/advisories/GHSA-c4j6-fc7j-m34r) |
+| Nested PostCSS/source-map parser build paths | Source-map-js patched; remaining nested PostCSS/parser paths process trusted project CSS, with no untrusted CSS/map pipeline. Compatible fixes/major framework work remain follow-up. | [PostCSS advisory](https://github.com/advisories/GHSA-6g55-p6wh-862q), [map advisory](https://github.com/advisories/GHSA-r28c-9q8g-f849), [parser advisory](https://github.com/advisories/GHSA-rj75-hqrm-r3gf) |
+
