@@ -132,12 +132,18 @@ function raceAbort<T>(promise: Promise<T>, signal: CancelSignal): Promise<T> {
   });
 }
 
-/** Retry-After as milliseconds from now: delta seconds or an HTTP date. Undefined when absent or invalid. */
+/** IMF-fixdate, the HTTP date format servers must send (RFC 9110 section 5.6.7), for example "Sun, 06 Nov 1994 08:49:37 GMT". */
+const IMF_FIXDATE = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+/**
+ * Retry-After as milliseconds from now: delta seconds or an IMF-fixdate. Undefined when absent or in
+ * any other form (the obsolete HTTP date forms included), in which case the normal backoff applies.
+ */
 export function parseRetryAfter(value: string | undefined, nowMs: number): number | undefined {
   if (typeof value !== 'string') return undefined;
   const text = value.trim();
   if (/^\d{1,7}$/.test(text)) return Number(text) * 1000;
-  if (text.length > 64 || !/^[A-Za-z0-9 ,:-]+$/.test(text)) return undefined;
+  if (!IMF_FIXDATE.test(text)) return undefined;
   const at = Date.parse(text);
   if (!Number.isFinite(at)) return undefined;
   return Math.max(0, at - nowMs);

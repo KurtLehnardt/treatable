@@ -55,6 +55,12 @@ export const MAX_SEARCH_TERMS = 5;
 export const MAX_SEARCH_TERM_LENGTH = 100;
 /** Fixed sort order: relevance to the search terms, as on the ClinicalTrials.gov website. */
 export const CTGOV_SORT = '@relevance';
+/**
+ * Upper bound for a whole request URL. Long non-ASCII terms grow up to nine characters per character
+ * when percent-encoded, so a search whose URL would be longer is refused before any request with
+ * INPUT_TOO_LARGE. The same bound is planned for the general transport gate (task A1b).
+ */
+export const CTGOV_MAX_URL_LENGTH = 2048;
 
 /**
  * Open statuses requested from ClinicalTrials.gov. Same set as ALLOWED_STATUSES in
@@ -191,7 +197,9 @@ export function buildStudiesUrl(query: StudiesQuery): string {
   const names = params.map(([name]) => name);
   const allowed: readonly string[] = CTGOV_QUERY_PARAMS;
   if (names.some(name => !allowed.includes(name)) || new Set(names).size !== names.length) throw new CoreError('INTERNAL_ERROR');
-  return `${CTGOV_STUDIES_URL}?${encodeQuery(params)}`;
+  const url = `${CTGOV_STUDIES_URL}?${encodeQuery(params)}`;
+  if (url.length > CTGOV_MAX_URL_LENGTH) throw new CoreError('INPUT_TOO_LARGE');
+  return url;
 }
 
 /** True only for a URL with the exact https origin and path and a query string (a cheap first check). */
@@ -215,7 +223,7 @@ function decodeComponent(text: string): string {
  * and a ClinicalTrials.gov page token never reaches the transport port. Throws INVALID_ENDPOINT.
  */
 export function parseStudiesUrl(url: string): StudiesQuery {
-  if (!isCtgovStudiesUrl(url) || url.length > 8192) throw new CoreError('INVALID_ENDPOINT');
+  if (!isCtgovStudiesUrl(url) || url.length > CTGOV_MAX_URL_LENGTH) throw new CoreError('INVALID_ENDPOINT');
   const values = new Map<string, string>();
   for (const part of url.slice(CTGOV_STUDIES_URL.length + 1).split('&')) {
     const at = part.indexOf('=');

@@ -46,6 +46,12 @@ export class FakeClock implements Clock {
   pendingTimers(): number {
     return this.timers.filter(t => !t.cancelled).length;
   }
+
+  /** Monotonic time of the earliest pending timer, if any. */
+  nextDue(): number | undefined {
+    const due = this.timers.filter(t => !t.cancelled).map(t => t.at);
+    return due.length ? Math.min(...due) : undefined;
+  }
 }
 
 /** Deterministic, distinct byte strings; never all-equal. */
