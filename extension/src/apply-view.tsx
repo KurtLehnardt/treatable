@@ -7,6 +7,7 @@ import {APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,
 import type {ApplyController} from './use-apply';
 import {hasDetails,useYourDetails} from './your-details';
 import {contactHref,validEmail,type PlanContact,type CallContact} from './apply-plan';
+import {formatCountdown} from './session-lease';
 const STATUS_LABELS={accepting:'Recruiting',opening_soon:'Not yet recruiting',invitation:'By invitation only',not_accepting:'Not recruiting',unverified:'Status not confirmed'} as const;
 const statusLabel=(s?:string|null)=>STATUS_LABELS[siteLocationStatus(s??undefined)];
 const siteName=(s:ApplySite)=>s.facility||'Study site';
@@ -92,6 +93,18 @@ function StudyFacts({brief,purpose}:{brief:PublicStudyBrief;purpose?:string}){
   {registry.length>0&&<details className="brief-registry"><summary>Registry milestones — not your visit schedule</summary>{registry.map(i=><p key={i.id}><strong>{i.label}:</strong> {i.text}</p>)}</details>}
  </section><section className="apply-step" aria-labelledby="brief-unknown"><h3 id="brief-unknown">Important unknowns</h3><ul>{brief.unknowns.length?brief.unknowns.map((item,i)=><li key={i}>{item}</li>):<li>No additional gaps were flagged. Confirm current requirements and screening with the study team.</li>}</ul><p className="fine">The record cannot establish whether you are eligible or whether treatment will help you.</p></section></>;
 }
+/** Last five minutes of the session: a small countdown, then Keep working for the final minute. The status line is always present while this shows,
+ * so a screen reader announces the one-minute warning and the confirmation. The ticking time itself is a timer role that is not announced. */
+function SessionClock({vm}:{vm:ApplyController}){
+ const c=vm.countdown;
+ if(!c&&!vm.sessionExtended)return null;
+ const note=c?.keepWorking?'Your session ends in about a minute. Choose Keep working to keep your drafts and details.':c?'':'Session extended by 30 minutes.';
+ return <div className="apply-session">
+  {c&&<p className="fine">Session ends in <strong role="timer" aria-live="off">{formatCountdown(c.secondsLeft)}</strong></p>}
+  <p role="status" className="fine">{note}</p>
+  {c?.keepWorking&&<div className="apply-actions"><button type="button" className="primary" onClick={vm.keepWorking}>Keep working</button></div>}
+ </div>;
+}
 export function ApplyView({vm}:{vm:ApplyController}){
  /* "Personalize your email" opens by itself while no name is set. Once opened it stays open, so typing the first letters of a name does not collapse it. */
  const openPersonalize=React.useRef(false);
@@ -100,6 +113,7 @@ export function ApplyView({vm}:{vm:ApplyController}){
  const contacts=plan?[...(plan.primary?[plan.primary]:[]),...plan.backups,...(selectedExtra?[{...selectedExtra,source:'site' as const}]:[])].filter((c,i,all)=>c.email&&validEmail(c.email)&&all.findIndex(a=>a.email===c.email)===i):[];
  if(plan&&!vm.patient.name.trim()&&!details.name.trim())openPersonalize.current=true;
  return <section className="apply-section" aria-labelledby="apply-heading"><div className="section-intro" data-treatable-guide="understand"><span className="eyebrow">Your study brief</span><h2 id="apply-heading">Understand this study</h2><p>Understand participation, prepare questions, and draft a message for the team. OpenAI reviews public study information only. Personal details stay in this extension until you choose to hand the email to your own mail app.</p></div>
+ <SessionClock vm={vm}/>
  {vm.phase==='ended'?<p role="status" className="notice">Session ended. This section's email drafts, call scripts and the details typed here were cleared. Reopen Treatable to start again.{hasDetails(details)?' Your details in Settings stay until you clear them or end the Treatable session.':''}</p>:<>
  {(vm.phase==='connecting'||vm.phase==='loading')&&<p role="status" className="notice">Loading the official study information…</p>}
  {vm.candidates.length>1&&<fieldset className="brief-chooser" disabled={vm.agentBusy}><legend>Choose up to two studies from this page</legend>{vm.candidates.map(candidate=><label className="check-option" key={candidate.nctId}><input type="checkbox" checked={vm.selectedIds.includes(candidate.nctId)} disabled={!vm.selectedIds.includes(candidate.nctId)&&vm.selectedIds.length>=2} onChange={e=>vm.selectStudies(e.target.checked?[...vm.selectedIds,candidate.nctId]:vm.selectedIds.filter(id=>id!==candidate.nctId))}/><span>{candidate.title||'Study title will load when selected'}<small className="study-id">{candidate.nctId}</small></span></label>)}</fieldset>}

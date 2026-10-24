@@ -13,7 +13,8 @@ const NCT=/^NCT[0-9]{8}$/;
 export class ApplyClient{
  private port?:ApplyPort;private pending=new Map<string,Pending>();nctId?:string;nctIds:string[]=[];candidates:StudyCandidate[]=[];expiresAt?:number;
  constructor(private runtime:ApplyRuntime,private newId:()=>string=()=>crypto.randomUUID()){}
- open(onEnd:()=>void):Promise<string>{const p=this.runtime.connect({name:APPLY_CLIENT_PORT});this.port=p;return new Promise((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{if(!ready){this.disconnect();reject(new NativeOperationError('SESSION_ENDED'))}},5000);
+ /** onRenew receives each new session deadline the background grants after renew(). */
+ open(onEnd:()=>void,onRenew?:(expiresAt:number)=>void):Promise<string>{const p=this.runtime.connect({name:APPLY_CLIENT_PORT});this.port=p;return new Promise((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{if(!ready){this.disconnect();reject(new NativeOperationError('SESSION_ENDED'))}},5000);
   p.onMessage.addListener((v:any)=>{if(this.port!==p||!v||typeof v!=='object')return;
    if(v.kind==='applyReady'){
     if(ready)return;const ids=Array.isArray(v.nctIds)?v.nctIds:typeof v.nctId==='string'?[v.nctId]:[];
@@ -24,6 +25,7 @@ export class ApplyClient{
     const titles=new Map<string,string>();for(const item of Array.isArray(v.studies)?v.studies:[])if(ids.includes(item?.nctId)&&typeof item.title==='string')titles.set(item.nctId,item.title.slice(0,1000));
     this.candidates=ids.map((nctId:string)=>({nctId,...(titles.has(nctId)?{title:titles.get(nctId)}:{})}));resolve(this.nctId??'');return;
    }
+   if(v.kind==='applyRenewed'){if(ready&&Number.isFinite(v.expiresAt)&&v.expiresAt>=(this.expiresAt??0)){this.expiresAt=v.expiresAt;onRenew?.(v.expiresAt)}return}
    if(v.kind==='applyEnded'){this.disconnect();onEnd();return}
    const reply=v.reply,id=reply?.id,item=typeof id==='string'?this.pending.get(id):undefined;if(!item)return;
    try{
@@ -43,6 +45,8 @@ export class ApplyClient{
  })}
  private send(message:Record<string,unknown>,id:string,kind:Pending['kind'],allowTrace=false,trace?:(value:DemoTrace)=>void){if(!this.port)return Promise.reject(new NativeOperationError('SESSION_ENDED'));return new Promise<any>((resolve,reject)=>{if(this.pending.size>=4){reject(new NativeOperationError('BUSY'));return}const timer=setTimeout(()=>{this.pending.delete(id);reject(new NativeOperationError('NATIVE_TIMEOUT'))},155000);this.pending.set(id,{resolve,reject,timer,kind,allowTrace,trace});try{this.port!.postMessage(message)}catch{clearTimeout(timer);this.pending.delete(id);reject(new NativeOperationError('SESSION_ENDED'))}})}
  private native(type:string,payload:unknown,trace?:(value:DemoTrace)=>void){let request;try{request=parseApplyRequest({id:this.newId(),type,payload})}catch{return Promise.reject(new NativeOperationError('INVALID_REQUEST'))}return this.send({kind:'applyNative',request},request.id,'native',type==='executeApply'||type==='executeStudyBrief',trace)}
+ /** Asks the background to slide the session deadline forward. A message that carries nothing but its kind. */
+ renew(){if(this.port&&this.expiresAt!==undefined)try{this.port.postMessage({kind:'applyRenew'})}catch{}}
  async prepare(nctId:string):Promise<PreparedApply>{const v=parsePreparedApply(await this.native('prepareApply',{nctId}));if(v.nctId!==nctId)throw new NativeOperationError('RESULT_MISMATCH');return v}
  async execute(prepared:PreparedApply):Promise<ApplyResult>{const v=parseApplyResult(await this.native('executeApply',{token:prepared.token,digest:prepared.digest}));if(v.nctId!==prepared.nctId||v.digest!==prepared.digest)throw new NativeOperationError('RESULT_MISMATCH');return v}
  async revoke(){await this.native('revokeApply',{})}

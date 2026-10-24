@@ -1,6 +1,7 @@
 import test from'node:test';import assert from'node:assert/strict';import{readFileSync}from'node:fs';
 import{installSiteAssistant}from'../src/site-background';import{installApplyBroker,APPLY_PORT}from'../src/apply-background';import{FAILURE_COPY}from'../src/failures';
-import{rawStudy,preparedFixture,agentFixture,briefTraceFixture,TOKEN,DIGEST}from'./apply-fixture';import{traceBody}from'../shared/apply-contract.mjs';
+import{rawStudy,preparedFixture,agentFixture,briefTraceFixture,TOKEN,DIGEST}from'./apply-fixture';import{traceBody,APPLY_TOKEN_TTL_MS}from'../shared/apply-contract.mjs';
+import{SESSION_TTL_MS}from'../src/session-lease';
 class Events{listeners:((...v:any[])=>void)[]=[];addListener=(f:(...v:any[])=>void)=>this.listeners.push(f);removeListener=()=>{};emit=(...v:any[])=>{for(const f of this.listeners)f(...v)}}
 const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))};
 const STUDY='https://clinicaltrials.gov/study/NCT07254806';
@@ -69,7 +70,7 @@ import{normalizeApplyRecord,normalizeStudyBrief}from'../shared/apply-record.mjs'
 const briefPrepared=(ids:string[])=>{const raws=ids.map(nctId=>{const raw=rawStudy();raw.protocolSection.identificationModule.nctId=nctId;return raw});return{kind:'preparedStudyBrief',token:TOKEN,digest:DIGEST,expiresAt:Date.UTC(2026,9,24,15,20),records:raws.map(r=>normalizeApplyRecord(r,1,16000)),briefs:raws.map(r=>normalizeStudyBrief(r,1))}};
 test('brief fallback selects1–2 current resultIDs, uses no nativehost and refuses arbitrary IDs/patientfields',async()=>{const ids=['NCT07254806','NCT99999991'],h=harness('https://clinicaltrials.gov/search?cond=synthetic',{resultIds:ids,fetchStudyJson:async nctId=>{const r=rawStudy();r.protocolSection.identificationModule.nctId=nctId;return r}});await h.overlay();const p=await h.apply();assert.deepEqual(p.sent[0].nctIds,ids);p.onMessage.emit({kind:'studyBriefRecord',id:'r',nctIds:ids});await flush();const reply=replies(p).at(-1);assert.equal(reply.type,'briefRecords');assert.equal(reply.briefs.length,2);assert.equal(h.natives.length,0);p.onMessage.emit({kind:'studyBriefRecord',id:'bad',nctIds:['NCT00000001']});await flush();assert.equal(replies(p).at(-1).code,'NOT_STUDY_PAGE');p.onMessage.emit({kind:'studyBriefRecord',id:'private',nctIds:ids,patient:'PATIENT_CANARY'});await flush();assert.equal(p.closed,true);assert.equal(h.natives.length,0);});
 test('brief native execution is sourcebound, oneuse and cannot forward genericliveexecute or replay',async()=>{const h=harness();await h.overlay();const p=await h.apply();await h.send(p,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});const n=h.natives[0];await h.reply(n,{id:'p',type:'result',ok:true,result:briefPrepared(['NCT07254806'])});await h.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(n.sent.at(-1).type,'executeStudyBrief');await h.send(p,{id:'replay',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'BUSY');h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'});assert.equal(p.closed,true);assert.equal(n.sent.at(-1).type,'revokeStudyBrief');const g=harness();await g.overlay();const q=await g.apply();await g.send(q,{id:'forged',type:'executeLive',payload:{token:TOKEN,digest:DIGEST,operation:'score'}});assert.equal(q.closed,true);assert.equal(g.natives.length,0);});
-test('late public recordcompletion after sourcechange is discarded; originalsessionexpiry endslocaldraft authority',async()=>{let release!:(v:unknown)=>void;const h=harness(STUDY,{fetchStudyJson:()=>new Promise(r=>{release=r})});await h.overlay();const p=await h.apply();p.onMessage.emit({kind:'studyBriefRecord',id:'late',nctIds:['NCT07254806']});await flush();h.setUrl('https://clinicaltrials.gov/study/NCT00000001');h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'});release(rawStudy());await flush();assert.equal(p.closed,true);assert.ok(!replies(p).some((r:any)=>r.id==='late'));let now=Date.UTC(2026,9,24,15,15);const g=harness(STUDY,{now:()=>now});await g.overlay();const q=await g.apply();const expiry=q.sent[0].expiresAt;now+=300001;q.onMessage.emit({kind:'studyBriefRecord',id:'expired',nctIds:['NCT07254806']});await flush();assert.equal(q.closed,true);assert.equal(expiry,Date.UTC(2026,9,24,15,20));assert.equal(g.natives.length,0);});
+test('late public recordcompletion after sourcechange is discarded; originalsessionexpiry endslocaldraft authority',async()=>{let release!:(v:unknown)=>void;const h=harness(STUDY,{fetchStudyJson:()=>new Promise(r=>{release=r})});await h.overlay();const p=await h.apply();p.onMessage.emit({kind:'studyBriefRecord',id:'late',nctIds:['NCT07254806']});await flush();h.setUrl('https://clinicaltrials.gov/study/NCT00000001');h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'});release(rawStudy());await flush();assert.equal(p.closed,true);assert.ok(!replies(p).some((r:any)=>r.id==='late'));let now=Date.UTC(2026,9,24,15,15);const g=harness(STUDY,{now:()=>now});await g.overlay();const q=await g.apply();const expiry=q.sent[0].expiresAt;now+=SESSION_TTL_MS+1;q.onMessage.emit({kind:'studyBriefRecord',id:'expired',nctIds:['NCT07254806']});await flush();assert.equal(q.closed,true);assert.equal(expiry,Date.UTC(2026,9,24,15,45),'the session lasts 30 minutes from connecting');assert.equal(g.natives.length,0);});
 
 // Uses the real native host stdio decoder and installed temporary fake transport through this actual broker.
 // @ts-expect-error test-only native module has no ambient declaration
@@ -148,4 +149,26 @@ test('a trace that breaks the contract is refused as an invalid helper reply and
   'unknown field':{...good,headers:{Authorization:'Bearer x'}},
  };
  for(const[name,trace]of Object.entries(bad))await assert.rejects(executeBriefWith(briefResult(ids,trace)),(error:any)=>error.code==='INVALID_NATIVE_REPLY',name);
+});
+
+test('applyRenew slides the 30-minute session forward from the moment of renewal and never touches the helper',async()=>{
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
+ assert.equal(p.sent[0].expiresAt,now+SESSION_TTL_MS);
+ now+=20*60*1000;p.onMessage.emit({kind:'applyRenew'});await flush();assert.deepEqual(p.sent.at(-1),{kind:'applyRenewed',expiresAt:now+SESSION_TTL_MS});
+ now+=25*60*1000;p.onMessage.emit({kind:'applyRecord',id:'r1'});await flush();assert.equal(replies(p).at(-1).type,'record','45 minutes after connecting is past the original deadline but inside the renewed one');assert.equal(p.closed,false);
+ now+=5*60*1000+1;p.onMessage.emit({kind:'applyRecord',id:'r2'});await flush();assert.equal(p.closed,true,'the renewed deadline ends the session');assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.equal(h.natives.length,0,'renewing never opens the helper');
+});
+test('applyRenew cannot revive an expired session, carry extra fields, or outlive navigation',async()=>{
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();
+ const extra=await h.apply();extra.onMessage.emit({kind:'applyRenew',patient:'PATIENT_CANARY'});await flush();assert.equal(extra.closed,true,'a renewal carries nothing but its kind');assert.ok(!extra.sent.some((v:any)=>v.kind==='applyRenewed'));
+ const late=await h.apply();now+=SESSION_TTL_MS+1;late.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(late.closed,true);assert.ok(!late.sent.some((v:any)=>v.kind==='applyRenewed'),'expiry is final');
+ now=Date.UTC(2026,9,24,15,15);const moved=await h.apply();h.setUrl('https://clinicaltrials.gov/study/NCT00000001');moved.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(moved.closed,true,'another study never inherits the session');assert.ok(!moved.sent.some((v:any)=>v.kind==='applyRenewed'));
+});
+test('prepared requests keep their own five-minute one-use receipt even though the session lasts 30 minutes',async()=>{
+ assert.equal(APPLY_TOKEN_TTL_MS,5*60*1000);
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
+ await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture(now+SESSION_TTL_MS)});
+ assert.equal(replies(p).at(-1).result.expiresAt,now+APPLY_TOKEN_TTL_MS,'a longer claim is cut back to five minutes');
+ now+=4*60*1000;p.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(p.sent.at(-1).kind,'applyRenewed');
+ now+=60*1000+1;await h.send(p,{id:'e1',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'APPLY_EXPIRED','renewing the session does not renew the receipt');assert.equal(h.natives[0].sent.length,1);assert.equal(p.closed,false,'the session itself is still open');
 });
