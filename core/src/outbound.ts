@@ -38,8 +38,9 @@
  *   - Operation scope. Decisions bodies only for a confirmed score operation, Agents requests only
  *     for a confirmed agent operation. Data-bearing sends stop when the operation is aborted
  *     (consent cleared, cancel, endSession, expiry). Cleanup requests (cancel, retrieve, delete) are
- *     still allowed after an abort, so an Agents session can be cleaned up. After close() nothing
- *     can be sent.
+ *     still allowed after an abort, so an Agents session can be cleaned up, for at most
+ *     ABORT_CLEANUP_GRACE_MS; then the capability closes itself. After close() nothing can be sent,
+ *     and the credential is dropped.
  *   - Fail closed. A malformed or out-of-policy reference is refused before anything reaches the
  *     transport, and the refusal is recorded as a violation: the dispatcher then fails the whole
  *     operation even if the pipeline catches the error, and further data-bearing sends are refused.
@@ -103,6 +104,13 @@ export const BASE_RETRY_DELAY_MS = 1_000;
 export const MAX_RETRY_JITTER_MS = 255;
 /** Longest delay a pipeline may request through wait(). */
 export const MAX_PIPELINE_WAIT_MS = 5_000;
+/**
+ * After the operation is aborted, cleanup requests stay possible for this long; then the capability
+ * closes itself (cancelling its requests and dropping the credential) even if the pipeline never
+ * returns. The extension's helper gave cleanup a 5.5 second budget and exited 6 seconds after a
+ * shutdown request.
+ */
+export const ABORT_CLEANUP_GRACE_MS = 10_000;
 /** Per-request time limits; the Agents create limit covers the whole stream. */
 export const SEND_TIMEOUT_MS = Object.freeze({
   decisions: 25_000,
@@ -767,6 +775,32 @@ export function createOpenAISender(options: SenderOptions): SenderHandle {
 
   const capability: OpenAISender = Object.freeze({ send, wait });
 
+  let cancelGrace: (() => void) | undefined;
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    apiKey = undefined;
+    operationSignal.removeEventListener('abort', onOperationAbort);
+    try {
+      cancelGrace?.();
+    } catch {
+      // The capability is closed either way.
+    }
+    for (const request of [...live]) {
+      request.source.cancel();
+      request.done();
+    }
+    for (const stop of [...waiters]) stop();
+    observed = '';
+  }
+  // After an abort the pipeline may still clean up its Agents session, but only for a bounded time:
+  // then the capability closes and drops the credential even if the pipeline never returns.
+  function onOperationAbort(): void {
+    if (closed || cancelGrace !== undefined) return;
+    cancelGrace = clock.schedule(ABORT_CLEANUP_GRACE_MS, close);
+  }
+  operationSignal.addEventListener('abort', onOperationAbort);
+
   return Object.freeze({
     capability,
     record(): SenderRecord {
@@ -778,16 +812,6 @@ export function createOpenAISender(options: SenderOptions): SenderHandle {
         sessionDeleted,
       });
     },
-    close() {
-      if (closed) return;
-      closed = true;
-      apiKey = undefined;
-      for (const request of [...live]) {
-        request.source.cancel();
-        request.done();
-      }
-      for (const stop of [...waiters]) stop();
-      observed = '';
-    },
+    close,
   });
 }

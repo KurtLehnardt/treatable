@@ -491,3 +491,35 @@ test('only the five documented method and path pairs are allowed', () => {
     assert.equal(isAllowedOpenAIRequest(method!, path!), false, `${method} ${path}`);
   }
 });
+
+test('after an abort the capability allows cleanup for a bounded time, then closes itself even if the pipeline never returns', async () => {
+  const { ABORT_CLEANUP_GRACE_MS } = await import('../src/outbound.ts');
+  let leaked: ExecuteContext['openai'] | undefined;
+  let started!: () => void;
+  const ready = new Promise<void>(resolve => (started = resolve));
+  let finish!: () => void;
+  const hang = new Promise<void>(resolve => (finish = resolve));
+  const h = harness({
+    execute: async ctx => {
+      leaked = ctx.openai;
+      const create = await ctx.openai.send({ kind: 'agentsCreate' });
+      const iterator = sseEvents(create.body)[Symbol.asyncIterator]();
+      await iterator.next(); // agent.session.created: the session ID has now been seen
+      started();
+      await hang; // a pipeline that ignores the abort
+      throw new CoreError('CANCELLED');
+    },
+  });
+  const p = await prepared(h);
+  const running = h.call('executeReal', execute(p, 'agent'));
+  await ready;
+  okResult(await h.call('revokeReal', {}));
+  assert.equal(await codeOf(leaked!.send({ kind: 'toolResult', index: 0, sessionId: FAKE_SESSION_ID, turnId: FAKE_TURN_ID, callId: 'call_fictional_0_0' })), 'CANCELLED', 'no data after the abort');
+  assert.equal((await leaked!.send({ kind: 'agentsDelete', sessionId: FAKE_SESSION_ID })).status, 200, 'cleanup within the grace period');
+  const before = h.openai.calls.length;
+  h.ports.clock.advance(ABORT_CLEANUP_GRACE_MS);
+  assert.equal(await codeOf(leaked!.send({ kind: 'agentsCancel', sessionId: FAKE_SESSION_ID })), 'CANCELLED', 'closed after the grace period');
+  assert.equal(h.openai.calls.length, before);
+  finish();
+  assert.equal(errorCode(await running), 'CANCELLED');
+});
