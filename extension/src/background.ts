@@ -51,8 +51,11 @@ void chrome.sidePanel.setOptions({enabled:false}).catch(()=>{});
 void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:false}).catch(()=>{});
 function configurePanel(tab:any){
  if(!Number.isInteger(tab?.id)||tab.id<0)return Promise.resolve();
+ setActionTitle(tab);
  return chrome.sidePanel.setOptions({tabId:tab.id,enabled:false}).catch(()=>{});
 }
+// The toolbar title says what a click does on this tab. Tab URLs are readable only on the supported sites, so any other tab reads as unsupported. Titles need no permission.
+function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:isSupportedSite(tab.url??'')?'Open Treatable':'Open ClinicalTrials.gov to use Treatable'})).catch(()=>{})}catch{}}
 let panelSequence=0;
 const panelRevisions=new Map<number,number>();
 function updatePanel(tab:any){if(Number.isInteger(tab?.id)&&tab.id>=0)panelRevisions.set(tab.id,++panelSequence);return configurePanel(tab)}

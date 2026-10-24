@@ -13,6 +13,13 @@ export interface SiteRequest{id:string;type:SiteRequestType;payload:Record<strin
 export const SITE_OVERLAY_PORT='treatable.site.overlay.v1',SITE_BADGE_PORT='treatable.site.badge.v1';
 export const SITE_PRIVATE_MATCHING_READY=true;
 export const SITE_MAX_MESSAGE_BYTES=128*1024;
+/** The only background error texts that may reach the overlay. Any other failure keeps its generic message so internals never leak. */
+export const SITE_ZIP_FORMAT_MESSAGE="Enter a 5-digit US ZIP code. For other places, use the website's Location box.";
+export const SITE_ZIP_UNKNOWN_MESSAGE="That ZIP code was not found. Check it, or use the website's Location box.";
+type SiteUserMessage=typeof SITE_ZIP_FORMAT_MESSAGE|typeof SITE_ZIP_UNKNOWN_MESSAGE;
+const SITE_USER_MESSAGES:readonly string[]=[SITE_ZIP_FORMAT_MESSAGE,SITE_ZIP_UNKNOWN_MESSAGE];
+export function isSiteUserMessage(v:unknown):v is SiteUserMessage{return typeof v==='string'&&SITE_USER_MESSAGES.includes(v)}
+export class UserFacingSiteError extends Error{constructor(message:SiteUserMessage){super(message);this.name='UserFacingSiteError'}}
 export function siteBytes(value:unknown){try{return new TextEncoder().encode(JSON.stringify(value)).byteLength}catch{return Infinity}}
 export function siteRecord(v:unknown):v is Record<string,unknown>{return !!v&&typeof v==='object'&&!Array.isArray(v)}
 export function exactSiteKeys(v:unknown,keys:readonly string[]):v is Record<string,unknown>{return siteRecord(v)&&Object.keys(v).every(k=>keys.includes(k))}
