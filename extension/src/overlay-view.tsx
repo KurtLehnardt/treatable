@@ -1,6 +1,6 @@
 import{trialUrl}from'./core';
 import{LIVE_MAX_STUDIES}from'../shared/live-analysis-contract.mjs';
-import React,{useEffect,useRef} from 'react';
+import React,{useEffect,useRef,type ReactNode} from 'react';
 import type {OverlayField,OverlayFields,OverlayViewModel} from './overlay-types';
 const text=(v:unknown)=>typeof v==='string'?v:'';
 const values=(v:unknown)=>Array.isArray(v)?v.filter((x):x is string=>typeof x==='string'):[];
@@ -15,7 +15,7 @@ function Field({field,fields,disabled,onChange}:{field:OverlayField;fields:Overl
  if(field.input==='location')return <div className="filter-field"><label htmlFor={id}>{field.label}<input id={id} autoComplete="off" spellCheck={false} disabled={off} value={text(obj(value).text)} placeholder="Address, city, state, ZIP or country" onChange={e=>onChange(field.key,{text:e.target.value,...(typeof obj(value).distance==='number'?{distance:obj(value).distance}:{})})}/></label>{help}</div>;
  return <div className="filter-field"><label htmlFor={id}>{field.label}{field.input==='select'?<select id={id} disabled={off} value={text(value)} onChange={e=>onChange(field.key,e.target.value)}><option value="">Any / no selection</option>{field.options?.map(v=><option key={v.value} value={v.value}>{v.label}</option>)}</select>:<input id={id} autoComplete="off" spellCheck={false} autoCorrect="off" autoCapitalize="off" disabled={off} value={text(value)} onChange={e=>onChange(field.key,e.target.value)}/>}</label>{help}</div>;
 }
-export function OverlayView({vm}:{vm:OverlayViewModel}){
+export function OverlayView({vm,inlineMatching}:{vm:OverlayViewModel;inlineMatching?:ReactNode}){
  const heading=useRef<HTMLHeadingElement>(null);useEffect(()=>{heading.current?.focus()},[]);
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();vm.close()}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[vm.close]);
  const loadedCount=vm.snapshot?.nctIds.length??0,tooManyStudies=loadedCount>LIVE_MAX_STUDIES,canOpenMatching=vm.connected&&!vm.busy&&loadedCount>0&&!tooManyStudies;
