@@ -3,6 +3,7 @@
 import{haversineMiles}from'../../scaffold/lib/eligibility/hardFilters';
 import{siteLocationStatus,validLocalOrigin,type LocalOrigin}from'./local-distance';
 import{dialNumber,isNanpCountry,TEL_HREF,type DialNumber}from'./phone';
+import{YOUR_DETAILS_LIMITS,type YourDetails}from'./your-details';
 import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplyResult,type ApplySite}from'../shared/apply-contract.mjs';
 export const DEFAULT_QUESTION_IDS:readonly ApplyQuestionId[]=Object.freeze(['still_enrolling','prescreen_fit','visits','costs','next_steps']);
 export const DEFAULT_PRESCREEN_IDS:readonly ApplyPrescreenId[]=Object.freeze(['diagnosis_details','symptom_duration','recent_imaging','prior_treatments','medication_list']);
@@ -14,7 +15,7 @@ export type PlanContact=ApplyContact&{source:'site'|'central'};
 export interface SiteOption{site:ApplySite;distanceMiles?:number}
 /** A listed contact with a phone number, and its dial link when the number is a complete, checkable phone number. */
 export interface CallContact{contact:PlanContact;dial?:DialNumber}
-export interface ApplyPlan{nctId:string;title:string;sourceUrl:string;site?:ApplySite;distanceMiles?:number;siteReason:'chosen'|'nearest'|'only'|'none';siteOptions:SiteOption[];primary?:PlanContact;backups:PlanContact[];investigator?:ApplyOfficial;flagIds:ApplyFlagId[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];answerIds:ApplyPrescreenId[];subject:string;body:string;phoneScript:string;callContacts:CallContact[];followUpDate:string;followUpLabel:string;followUpSteps:string[];followUp:string;followUpCall?:CallContact;mailto?:string;tel?:string;missing:string[]}
+export interface ApplyPlan{nctId:string;title:string;sourceUrl:string;site?:ApplySite;distanceMiles?:number;siteReason:'chosen'|'nearest'|'only'|'none';siteOptions:SiteOption[];primary?:PlanContact;backups:PlanContact[];investigator?:ApplyOfficial;flagIds:ApplyFlagId[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];answerIds:ApplyPrescreenId[];subject:string;body:string;phoneScript:string;callContacts:CallContact[];followUpMessage:string;followUpDate:string;followUpLabel:string;followUpSteps:string[];followUp:string;followUpCall?:CallContact;mailto?:string;tel?:string;missing:string[]}
 const clean=(v:unknown,max=200)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,max):'';
 const norm=(v:string|null|undefined)=>(v||'').trim().toUpperCase().replace(/[\s-]+/g,'_');
 const reachable=(c:ApplyContact)=>!!(c.email||c.phone);
@@ -85,21 +86,32 @@ export function emailSubject(record:ApplyRecord){return[record.nctId,record.orgS
 /** Fixed pronoun swap so catalog pre-screen labels read in the patient's voice. */
 export function firstPerson(text:string){return text.replace(/\bto you\b/g,'to me').replace(/\bYour\b/g,'My').replace(/\byour\b/g,'my').replace(/\byou\b/g,'I')}
 const place=(s?:ApplySite)=>s?[s.facility,[s.city,s.state].filter(Boolean).join(', ')].filter(Boolean).join(' in '):'';
+/** Multi-line patient text for a local draft: control characters removed, at most one blank line in a row, bounded. */
+export function cleanBlock(v:unknown,max:number){return typeof v==='string'?v.replace(/\r\n?/g,'\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g,' ').split('\n').map(line=>line.replace(/[ \t]+/g,' ').trim()).join('\n').replace(/\n{3,}/g,'\n\n').trim().slice(0,max).trim():''}
+/** Name for a draft: this study's own field first, then the session-wide "Your details" name. */
+const patientName=(patient:ApplyPatient,details?:YourDetails)=>clean(patient.name,120)||clean(details?.name,YOUR_DETAILS_LIMITS.name)||'[your name]';
+const reasonText=(details?:YourDetails)=>cleanBlock(details?.condition,YOUR_DETAILS_LIMITS.condition);
+const extraText=(details?:YourDetails)=>cleanBlock(details?.extra,YOUR_DETAILS_LIMITS.extra);
 const greetingName=(c?:ApplyContact)=>{const n=clean(c?.name,160).replace(/,.*$/,'').trim();return n||'study team'};
 function reachLine(p:ApplyPatient){const phone=clean(p.phone,40),email=clean(p.email,254),times=clean(p.bestTimes,120);const ways=[phone&&`by phone at ${phone}`,email&&`by email at ${email}`].filter(Boolean).join(' or ');return `You can reach me ${ways||'by reply to this email'}.${times?` The best times to reach me are ${times}.`:''}`}
 /** Pre-screen items to ask about: the selected ones, plus anything the patient already answered (so a later agent
  * selection never silently drops what they typed). */
 export function answerIds(prescreenIds:readonly ApplyPrescreenId[],patient:ApplyPatient):ApplyPrescreenId[]{return[...prescreenIds,...(Object.keys(APPLY_PRESCREEN_TEMPLATES) as ApplyPrescreenId[]).filter(id=>!prescreenIds.includes(id)&&clean(patient.answers[id],ANSWER_LIMIT))]}
-export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[]){
- const name=clean(patient.name,120)||'[your name]',where=place(site);
+export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[],details?:YourDetails){
+ const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details);
  const answered=answerIds(prescreenIds,patient).flatMap(id=>{const a=clean(patient.answers[id],ANSWER_LIMIT);return a?[{label:firstPerson(APPLY_PRESCREEN_TEMPLATES[id]),answer:a}]:[]});
- return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,1000)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer}`)]:[]),...(questionIds.length?['','My questions:',...questionIds.map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
+ return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,1000)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(reason?['','Why I am reaching out:',reason]:[]),...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer}`)]:[]),...(extra?['','Something else I would like you to know:',extra]:[]),...(questionIds.length?['','My questions:',...questionIds.map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
 }
-export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[]){
- const name=clean(patient.name,120)||'[your name]',where=place(site);
- return[`Say: Hello, my name is ${name}. I am calling about the study ${record.nctId}, ${clean(record.title,300)}${where?`, at ${where}`:''}. I found it on ClinicalTrials.gov and would like to know if I could take part.`,'','Questions to ask:',...questionIds.map((id,i)=>`${i+1}. ${APPLY_QUESTION_TEMPLATES[id]}`),'','If they ask, have this ready:',...prescreenIds.map(id=>`- ${APPLY_PRESCREEN_TEMPLATES[id]}`),'',`Before you hang up: ${reachLine(patient).replace(/^You can reach me/,'tell them they can reach you').replace(/\bme\b/g,'you')}`,'Write down the name of the person you spoke with and the date.'].join('\n');
+export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[],details?:YourDetails){
+ const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details);
+ return[`Say: Hello, my name is ${name}. I am calling about the study ${record.nctId}, ${clean(record.title,300)}${where?`, at ${where}`:''}. I found it on ClinicalTrials.gov and would like to know if I could take part.`,...(reason?['','If they ask why you are interested, you can say:',reason]:[]),'','Questions to ask:',...questionIds.map((id,i)=>`${i+1}. ${APPLY_QUESTION_TEMPLATES[id]}`),'','If they ask, have this ready:',...prescreenIds.map(id=>`- ${APPLY_PRESCREEN_TEMPLATES[id]}`),...(extra?['','Also mention:',extra]:[]),'',`Before you hang up: ${reachLine(patient).replace(/^You can reach me/,'tell them they can reach you').replace(/\bme\b/g,'you')}`,'Write down the name of the person you spoke with and the date.'].join('\n');
 }
 const contactName=(c:{name:string|null}|undefined,fallback:string)=>clean(c?.name,160)||fallback;
+/** Short follow-up message for when the study team has not replied. Built locally like the email; editable before use. */
+export function composeFollowUpMessage(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,details?:YourDetails){
+ const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details);
+ return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am following up on my earlier message about the study "${clean(record.title,1000)}" (${record.nctId})${where?` at ${where}`:''}. I am still interested and would like to learn whether I could take part, and what the next steps would be.`,...(reason?['','As a reminder, this is why I am reaching out:',reason]:[]),...(extra?['','Something else I would like you to know:',extra]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
+}
 /** First listed contact with a phone number, in contact-chain order: the one the follow-up plan suggests calling. */
 export const followUpCallable=(primary:PlanContact|undefined,backups:PlanContact[])=>[primary,...backups].find((c):c is PlanContact=>!!c?.phone);
 export function followUpSteps(primary:PlanContact|undefined,backups:PlanContact[],investigator:ApplyOfficial|undefined){
@@ -169,14 +181,15 @@ export function missingInput(patient:ApplyPatient){const out:string[]=[],phone=c
  if(!phone&&!email)out.push('Enter a phone number or an email address so the study team can reach you.');
  if(phone&&!phoneDigits(phone))out.push('Check the phone number. Use 7 to 15 digits.');
  if(email&&!validEmail(email))out.push('Check the email address.');return out}
-export function buildApplyPlan({record,patient,origin,siteId,agent,today}:{record:ApplyRecord;patient:ApplyPatient;origin?:LocalOrigin|null;siteId?:string;agent?:Pick<ApplyResult,'nctId'|'questionIds'|'prescreenIds'|'flagIds'>;today:Date}):ApplyPlan{
+/** `details` (the session-only "Your details") only fills the local drafts below; it never leaves this function in any other form. */
+export function buildApplyPlan({record,patient,details,origin,siteId,agent,today}:{record:ApplyRecord;patient:ApplyPatient;details?:YourDetails;origin?:LocalOrigin|null;siteId?:string;agent?:Pick<ApplyResult,'nctId'|'questionIds'|'prescreenIds'|'flagIds'>;today:Date}):ApplyPlan{
  const useAgent=agent&&agent.nctId===record.nctId?agent:undefined,choice=chooseSite(record,origin,siteId),chain=contactChain(record,choice.site);
  const questionIds=[...(useAgent?.questionIds??DEFAULT_QUESTION_IDS)],prescreenIds=[...(useAgent?.prescreenIds??DEFAULT_PRESCREEN_IDS)];
  const flagIds=mergeFlags(deterministicFlags(record,choice.site,today),useAgent?.flagIds??[]);
- const subject=emailSubject(record),body=composeEmail(record,choice.site,chain.primary,patient,questionIds,prescreenIds);
+ const subject=emailSubject(record),body=composeEmail(record,choice.site,chain.primary,patient,questionIds,prescreenIds,details);
  const due=addBusinessDays(localDay(today),FOLLOW_UP_BUSINESS_DAYS),steps=followUpSteps(chain.primary,chain.backups,chain.investigator),label=longDay(due);
  const followUp=steps.length?`If no reply by ${label}: ${steps.map((s,i)=>i?`then ${s}`:s).join('; ')}.`:`If no reply by ${label}: contact the study again using the details on its ClinicalTrials.gov page.`;
  const calls=callContacts(record,choice.site,[...(chain.primary?[chain.primary]:[]),...chain.backups]),callable=followUpCallable(chain.primary,chain.backups),followUpCall=calls.find(c=>c.contact===callable);
  const mailto=mailtoUrl(chain.primary?.email,subject,body),tel=calls.find(c=>c.contact===chain.primary)?.dial?.href;
- return{nctId:record.nctId,title:record.title,sourceUrl:record.sourceUrl,...(choice.site?{site:choice.site}:{}),...(choice.distanceMiles!==undefined?{distanceMiles:choice.distanceMiles}:{}),siteReason:choice.reason,siteOptions:choice.options,...(chain.primary?{primary:chain.primary}:{}),backups:chain.backups,...(chain.investigator?{investigator:chain.investigator}:{}),flagIds,questionIds,prescreenIds,answerIds:answerIds(prescreenIds,patient),subject,body,phoneScript:composePhoneScript(record,choice.site,patient,questionIds,prescreenIds),callContacts:calls,followUpDate:isoDay(due),followUpLabel:label,followUpSteps:steps,followUp,...(followUpCall?{followUpCall}:{}),...(mailto?{mailto}:{}),...(tel?{tel}:{}),missing:missingInput(patient)};
+ return{nctId:record.nctId,title:record.title,sourceUrl:record.sourceUrl,...(choice.site?{site:choice.site}:{}),...(choice.distanceMiles!==undefined?{distanceMiles:choice.distanceMiles}:{}),siteReason:choice.reason,siteOptions:choice.options,...(chain.primary?{primary:chain.primary}:{}),backups:chain.backups,...(chain.investigator?{investigator:chain.investigator}:{}),flagIds,questionIds,prescreenIds,answerIds:answerIds(prescreenIds,patient),subject,body,phoneScript:composePhoneScript(record,choice.site,patient,questionIds,prescreenIds,details),callContacts:calls,followUpMessage:composeFollowUpMessage(record,choice.site,chain.primary,patient,details),followUpDate:isoDay(due),followUpLabel:label,followUpSteps:steps,followUp,...(followUpCall?{followUpCall}:{}),...(mailto?{mailto}:{}),...(tel?{tel}:{}),missing:missingInput({...patient,name:clean(patient.name,120)||clean(details?.name,YOUR_DETAILS_LIMITS.name)})};
 }
