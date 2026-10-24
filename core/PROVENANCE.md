@@ -5,6 +5,7 @@
 - Source commit: `48c569e6ade1803730384870d5cd1cffbf895676` (`48c569e`, branch `codex/treatable-mvp`, "fix: restrict side panel to ClinicalTrials.gov tabs").
 - Reviewed state: `extension/SECURITY_REVIEW.md` (review of source `29f126b`, recorded at `48c569e`).
 - Ported by task A1a on 2026-10-24.
+- Task A2 ported the live ClinicalTrials.gov client from `scaffold/` (same source commit) on 2026-10-24.
 - Drift check: `node scripts/drift-check.mjs` compares each source below (by git blob ID at `48c569e`) with a target commit or the working tree and exits non-zero on any change. On 2026-10-24 it reported no drift against this branch and against `codex/treatable-mvp` at `4281bef` (the only upstream change since `48c569e` is `extension/src/demo-panel.tsx`, which is not ported).
 
 ## Ported code
@@ -27,6 +28,17 @@
 | `extension/native/core.mjs` `ID_PATTERN`, `replyId` | `src/protocol.ts` `REQUEST_ID_PATTERN`, `src/dispatcher.ts` `replyIdOf` | Unchanged. `HOST_NAME`, `EXTENSION_ID`, `validateOrigin` are Chrome-only and banned in `core/src`. |
 | `extension/src/validation.ts` `boundedText`, `REQUEST_ID`, `withinMessageBudget` | `src/protocol.ts` `isSafeText`, `inputText`, `outputText`, size checks | Same control-character, bidirectional-override, lone-surrogate, and single-line rules. Lone surrogates are detected with a loop instead of a lookbehind regular expression for runtime portability. Search terms are NFC-normalized and trimmed like `boundedText`; the consented condition term is not, because it must match a public term byte for byte. Search terms additionally reject 5-digit runs, `@`, and `://` so ZIP codes, phone numbers, emails, and URLs are not sent as search text. |
 
+### Ported by task A2 (2026-10-24)
+
+| Source (at 48c569e) | Ported into | What changed and why |
+| --- | --- | --- |
+| `scaffold/scripts/lib/ctgov.mjs` `fetchPages` | `src/ctgov/query.ts`, `src/ctgov/client.ts`, `src/ctgov/search.ts` | Same endpoint, `format=json`, open-status filter (`ALLOWED_STATUSES`), quoted-phrase query, and `nextPageToken` loop. Changed: `query.cond` with the user's 1 to 5 terms instead of `query.term` with fixed seeds; `filter.advanced=SEARCH[Location](...)` for the United States and at most one state instead of `query.locn=United States`; a fixed field list, `sort=@relevance`, page size 1 to 25 instead of 1,000, at most three pages per call, a 2,048-character URL bound, and `countTotal` on the first page; requests through the injected transport port behind a guard that re-derives and compares the URL; pacing, `Retry-After`, jittered exponential backoff with a three-attempt cap, a per-attempt timeout and whole-search budget from the clock port, cancellation, an 8 MiB streamed body cap, strict UTF-8, a JSON depth check, and envelope validation instead of `fetch`, `AbortSignal.timeout`, `res.json()`, and unbounded retries on any 5xx; typed constant errors instead of messages with the status; page tokens are accepted from the host only as the core's own cursor for the same terms and state; search terms also refuse double quotes, backslashes, and words starting with `NCT` followed by digits, so a term stays one quoted phrase and the United States filter always applies. |
+| `scaffold/scripts/lib/ctgov.mjs` `normalizeStudy` | `src/ctgov/normalize.ts` | Same source fields, United States location filter, contact sources (central contacts, overall officials, US site contacts) with de-duplication, and `sourceUrl` built from the NCT ID. Changed for hostile input: required fields are validated (records are skipped, not defaulted; a record with no US location is skipped), free text is sanitized and cut by UTF-8 bytes, condition and MeSH terms are kept exactly or dropped, structured values must match strict patterns, lists are capped, each record is fitted to 40 KiB with `truncatedFields`, and the output is validated with `StudyRecordSchema`. Not ported: detailed description, keywords, interventions, dates other than last update, `stdAges`, `hasPlacebo`, `provenance` (fields the apps do not show or send), and `studyEmbedText`/`contentHash` (the BM25 and embedding pipeline is not ported). `fetchedAt` became `retrievedAt` from the clock port. |
+| `scaffold/lib/contracts/study.ts` `StudySchema` | `src/protocol.ts` `StudyRecordSchema` (reference only) | Field names informed the record shape; the core schema is strict and bounded. |
+| `extension/shared/public-catalog.mjs` catalog pin, checked by `real.mjs` | `src/pinning/record-set.ts`, `src/pinning/preview.ts` (replaced) | The fixed catalog hash is replaced by the session record-set digest as the consent subject; preview studies must be the deterministic projection of held records and the condition term must be public vocabulary on a held record. Contract change for the A2r re-review: `docs/apps/record-set-pinning.md`. |
+| `extension/native/real.mjs` `publicStudy` | `src/pinning/model-study.ts` `toModelStudy` | Same field set as A1a's `ModelStudySchema`; byte caps (summary 1,800, criteria 4,000, whole object 5,120) applied by cutting criteria, then summary, then trailing conditions. |
+| `scaffold/data/fixtures/ctgov-real.json` | `tests/fixtures/ctgov-real.json` | Byte-for-byte copy (blob `79e7979`) of five recorded public study records, used by the mocked tests. |
+
 ## Ported tests
 
 All ported tests are mocked (fake or injected ports, no network).
@@ -47,6 +59,8 @@ All ported tests are mocked (fake or injected ports, no network).
 | `native/test/core.test.mjs` "isolated-home installer is durable..." | not ported | Installer and Chrome registration; desktop installers are separate tasks. |
 | `native/test/core.test.mjs` "actual framed helper rejects PHI and duplicate IDs before any credential read; status never exposes secrets" | `tests/dispatcher.test.ts` "[ported core.test.mjs#1, #9]" and "status reports..." | Framing part pending (A6a). |
 | `extension/tests/validation.test.ts` text rules | `tests/protocol.test.ts` (search-term and condition-term cases), `tests/bytes.test.ts` | |
+
+Task A2 adds `tests/ctgov.test.ts` and `tests/pinning.test.ts` (new mocked suites; the scaffold has no client tests to port).
 
 ## Not ported
 

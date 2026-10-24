@@ -13,18 +13,21 @@ Research information, not medical advice.
 | `src/session.ts` | In-memory session: prepared consent, running operations, seen request IDs, pinned subject digest, typed slots. `wipe()` drops everything. |
 | `src/consent/` | Prepared-consent store (pinned preview, SHA-256 digest through the port, five-minute one-use tokens, invalidation) and the policy receipt. |
 | `src/preview.ts` | Deterministic builders for the exact outbound preview. |
+| `src/ctgov/` | Live ClinicalTrials.gov API v2 search (task A2): request builder and parser, transport guard, client with bounds, retries, and cancellation, record normalization, and the searchTrials pipeline. See `docs/apps/ctgov-live-search.md`. |
+| `src/pinning/` | Record-set pinning (task A2): record and record-set digests, the session record set, the model-study projection, condition-term membership, preview re-derivation, and the R4 bounds helpers. See `docs/apps/record-set-pinning.md`. |
 | `src/ports.ts` | Port interfaces: Transport, Sha256, TokenSource, Clock, Loader. |
 | `src/bytes.ts`, `src/json.ts`, `src/cancel.ts`, `src/resources.ts` | Neutral helpers: UTF-8 without host encoders, canonical JSON (RFC 8785 ordering), cancellation, bounded resource loading. |
 | `node/ports.node.ts` | Node reference implementations of the ports. Never imported by `src/`. |
 | `tests/` | Mocked test suites (no network). `tests/support/` holds fakes, fixtures, and the import scanner. |
-| `scripts/drift-check.mjs` | Reports changes to the ported extension sources since 48c569e. |
+| `scripts/drift-check.mjs` | Reports changes to the ported extension and scaffold sources since 48c569e. |
+| `scripts/ctgov-live-smoke.ts` | Opt-in LIVE ClinicalTrials.gov smoke run (not part of `npm test`). |
 | `PROVENANCE.md` | What was ported from where, what changed and why, and dependency versions. |
 
 ## Ports
 
 Everything with an effect goes through a port that the host injects. Each port's contract is documented in `src/ports.ts`; the core treats port results as untrusted and validates them.
 
-- **Transport**: `request({ method, url, headers, body: Uint8Array, signal }) -> { status, headers, body: Uint8Array | AsyncIterable<Uint8Array> }`. HTTPS with certificate validation, no redirects. The core reads bodies with its own byte cap. Endpoint allowlist, host pinning, and request caps around this port are task A1b.
+- **Transport**: `request({ method, url, headers, body: Uint8Array, signal }) -> { status, headers, body: Uint8Array | AsyncIterable<Uint8Array> }`. HTTPS with certificate validation, no redirects. The core reads bodies with its own byte cap. Endpoint allowlist, host pinning, and request caps around this port are task A1b; ClinicalTrials.gov requests already pass the guard in `src/ctgov/transport-seam.ts`.
 - **Sha256**: `digestHex(bytes) -> hex` (sync or async).
 - **TokenSource**: `randomBytes(n)` from the operating system's cryptographic generator.
 - **Clock**: `now()` (wall time for display), `monotonic()` (expiry decisions), `schedule(ms, fn) -> cancel`.
@@ -37,9 +40,9 @@ Everything with an effect goes through a port that the host injects. Each port's
 | Operation | Direction | State in this build |
 | --- | --- | --- |
 | `status` | host -> core | implemented |
-| `searchTrials` | host -> core | `NOT_IMPLEMENTED` until task A2 (live ClinicalTrials.gov client and record-set subject) |
+| `searchTrials` | host -> core | live ClinicalTrials.gov search (task A2), wired only in `live` mode; mocked cores answer `NOT_IMPLEMENTED` unless the host passes a pipeline |
 | `screenLocal` | host -> core | `NOT_IMPLEMENTED` until task A1b (deterministic screening) |
-| `prepareReal` | host -> core | consent gate implemented; `NOT_IMPLEMENTED` until tasks A2 and A4 supply the preview pipeline |
+| `prepareReal` | host -> core | consent gate implemented; record-set pinned preview builder (task A2) wired only in `live` mode; every built preview is re-derived from the session records |
 | `executeReal` | host -> core | consent gate and credential gating implemented; `NOT_IMPLEMENTED` until task A4 supplies the provider pipeline |
 | `revokeReal` | host -> core | implemented |
 | `cancel` | host -> core | implemented |
@@ -63,3 +66,9 @@ npm run drift-check # same as node scripts/drift-check.mjs
 ```
 
 All tests are mocked: they use fake or injected ports and make no network requests. No OpenAI or ClinicalTrials.gov call is made by this package's tests.
+
+One opt-in script makes a real, labeled ClinicalTrials.gov request with a generic search and no patient data (no OpenAI request):
+
+```sh
+TREATABLE_LIVE_CTGOV=1 npm run smoke:ctgov-live   # prints LIVE counts, NCT IDs, retrievedAt, sourceUrl
+```

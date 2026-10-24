@@ -24,10 +24,11 @@ import { fileURLToPath } from 'node:url';
 
 export const BASE_COMMIT = '48c569e';
 
-// Git blob IDs at 48c569e. "ported" files were ported by task A1a; "pending" files are reviewed,
-// security-critical sources that later tasks port (A1b, A4, A6a, A6b); "reference" files informed
-// the design without code being copied. Every entry is checked, because any change in them needs a
-// review before the next re-base.
+// Git blob IDs at 48c569e. "ported" files were ported by the named task (A1a, A2); "pending" files
+// are reviewed, security-critical sources that later tasks port (A1b, A4, A6a, A6b); "reference"
+// files informed the design without code being copied; "replaced" files hold reviewed behavior that
+// a core design replaces; "copied" files are test fixtures copied byte for byte. Every entry is
+// checked, because any change in them needs a review before the next re-base.
 export const PORTED_SOURCES = [
   { path: 'extension/native/real.mjs', blob: '699f0e29e7498543ada36646d4ad5af918be3bd1', status: 'ported (A1a): PreparedRealStore, publicStudy field set, request texts, corpus integrity checks' },
   { path: 'extension/shared/real-contract.mjs', blob: '3ff2614b3ac040d5657f73554b331a299716c20d', status: 'ported (A1a): policy receipt, TTL, packet, execute/revoke, result and prepared-reply contracts' },
@@ -43,6 +44,10 @@ export const PORTED_SOURCES = [
   { path: 'extension/native/credentials.mjs', blob: '06bdbd02238b7f4822efa70c65d52d1ed35e49b9', status: 'reference (A6b): credential boundary' },
   { path: 'extension/native/test/real.test.mjs', blob: '63b58728bc069ed88ebb9048817c868f893a554d', status: 'ported (A1a): consent and contract tests; pending (A4, A6a): HTTPS and stdio tests' },
   { path: 'extension/native/test/core.test.mjs', blob: 'a19066611e6619b37a824c051f96fcdbdae3c93c', status: 'ported (A1a): request validation tests; pending (A4, A6a): provider and framing tests' },
+  { path: 'scaffold/scripts/lib/ctgov.mjs', blob: '2dc10c1250b1706cb41e54e21a1b6be9a3ba8e0a', status: 'ported (A2): fetchPages pagination and retry, normalizeStudy field mapping, ALLOWED_STATUSES' },
+  { path: 'scaffold/lib/contracts/study.ts', blob: '8dacbe384a75c44c460e1d93d20b146bf3479354', status: 'reference (A2): study record fields' },
+  { path: 'extension/shared/public-catalog.mjs', blob: 'dc765d5a6e9e9e6d4d38a4dab7380e84fee65d4c', status: 'replaced (A2): bundled catalog pin, replaced by the session record-set pin' },
+  { path: 'scaffold/data/fixtures/ctgov-real.json', blob: '79e797935dbf3a3765d4e2e33bac2c606677557b', status: 'copied (A2): core/tests/fixtures/ctgov-real.json' },
 ];
 
 function parseArgs(argv) {
