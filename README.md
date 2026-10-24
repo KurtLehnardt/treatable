@@ -1,5 +1,9 @@
 # Treatable
 
+> **Demoed product:** the Treatable Chrome extension in [`extension/`](extension/README.md), with its local native host in [`extension/native/`](extension/native/API_SETUP.md). The rest of this README describes the legacy `scaffold/` web app, which is not part of the demo.
+>
+> **Security:** [SECURITY.md](SECURITY.md) (vulnerability reporting, scope, release gate) · [Threat model](docs/security/THREAT_MODEL.md) · [Demo-day checklist](docs/security/DEMO_DAY_CHECKLIST.md). Treatable is not a HIPAA-covered product, no compliance or certification is claimed, and minimized health data is not anonymous.
+
 Find US clinical studies and expanded-access programs that may relate to pain and hard-to-control symptoms.
 
 **Treatable does not give medical advice. It cannot decide whether a study is right for you. Your care team and the study team must check.** A match score measures search relevance, not eligibility, benefit, or a chance of enrollment.
