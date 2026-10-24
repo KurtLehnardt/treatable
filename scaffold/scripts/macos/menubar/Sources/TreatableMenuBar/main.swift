@@ -1,24 +1,24 @@
 //
-// Granted's menu-bar icon on macOS.
+// Treatable's menu-bar icon on macOS.
 //
-// The same menu the Windows tray shows (scaffold/scripts/windows/granted-tray.ps1):
+// The same menu the Windows tray shows (scaffold/scripts/windows/treatable-tray.ps1):
 //
-//   Open Granted
+//   Open Treatable
 //   <status>                      (not clickable: starting / running / stopped)
 //   Open in its own window        (a tick: Chrome/Edge app mode, or a browser tab)
 //   ---
 //   Show log
 //   Restart
 //   ---
-//   Uninstall Granted…            (asks first, in an alert of its own)
+//   Uninstall Treatable…            (asks first, in an alert of its own)
 //   ---
-//   Quit Granted
+//   Quit Treatable
 //
 // Uninstall is the one item the Windows tray has no counterpart for: there,
 // uninstalling is done from Windows' "Installed apps" list. macOS has no such
-// list, so the work order puts it here and in Settings → About Granted.
+// list, so the work order puts it here and in Settings → About Treatable.
 //
-// Every action shells back into scripts/macos/granted-tray.sh, so the launchd,
+// Every action shells back into scripts/macos/treatable-tray.sh, so the launchd,
 // status-file and open-in-a-window logic lives in one place and is tested
 // there; this process only draws the menu, polls that script for the server's
 // state, and reports it the way the installer already reads it.
@@ -28,26 +28,26 @@
 // stand-in for the Windows tray's exclusive lock file -- see
 // installer/src/main/ipcPure.ts macStatusLockPath) and writes the same
 // {state,message,pid} JSON. So, exactly as on Windows, quitting the icon
-// before Granted ever answered reads back to the installer as "the window was
+// before Treatable ever answered reads back to the installer as "the window was
 // closed", and a server that dies before answering reports the error itself.
 //
-// Configuration arrives in environment variables, all set by granted-tray.sh:
-//   GRANTED_PORT              the port Granted serves on
-//   GRANTED_TRAY_SCRIPT       the granted-tray.sh to call for every action
-//   GRANTED_LOG_FILE          the server log "Show log" opens
-//   GRANTED_STATUS_FILE       where to report status (optional)
-//   GRANTED_HELPER_PID_FILE   this process's pid file, removed on quit (optional)
-//   GRANTED_SETTINGS_PATH     the shared settings file, read for the "its own
+// Configuration arrives in environment variables, all set by treatable-tray.sh:
+//   TREATABLE_PORT              the port Treatable serves on
+//   TREATABLE_TRAY_SCRIPT       the treatable-tray.sh to call for every action
+//   TREATABLE_LOG_FILE          the server log "Show log" opens
+//   TREATABLE_STATUS_FILE       where to report status (optional)
+//   TREATABLE_HELPER_PID_FILE   this process's pid file, removed on quit (optional)
+//   TREATABLE_SETTINGS_PATH     the shared settings file, read for the "its own
 //                             window" tick (optional; defaults to the real one)
-//   GRANTED_MENUBAR_ICON      the icon file to use (optional)
-//   GRANTED_MENUBAR_CONFIRM   "yes" or "no" — answer the Uninstall alert
+//   TREATABLE_MENUBAR_ICON      the icon file to use (optional)
+//   TREATABLE_MENUBAR_CONFIRM   "yes" or "no" — answer the Uninstall alert
 //                             without showing it. Test-only: a modal alert
 //                             would wait for a click that never comes.
-//   GRANTED_MENUBAR_SELF_TEST "1", or "click:<menu item title>" — build
+//   TREATABLE_MENUBAR_SELF_TEST "1", or "click:<menu item title>" — build
 //                             everything, report it (and choose that item,
 //                             the way a click does), then exit. The smoke
 //                             test; nothing stays in the menu bar.
-//   GRANTED_MENUBAR_RUN_TIMEOUT_TEST
+//   TREATABLE_MENUBAR_RUN_TIMEOUT_TEST
 //                             "<seconds>:<bash script>" — run that script
 //                             through run() below and report what happened,
 //                             then exit. The timeout harness; never part of
@@ -93,7 +93,7 @@ private final class RunOutcome {
 
 /// SIGTERM or SIGKILL for the whole process group the child was spawned into,
 /// so a wedged grandchild goes with the bash that started it. Every `run()`
-/// here is `/bin/bash granted-tray.sh …`, whose real work is grandchildren
+/// here is `/bin/bash treatable-tray.sh …`, whose real work is grandchildren
 /// (launchctl, curl); signalling bash alone can leave one of those running and
 /// still holding the pipe open.
 ///
@@ -120,7 +120,7 @@ private func signalProcessGroup(of child: pid_t, _ signalNumber: Int32) {
 /// or `curl` that wedged meant this function never returned, `serverState()`
 /// never completed, the polling loop's `polling` flag never cleared, and the
 /// menu-bar status label froze for good with no way back. (It survived Quit
-/// only because granted-tray.sh's `stop_helper` has its own SIGKILL backstop —
+/// only because treatable-tray.sh's `stop_helper` has its own SIGKILL backstop —
 /// an independent safety net, not this timeout working.)
 ///
 /// Three things make the timeout real, and all three are load-bearing:
@@ -234,7 +234,7 @@ func env(_ name: String) -> String? {
 
 // MARK: - The helper
 
-final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class TreatableMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private let port: Int
   private let trayScript: String
   private let logFile: String
@@ -254,7 +254,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var lastState = ""
   private var quitting = false
   /// An uninstall this menu started: polling is over, and the server going
-  /// away is expected rather than a crash (see uninstallGranted).
+  /// away is expected rather than a crash (see uninstallTreatable).
   private var uninstalling = false
   private var polling = false
   /// Background actions in flight (only ever touched on the main queue).
@@ -263,26 +263,26 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var signalSources: [DispatchSourceSignal] = []
 
   override init() {
-    port = Int(env("GRANTED_PORT") ?? "") ?? 3000
-    trayScript = env("GRANTED_TRAY_SCRIPT") ?? ""
-    logFile = env("GRANTED_LOG_FILE") ?? ""
-    statusPath = env("GRANTED_STATUS_FILE")
-    lockDir = env("GRANTED_STATUS_FILE").map { "\($0).lock.d" }
-    pidFile = env("GRANTED_HELPER_PID_FILE")
-    iconPath = env("GRANTED_MENUBAR_ICON")
+    port = Int(env("TREATABLE_PORT") ?? "") ?? 0
+    trayScript = env("TREATABLE_TRAY_SCRIPT") ?? ""
+    logFile = env("TREATABLE_LOG_FILE") ?? ""
+    statusPath = env("TREATABLE_STATUS_FILE")
+    lockDir = env("TREATABLE_STATUS_FILE").map { "\($0).lock.d" }
+    pidFile = env("TREATABLE_HELPER_PID_FILE")
+    iconPath = env("TREATABLE_MENUBAR_ICON")
     settingsPath =
-      env("GRANTED_SETTINGS_PATH") ?? "\(NSHomeDirectory())/Library/Application Support/Granted/settings.json"
-    url = "http://localhost:\(Int(env("GRANTED_PORT") ?? "") ?? 3000)"
+      env("TREATABLE_SETTINGS_PATH") ?? "\(NSHomeDirectory())/Library/Application Support/Treatable/settings.json"
+    url = "http://localhost:\(Int(env("TREATABLE_PORT") ?? "") ?? 0)"
     super.init()
   }
 
-  // MARK: Where Granted opens (the shared settings file's `openIn`)
+  // MARK: Where Treatable opens (the shared settings file's `openIn`)
 
   /// Whether the "Open in its own window" tick should be on, read straight
   /// from the settings file — the same file, and the same key, the installer
   /// and the Windows tray use.
   ///
-  /// Read here rather than through `granted-tray.sh open-in` for one reason:
+  /// Read here rather than through `treatable-tray.sh open-in` for one reason:
   /// this is called from `menuWillOpen`, on the main thread, at the instant
   /// the menu appears (the preference can have been changed by the installer,
   /// or by another copy of the menu, since the last time it was looked at —
@@ -291,9 +291,9 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   ///
   /// The rule is the one every other reader applies: its own window unless the
   /// file says, in exactly those letters, "browser" (ipcPure.ts's
-  /// parseOpenInSetting, open-granted.sh's read_open_in). Nothing decides how
-  /// Granted actually opens here — that is open-granted.sh's job, through
-  /// `granted-tray.sh open` — so this is a mirror of the preference, never a
+  /// parseOpenInSetting, open-treatable.sh's read_open_in). Nothing decides how
+  /// Treatable actually opens here — that is open-treatable.sh's job, through
+  /// `treatable-tray.sh open` — so this is a mirror of the preference, never a
   /// second opinion about it.
   private func openInWindow() -> Bool {
     guard let data = FileManager.default.contents(atPath: settingsPath),
@@ -312,7 +312,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   /// The lock directory first, then the status: the installer reads a missing
   /// lock as "this side already wrote its final status", so the order matters
-  /// (openGranted.ts's isStatusWindowAlive).
+  /// (openTreatable.ts's isStatusWindowAlive).
   private func takeStatusLock() {
     guard let lockDir else { return }
     try? FileManager.default.createDirectory(atPath: lockDir, withIntermediateDirectories: false)
@@ -344,7 +344,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     return interesting.trimmingCharacters(in: .whitespaces)
   }
 
-  // MARK: The server, through granted-tray.sh
+  // MARK: The server, through treatable-tray.sh
 
   private func tray(_ arguments: [String], timeout: TimeInterval = 60) -> (output: String, status: Int32) {
     guard !trayScript.isEmpty else { return ("", -1) }
@@ -352,7 +352,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   }
 
   /// One of starting | running | stopped | crashed, straight from
-  /// granted-tray.sh's own `status` (so there is one state machine, not two).
+  /// treatable-tray.sh's own `status` (so there is one state machine, not two).
   private func serverState() -> String {
     let result = tray(["status"], timeout: 20)
     guard let data = result.output.data(using: .utf8),
@@ -369,7 +369,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     writeStatus("running", nil)
     buildMenu()
     installSignalHandlers()
-    if let mode = env("GRANTED_MENUBAR_SELF_TEST") {
+    if let mode = env("TREATABLE_MENUBAR_SELF_TEST") {
       // The smoke test: everything above has run for real (menu built, status
       // written, lock taken), so prove it — and optionally choose one item —
       // then leave, rather than sitting in the menu bar of whatever machine is
@@ -386,41 +386,41 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     item.button?.image = menuBarImage()
     // Never an item with neither an image nor a title: that is a zero-width,
     // invisible menu bar extra the user can't click (see menuBarImage).
-    if item.button?.image == nil { item.button?.title = "Granted" }
-    item.button?.toolTip = "Granted — starting…"
-    item.button?.setAccessibilityLabel("Granted")
+    if item.button?.image == nil { item.button?.title = "Treatable" }
+    item.button?.toolTip = "Treatable — starting…"
+    item.button?.setAccessibilityLabel("Treatable")
     item.button?.setAccessibilityValue("starting")
     let menu = NSMenu()
     menu.autoenablesItems = false
 
-    let open = NSMenuItem(title: "Open Granted", action: #selector(openGranted), keyEquivalent: "")
+    let open = NSMenuItem(title: "Open Treatable", action: #selector(openTreatable), keyEquivalent: "")
     open.target = self
     open.attributedTitle = NSAttributedString(
-      string: "Open Granted",
+      string: "Open Treatable",
       attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
     )
-    describe(open, label: "Open Granted", help: "Opens Granted at \(url).")
+    describe(open, label: "Open Treatable", help: "Opens Treatable at \(url).")
     menu.addItem(open)
 
     let status = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     status.isEnabled = false
-    describe(status, label: "Granted is starting", help: "Whether Granted's server is starting, running or stopped.")
+    describe(status, label: "Treatable is starting", help: "Whether Treatable's server is starting, running or stopped.")
     menu.addItem(status)
     statusLabel = status
 
     // The counterpart of the Windows tray's "Open in its own window" tick:
-    // ticked, Granted opens as its own app window (Chrome/Edge --app=);
+    // ticked, Treatable opens as its own app window (Chrome/Edge --app=);
     // unticked, in an ordinary browser tab. The tick is the shared settings
     // file's `openIn`, so the installer's own checkbox and this one are the
     // same setting.
     let ownWindow = NSMenuItem(title: "Open in its own window", action: #selector(toggleOwnWindow), keyEquivalent: "")
     ownWindow.target = self
     ownWindow.state = openInWindow() ? .on : .off
-    ownWindow.toolTip = "Open Granted like an app, in a window with no tabs or address bar (needs Chrome or Edge)."
+    ownWindow.toolTip = "Open Treatable like an app, in a window with no tabs or address bar (needs Chrome or Edge)."
     describe(
       ownWindow,
       label: "Open in its own window",
-      help: "Ticked: Granted opens like an app, in its own window (needs Chrome or Edge). Unticked: in a browser tab."
+      help: "Ticked: Treatable opens like an app, in its own window (needs Chrome or Edge). Unticked: in a browser tab."
     )
     menu.addItem(ownWindow)
     ownWindowItem = ownWindow
@@ -429,12 +429,12 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     let log = NSMenuItem(title: "Show log", action: #selector(showLog), keyEquivalent: "")
     log.target = self
-    describe(log, label: "Show log", help: "Opens Granted's server log, \(logFile).")
+    describe(log, label: "Show log", help: "Opens Treatable's server log, \(logFile).")
     menu.addItem(log)
 
     let restart = NSMenuItem(title: "Restart", action: #selector(restart), keyEquivalent: "")
     restart.target = self
-    describe(restart, label: "Restart Granted", help: "Stops Granted's server and starts it again.")
+    describe(restart, label: "Restart Treatable", help: "Stops Treatable's server and starts it again.")
     menu.addItem(restart)
 
     menu.addItem(NSMenuItem.separator())
@@ -442,20 +442,20 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Its own section, between two separators: this is the one item in the
     // menu that deletes anything, and it must not sit shoulder to shoulder
     // with an item someone reaches for every day.
-    let uninstall = NSMenuItem(title: "Uninstall Granted…", action: #selector(uninstallGranted), keyEquivalent: "")
+    let uninstall = NSMenuItem(title: "Uninstall Treatable…", action: #selector(uninstallTreatable), keyEquivalent: "")
     uninstall.target = self
     describe(
       uninstall,
-      label: "Uninstall Granted",
-      help: "Removes Granted from this Mac: its folder, this icon, the Applications launcher and its settings. Asks first."
+      label: "Uninstall Treatable",
+      help: "Removes Treatable from this Mac: its folder, this icon, the Applications launcher and its settings. Asks first."
     )
     menu.addItem(uninstall)
 
     menu.addItem(NSMenuItem.separator())
 
-    let quit = NSMenuItem(title: "Quit Granted", action: #selector(quit), keyEquivalent: "")
+    let quit = NSMenuItem(title: "Quit Treatable", action: #selector(quit), keyEquivalent: "")
     quit.target = self
-    describe(quit, label: "Quit Granted", help: "Stops Granted and removes this icon.")
+    describe(quit, label: "Quit Treatable", help: "Stops Treatable and removes this icon.")
     menu.addItem(quit)
 
     menu.delegate = self
@@ -475,7 +475,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// The menu-bar glyph: a template image, so macOS tints it correctly in
   /// light mode, dark mode and while the menu is open.
   ///
-  /// NOT scaffold/scripts/windows/granted.ico, even though NSImage does read
+  /// NOT scaffold/scripts/windows/treatable.ico, even though NSImage does read
   /// .ico files and the Windows tray uses exactly that file: a template image
   /// is drawn from its alpha channel alone, and that icon's decodes to a
   /// menu-bar item that is simply INVISIBLE — verified on real hardware
@@ -483,16 +483,16 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// and nothing was drawn. Menu bar extras are expected to be monochrome
   /// template artwork anyway; a proper .icns/PDF template is part of the
   /// separate icon work. Until then this is a system symbol (a classical
-  /// building — Granted is about public funding), with the app's initial as a
+  /// building — Treatable is about public funding), with the app's initial as a
   /// last resort so the item can never be invisible again.
-  /// GRANTED_MENUBAR_ICON overrides it with a file, for anyone who has one.
+  /// TREATABLE_MENUBAR_ICON overrides it with a file, for anyone who has one.
   private func menuBarImage() -> NSImage? {
     if let iconPath, let image = NSImage(contentsOfFile: iconPath) {
       image.size = NSSize(width: 18, height: 18)
       image.isTemplate = true
       return image
     }
-    if let symbol = NSImage(systemSymbolName: "building.columns", accessibilityDescription: "Granted") {
+    if let symbol = NSImage(systemSymbolName: "building.columns", accessibilityDescription: "Treatable") {
       symbol.isTemplate = true
       return symbol
     }
@@ -506,7 +506,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// skipped, so a slow check can never queue up behind itself.
   private func poll() {
     guard !quitting, !uninstalling, !polling else { return }
-    // Once Granted has answered, stop asking so often: nothing needs a probe
+    // Once Treatable has answered, stop asking so often: nothing needs a probe
     // every two seconds all day (the Windows tray stops probing entirely at
     // this point and just watches the process).
     if everReady {
@@ -535,23 +535,23 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     switch state {
     case "running":
       shown = (
-        "Running at \(url)", "Granted is running at \(url)", "Granted is running in the background.",
-        "Granted — running", "running"
+        "Running at \(url)", "Treatable is running at \(url)", "Treatable is running in the background.",
+        "Treatable — running", "running"
       )
     case "crashed":
       shown = (
-        "Stopped unexpectedly — see Show log, then Restart", "Granted stopped unexpectedly",
-        "Open Show log for the reason, then Restart.", "Granted — stopped", "stopped"
+        "Stopped unexpectedly — see Show log, then Restart", "Treatable stopped unexpectedly",
+        "Open Show log for the reason, then Restart.", "Treatable — stopped", "stopped"
       )
     case "stopped":
       shown = (
-        "Stopped — choose Restart to start it again", "Granted is stopped", "Choose Restart to start it again.",
-        "Granted — stopped", "stopped"
+        "Stopped — choose Restart to start it again", "Treatable is stopped", "Choose Restart to start it again.",
+        "Treatable — stopped", "stopped"
       )
     default:
       shown = (
-        "Starting… (the first start can take a minute)", "Granted is starting",
-        "The first start can take a minute or two.", "Granted — starting…", "starting"
+        "Starting… (the first start can take a minute)", "Treatable is starting",
+        "The first start can take a minute or two.", "Treatable — starting…", "starting"
       )
     }
     if let statusLabel {
@@ -564,12 +564,12 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
       openWhenReady = false
       _ = tray(["open"], timeout: 20)
     }
-    // Reported once per start, and only before Granted ever answered: that is
+    // Reported once per start, and only before Treatable ever answered: that is
     // the case the installer is still waiting on (the Windows tray's
     // Report-EarlyCrash, same wording).
     if state == "crashed", !everReady, !reportedFailure {
       reportedFailure = true
-      var message = "Granted stopped before it finished starting. Details are in \(logFile)"
+      var message = "Treatable stopped before it finished starting. Details are in \(logFile)"
       if let detail = lastLogError() { message += " — last error: \(detail)" }
       writeStatus("error", message)
     }
@@ -598,7 +598,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
   }
 
-  @objc private func openGranted() {
+  @objc private func openTreatable() {
     if lastState == "running" {
       inBackground { _ = self.tray(["open"], timeout: 20) }
     } else {
@@ -615,7 +615,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// permission, so this says it in the helper's log instead.)
   ///
   /// Written to stderr, not with `print`, so that log line actually lands.
-  /// granted-tray.sh's start_helper runs this process as
+  /// treatable-tray.sh's start_helper runs this process as
   /// `nohup "$binary" >> "$LOG_DIR/menubar.log" 2>&1`: stdout is a regular
   /// file, which libc fully buffers (_IOFBF), and this helper then runs for
   /// hours without exiting, so a `print` here sits in that buffer indefinitely
@@ -633,7 +633,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
       guard !saved else { return }
       item.state = wanted ? .off : .on
       FileHandle.standardError.write(
-        Data("granted-menubar: couldn't save where Granted opens — it will keep opening the way it did\n".utf8))
+        Data("treatable-menubar: couldn't save where Treatable opens — it will keep opening the way it did\n".utf8))
     }
   }
 
@@ -649,8 +649,8 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     inBackground({ _ = self.tray(["restart"], timeout: 180) }, then: { self.poll() })
   }
 
-  /// "Uninstall Granted…": asks in a real alert, and only then starts
-  /// scripts/macos/uninstall.sh (through `granted-tray.sh uninstall`, which
+  /// "Uninstall Treatable…": asks in a real alert, and only then starts
+  /// scripts/macos/uninstall.sh (through `treatable-tray.sh uninstall`, which
   /// starts it detached — see that subcommand's own note on why it must be).
   ///
   /// A menu item that deleted an install on one click would be indefensible,
@@ -661,37 +661,37 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   ///
   /// Polling stops here. From this point the server is being stopped on
   /// purpose, and a poll that saw it go would report a crash — the installer
-  /// would be told Granted died while starting, over an uninstall the user
+  /// would be told Treatable died while starting, over an uninstall the user
   /// asked for. This process does not quit itself either: the uninstaller
-  /// stops it, through the one path that owns stopping (granted-tray.sh's
+  /// stops it, through the one path that owns stopping (treatable-tray.sh's
   /// `stop`), and SIGTERM then reaches `quit()` below.
-  @objc private func uninstallGranted() {
+  @objc private func uninstallTreatable() {
     guard !quitting, !uninstalling, confirmUninstall() else { return }
     uninstalling = true
     timer?.invalidate()
     if let statusLabel {
       statusLabel.title = "Uninstalling…"
-      describe(statusLabel, label: "Granted is being uninstalled", help: "Granted is being removed from this Mac.")
+      describe(statusLabel, label: "Treatable is being uninstalled", help: "Treatable is being removed from this Mac.")
     }
-    statusItem?.button?.toolTip = "Granted — uninstalling…"
+    statusItem?.button?.toolTip = "Treatable — uninstalling…"
     inBackground { _ = self.tray(["uninstall"], timeout: 60) }
   }
 
-  /// Whether the user confirmed the uninstall. GRANTED_MENUBAR_CONFIRM answers
+  /// Whether the user confirmed the uninstall. TREATABLE_MENUBAR_CONFIRM answers
   /// without showing anything, for the tests: a modal alert would wait for a
   /// click that never comes.
   private func confirmUninstall() -> Bool {
-    if let answer = env("GRANTED_MENUBAR_CONFIRM") { return answer == "yes" }
+    if let answer = env("TREATABLE_MENUBAR_CONFIRM") { return answer == "yes" }
     // A menu bar extra is an accessory app, so it is not the active
     // application when its menu is used; without this the alert can open
     // behind whatever is in front.
     NSApp.activate(ignoringOtherApps: true)
     let alert = NSAlert()
     alert.alertStyle = .critical
-    alert.messageText = "Uninstall Granted?"
+    alert.messageText = "Uninstall Treatable?"
     alert.informativeText = """
-      This deletes Granted's folder, this menu-bar icon, the Granted launcher in your Applications folder and \
-      Granted's settings. Git and Node stay installed, and Granted offers to keep a copy of your API keys.
+      This deletes Treatable's folder, this menu-bar icon, the Treatable launcher in your Applications folder and \
+      Treatable's settings. Git and Node stay installed, and Treatable offers to keep a copy of your API keys.
 
       If the folder holds work that isn't saved to GitHub, you'll be asked again before anything is deleted.
       """
@@ -724,7 +724,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
   // MARK: The self test (never part of normal running)
 
-  /// GRANTED_MENUBAR_SELF_TEST, so the menu can be exercised without a mouse
+  /// TREATABLE_MENUBAR_SELF_TEST, so the menu can be exercised without a mouse
   /// (and without needing the machine to grant anything assistive access):
   ///
   ///   1                    build everything, report it, exit
@@ -737,11 +737,11 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// hardware. Everything it drives is the shipping code path.
   private func runSelfTest(_ mode: String) {
     let menu = statusItem?.menu
-    print("granted-menubar: self test ok (port \(port), items: \(menu?.items.count ?? 0))")
-    print("granted-menubar: icon=\(statusItem?.button?.image == nil ? "none" : "yes") title=\"\(statusItem?.button?.title ?? "")\" width=\(statusItem?.button?.frame.width ?? 0)")
+    print("treatable-menubar: self test ok (port \(port), items: \(menu?.items.count ?? 0))")
+    print("treatable-menubar: icon=\(statusItem?.button?.image == nil ? "none" : "yes") title=\"\(statusItem?.button?.title ?? "")\" width=\(statusItem?.button?.frame.width ?? 0)")
     for item in menu?.items ?? [] where !item.isSeparatorItem {
       print(
-        "granted-menubar: item \"\(item.title)\" enabled=\(item.isEnabled) "
+        "treatable-menubar: item \"\(item.title)\" enabled=\(item.isEnabled) "
           + "state=\(item.state == .on ? "on" : "off") a11y=\"\(item.accessibilityLabel() ?? "")\""
       )
     }
@@ -750,21 +750,21 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
       exit(0)
     }
     // One state read first: a menu the user can click has always been polled
-    // at least once, and some items (Open Granted) behave differently
-    // depending on whether Granted is answering yet.
+    // at least once, and some items (Open Treatable) behave differently
+    // depending on whether Treatable is answering yet.
     apply(state: serverState())
     let wanted = String(mode.dropFirst("click:".count))
     guard let index = menu.items.firstIndex(where: { $0.title == wanted }) else {
-      print("granted-menubar: no menu item titled \"\(wanted)\"")
+      print("treatable-menubar: no menu item titled \"\(wanted)\"")
       releaseStatusLock()
       exit(2)
     }
     guard menu.items[index].isEnabled, menu.items[index].action != nil else {
-      print("granted-menubar: \"\(wanted)\" is not clickable")
+      print("treatable-menubar: \"\(wanted)\" is not clickable")
       releaseStatusLock()
       exit(3)
     }
-    print("granted-menubar: clicking \"\(wanted)\"")
+    print("treatable-menubar: clicking \"\(wanted)\"")
     menu.performActionForItem(at: index)
     // Quit terminates this process itself; anything else finishes and is
     // waited for here (the state poll is not running in self-test mode, so
@@ -774,14 +774,14 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
       guard let self else { return }
       if self.pending == 0 || Date() > deadline {
         timer.invalidate()
-        print("granted-menubar: \"\(wanted)\" done")
+        print("treatable-menubar: \"\(wanted)\" done")
         self.releaseStatusLock()
         exit(0)
       }
     }
   }
 
-  /// granted-tray.sh's `stop` (and an uninstall) asks this process to quit
+  /// treatable-tray.sh's `stop` (and an uninstall) asks this process to quit
   /// with SIGTERM; the default disposition would kill it outright, leaving
   /// the status lock behind and the server running.
   private func installSignalHandlers() {
@@ -798,7 +798,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Start
 
 // The timeout harness for run() above, never part of normal running:
-// GRANTED_MENUBAR_RUN_TIMEOUT_TEST="<seconds>:<bash script>" runs that script
+// TREATABLE_MENUBAR_RUN_TIMEOUT_TEST="<seconds>:<bash script>" runs that script
 // through the very same run() the polling loop uses, reports how long it
 // actually took and what it returned, and exits. macTray.integration.test.ts
 // uses it to prove that a child which never exits is killed — along with its
@@ -807,7 +807,7 @@ final class GrantedMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // Deliberately before NSApplication.shared: this needs no menu bar and no GUI
 // (Aqua) session, so the test covering it can run anywhere macOS and the Swift
 // toolchain are.
-if let specification = env("GRANTED_MENUBAR_RUN_TIMEOUT_TEST") {
+if let specification = env("TREATABLE_MENUBAR_RUN_TIMEOUT_TEST") {
   let parts = specification.split(separator: ":", maxSplits: 1).map(String.init)
   let timeout = Double(parts.first ?? "") ?? 5
   let script = parts.count > 1 ? parts[1] : "/dev/null"
@@ -819,8 +819,8 @@ if let specification = env("GRANTED_MENUBAR_RUN_TIMEOUT_TEST") {
   // itself is one line and capped.
   let flattened = result.output.replacingOccurrences(of: "\n", with: "\\n")
   let shown = flattened.count > 200 ? String(flattened.prefix(200)) : flattened
-  print("granted-menubar: run timeout test elapsed=\(elapsed)ms status=\(result.status) bytes=\(result.output.utf8.count)")
-  print("granted-menubar: run timeout test output=\(shown)")
+  print("treatable-menubar: run timeout test elapsed=\(elapsed)ms status=\(result.status) bytes=\(result.output.utf8.count)")
+  print("treatable-menubar: run timeout test output=\(shown)")
   exit(0)
 }
 
@@ -828,6 +828,6 @@ let app = NSApplication.shared
 // .accessory: an icon in the menu bar, no Dock tile and no menu bar of its
 // own — what a menu bar extra is.
 app.setActivationPolicy(.accessory)
-let delegate = GrantedMenuBar()
+let delegate = TreatableMenuBar()
 app.delegate = delegate
 app.run()

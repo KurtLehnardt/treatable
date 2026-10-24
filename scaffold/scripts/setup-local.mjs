@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Granted — guided fully-local setup (Ollama).
+ * Treatable — guided fully-local setup (Ollama).
  *
  *   npm run setup:local            (from the scaffold/ directory)
  *   npm run setup:local -- --yes   (non-interactive; sane defaults)
@@ -12,7 +12,7 @@
  *   3. Installs a NEW recommended model or lets you pick an EXISTING one.
  *   4. Makes sure the built-in search model is downloaded (`npm run model:fetch`).
  *      Search doesn't go through Ollama: it runs nomic-embed-text-v1.5 in the app
- *      itself, against corpus vectors that ship with Granted (the same vectors
+ *      itself, against corpus vectors that ship with Treatable (the same vectors
  *      Ollama's nomic-embed-text produces), so there is no embedding model to pull
  *      and nothing to re-embed.
  *   5. Merges the local env into scaffold/.env.local (never clobbering a value you
@@ -427,7 +427,7 @@ async function askMemoryGB() {
 
 async function main() {
   console.log(
-    c.b("\nGranted — guided local-model setup\n") +
+    c.b("\nTreatable — guided local-model setup\n") +
       c.dim("Go fully local (Ollama): scoring, explanations, AND embeddings on your machine.\n"),
   );
 
@@ -535,13 +535,13 @@ async function main() {
   heading("Search model (built in)");
   console.log(
     c.dim(
-      "  Search runs on a small built-in model (nomic-embed-text-v1.5) inside Granted, against\n" +
+      "  Search runs on a small built-in model (nomic-embed-text-v1.5) inside Treatable, against\n" +
         "  vectors that ship with it. Nothing to re-embed and no key needed.",
     ),
   );
   const modelOk = await runFetchModel();
   if (!modelOk) {
-    console.log(c.y("  ! Couldn't download the search model now. Granted will download it on your first search."));
+    console.log(c.y("  ! Couldn't download the search model now. Treatable will download it on your first search."));
   }
 
   // 6) Merge into .env.local (single write; never half-written).

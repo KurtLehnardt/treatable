@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Granted — one-shot local setup.
+ * Treatable — one-shot local setup.
  *
  *   npm run setup      (from the scaffold/ directory)
  *
@@ -16,7 +16,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { execSync } from "node:child_process";
-import { setupKeyReport } from "./lib/setupKeys.mjs";
+
 
 const SCAFFOLD = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ENV = join(SCAFFOLD, ".env.local");
@@ -37,7 +37,7 @@ function heading(s) {
 const major = Number(process.versions.node.split(".")[0]);
 if (Number.isFinite(major) && major < 18) {
   console.error(
-    c.y(`\nGranted needs Node 18.17+ (20 LTS recommended). You have ${process.versions.node}.`) +
+    c.y(`\nTreatable needs Node 18.17+ (20 LTS recommended). You have ${process.versions.node}.`) +
       `\nInstall a newer Node (https://nodejs.org or nvm) and re-run.\n`,
   );
   process.exit(1);
@@ -101,7 +101,7 @@ async function ask(query, { hidden = false } = {}) {
 }
 
 async function selectOperationMode() {
-  console.log(`\n${c.b("How do you want to run Granted?")}`);
+  console.log(`\n${c.b("How do you want to run Treatable?")}`);
   console.log(`\n  ${c.g("1. Fully Local (recommended)")} — no API keys, runs on your machine`);
   console.log(`  2. Cloud — uses Anthropic or OpenAI API keys`);
   console.log(`  3. Hybrid — local search + cloud scoring`);
@@ -131,7 +131,7 @@ async function collectKey(text, key, label, { required, help }) {
 }
 
 // --- main ----------------------------------------------------------------------
-console.log(c.b("\nGranted — local setup\n") + c.dim("Federal funding intelligence with a calibrated, honest \"no.\"\n"));
+console.log(c.b("\nTreatable — local setup\n") + c.dim("Federal funding intelligence with a calibrated, honest \"no.\"\n"));
 
 // 1) .env.local from the template.
 if (!existsSync(ENV)) {
@@ -179,17 +179,9 @@ if (modeChoice !== "1") {
   // provider: an Anthropic key (Claude), an OpenAI key, another provider set in
   // Settings → Model, or a local model (npm run setup:local). See lib/llm/config.ts
   // resolveCloudConfig and lib/embeddings/spaces.ts.
-  text = await collectKey(text, "ANTHROPIC_API_KEY", "Anthropic (Claude, for scoring and explanations)", {
+  text = await collectKey(text, "OPENAI_API_KEY", "OpenAI (optional study explanations)", {
     required: false,
-    help: "https://console.anthropic.com/settings/keys. One scoring key is enough: this one or OpenAI's.",
-  });
-  text = await collectKey(text, "OPENAI_API_KEY", "OpenAI (scoring if you skip Claude; search uses its embeddings when set)", {
-    required: false,
-    help: "https://platform.openai.com/api-keys. Not needed for search: without it, search runs on this computer.",
-  });
-  text = await collectKey(text, "EXA_API_KEY", "Exa (optional — live web competitors)", {
-    required: false,
-    help: "https://dashboard.exa.ai — only needed for the deep competitor analysis' web results.",
+    help: "https://platform.openai.com/api-keys. Search works without a key.",
   });
 } else {
   console.log(c.dim("  Skipping API key prompts for Fully Local mode."));
@@ -242,43 +234,10 @@ heading("Search model");
 try {
   execSync("node scripts/fetch-model.mjs", { cwd: SCAFFOLD, stdio: "inherit" });
 } catch {
-  console.log(c.y("  Couldn't download it now. Granted will download it on your first search (or run npm run model:fetch)."));
+  console.log(c.y("  Couldn't download it now. Search will use keyword matching (or run npm run model:fetch)."));
 }
 
-// 4) Next steps. The key rules live in scripts/lib/setupKeys.mjs (tested), with the same
-// shape checks the app uses, so a truncated paste is caught here rather than on the first search.
-const keys = setupKeyReport(readFileSync(ENV, "utf8"));
-
-heading("You're set — next steps");
-if (!keys.hasScoringKey) {
-  console.log(
-    c.y("  ! No scoring key yet. Search works without one, but scoring the matches needs a provider:") +
-      c.dim("\n    add ANTHROPIC_API_KEY or OPENAI_API_KEY to scaffold/.env.local, pick another provider in Settings → Model,") +
-      c.dim("\n    or run fully local: npm run setup:local"),
-  );
-}
-if (keys.openAiMalformed) {
-  console.log(c.y("  ! OPENAI_API_KEY doesn't look like an OpenAI key (they start with sk- and are 20+ characters) — check scaffold/.env.local."));
-}
-if (keys.anthropicMalformed) {
-  console.log(c.y("  ! ANTHROPIC_API_KEY doesn't look like a Claude key (they start with sk-ant-) — fix it in scaffold/.env.local."));
-}
-console.log(
-  c.dim(
-    keys.searchUses === "openai"
-      ? "  Search uses OpenAI embeddings (your OpenAI key). SEARCH_EMBEDDINGS=builtin in .env.local runs it on this computer instead."
-      : "  Search runs on this computer with the built-in model. No key needed.",
-  ),
-);
-console.log(`  ${c.b("1.")} Build it:           ${c.g("npm run build")}  ${c.dim("(the NEXT_PUBLIC_* flags above are baked in here)")}`);
-console.log(`  ${c.b("2.")} Start the app:      ${c.g("npm run start")}  ${c.dim("→ http://localhost:3000")}`);
-console.log(`  ${c.b("3.")} Describe a company in the box and run a search. That's the whole core app.`);
-console.log(c.dim("     (The 4,698-opportunity corpus ships committed — no data pipeline needed to start.)"));
-console.log(`\n  ${c.b("Optional, when you want them")} ${c.dim("(see README):")}`);
-console.log(`  • Run fully on a local model    → ${c.g("npm run setup:local")} ${c.dim("(guided Ollama setup — no API keys, offline)")}`);
-console.log(`  • Live competitor web results  → add ${c.g("EXA_API_KEY")} + set ${c.g("NEXT_PUBLIC_FLAG_R5_DEEP_ANALYSIS=true")}`);
-console.log(`  • The honest "don't apply" layer → set ${c.g("NEXT_PUBLIC_FLAG_DISCERNMENT_LAYER=true")}`);
-console.log("");
-
-// Clean, deterministic exit (no lingering readline handles on any platform).
+console.log("Treatable is ready. Run npm run build, then npm run start.");
+console.log("Search and fictional demos work without a key. Choose OpenAI in Settings and consent before sending health text.");
+console.log("For local chat, run npm run setup:local -- --yes. Model downloads need the internet; installed local search does not.");
 process.exit(0);
