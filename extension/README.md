@@ -27,9 +27,13 @@ Click the Treatable toolbar icon while viewing a study/research page. The side p
 
 The generic reader does not claim every website has reliable structured extraction. Browser-protected pages, inaccessible frames, forms, hidden text, and login fields are not read. On a new website tab, click the toolbar icon again to grant temporary page access. A study outside the snapshot remains unverified rather than being fabricated.
 
+## Release artifact
+
+`npm run build` creates the loadable `dist/` folder. The local delivery also includes `treatable-extension.zip`, with the built manifest at its root; extract it before using Load unpacked. Native helper installation is separate and explicit.
+
 ## Local AI
 
-See [native helper setup](native/README.md). The native helper is required only for model explanations. Deterministic search and source checks work without it. No OpenAI key or cloud provider is used. Local model quality and speed depend on hardware/model; weak or unavailable output leaves source results intact.
+See [native helper setup](NATIVE_SETUP.md). The native helper is required only for model explanations. Deterministic search and source checks work without it. No OpenAI key or cloud provider is used. Local model quality and speed depend on hardware/model; weak or unavailable output leaves source results intact.
 
 ## Privacy boundaries
 
