@@ -7,7 +7,9 @@ import{YOUR_DETAILS_LIMITS,type YourDetails}from'./your-details';
 import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplyResult,type ApplySite}from'../shared/apply-contract.mjs';
 export const DEFAULT_QUESTION_IDS:readonly ApplyQuestionId[]=Object.freeze(['still_enrolling','prescreen_fit','visits','costs','next_steps']);
 export const DEFAULT_PRESCREEN_IDS:readonly ApplyPrescreenId[]=Object.freeze(['diagnosis_details','symptom_duration','recent_imaging','prior_treatments','medication_list']);
-export const MAILTO_BODY_LIMIT=1800,MAILTO_URL_LIMIT=2000,DRAFT_BODY_LIMIT=16000,ANSWER_LIMIT=160,NEAR_COMPLETION_DAYS=120,STALE_DAYS=365,FOLLOW_UP_BUSINESS_DAYS=5;
+/** An encoded mailto URL up to MAILTO_URL_LIMIT characters opens directly. MAILTO_BODY_LIMIT is the plain-English message
+ * length that normally fits inside that once percent-encoded (spaces and line breaks grow); the encoded URL length is what is checked. */
+export const MAILTO_BODY_LIMIT=5000,MAILTO_URL_LIMIT=8000,DRAFT_BODY_LIMIT=16000,ANSWER_LIMIT=160,EMAIL_QUESTION_LIMIT=3,EMAIL_TITLE_LIMIT=240,NEAR_COMPLETION_DAYS=120,STALE_DAYS=365,FOLLOW_UP_BUSINESS_DAYS=5;
 const DAY=86400000;
 export interface ApplyPatient{name:string;phone:string;email:string;bestTimes:string;zip:string;answers:Partial<Record<ApplyPrescreenId,string>>}
 export const blankPatient=():ApplyPatient=>({name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}});
@@ -97,10 +99,14 @@ function reachLine(p:ApplyPatient){const phone=clean(p.phone,40),email=clean(p.e
 /** Pre-screen items to ask about: the selected ones, plus anything the patient already answered (so a later agent
  * selection never silently drops what they typed). */
 export function answerIds(prescreenIds:readonly ApplyPrescreenId[],patient:ApplyPatient):ApplyPrescreenId[]{return[...prescreenIds,...(Object.keys(APPLY_PRESCREEN_TEMPLATES) as ApplyPrescreenId[]).filter(id=>!prescreenIds.includes(id)&&clean(patient.answers[id],ANSWER_LIMIT))]}
+/** Study title for the short email: whole words, at most EMAIL_TITLE_LIMIT characters. The NCT ID and link identify the study exactly. */
+export function shortTitle(v:unknown){const t=clean(v,1000);if(t.length<=EMAIL_TITLE_LIMIT)return t;const cut=t.slice(0,EMAIL_TITLE_LIMIT-3),space=cut.lastIndexOf(' ');return `${(space>EMAIL_TITLE_LIMIT/2?cut.slice(0,space):cut).replace(/[\s,;:.-]+$/,'')}...`}
+/** The short email: who is writing, which study (title, NCT ID and link), the first three questions and a polite request.
+ * The call script keeps every question and the full pre-screen list. Anything the patient typed is kept as typed. */
 export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary:ApplyContact|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[],details?:YourDetails){
- const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details);
+ const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details),asked=questionIds.slice(0,EMAIL_QUESTION_LIMIT);
  const answered=answerIds(prescreenIds,patient).flatMap(id=>{const a=clean(patient.answers[id],ANSWER_LIMIT);return a?[{label:firstPerson(APPLY_PRESCREEN_TEMPLATES[id]),answer:a}]:[]});
- return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,1000)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(reason?['','Why I am reaching out:',reason]:[]),...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer}`)]:[]),...(extra?['','Something else I would like you to know:',extra]:[]),...(questionIds.length?['','My questions:',...questionIds.map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
+ return[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I would like to learn whether I could take part in this study${where?` at ${where}`:''}:`,`"${shortTitle(record.title)}" (${record.nctId})`,clean(record.sourceUrl,300),...(reason?['','Why I am reaching out:',reason]:[]),...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer}`)]:[]),...(extra?['','Something else I would like you to know:',extra]:[]),...(asked.length?['','My questions:',...asked.map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',`I would be grateful for a reply when you have a moment. ${reachLine(patient)}`,'','Thank you,',name].join('\n');
 }
 export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[],details?:YourDetails){
  const name=patientName(patient,details),where=place(site),reason=reasonText(details),extra=extraText(details);
@@ -143,23 +149,28 @@ export function messageBody(body:string){
  while(i<lines.length&&(!lines[i].trim()||HEADER_LINE.test(lines[i])))i++;
  return lines.slice(i).join('\n');
 }
-/** Conservative handoff limit, not a universal mail-client maximum. The full editable draft is never shortened.
- * The recipient, subject and body are separate mailto parameters; the body carries no header lines. */
-export function mailtoIssue(email:string|null|undefined,subject:string,draftBody:string):string|undefined{
+/** How the draft can reach the patient's email app. The recipient, subject and body are separate mailto parameters and the
+ * body carries no header lines. The full editable draft is never shortened.
+ * - link: the whole draft fits in one mailto URL of at most MAILTO_URL_LIMIT characters and opens directly.
+ * - copy: the draft is too long for that. `url` carries only the recipient and subject; `body` is the message to copy first.
+ * - blocked: something must be fixed before any handoff (`issue` says what). */
+export type EmailHandoff={mode:'link';url:string}|{mode:'copy';url:string;body:string}|{mode:'blocked';issue:string};
+const blocked=(issue:string):EmailHandoff=>({mode:'blocked',issue});
+export function emailHandoff(email:string|null|undefined,subject:string,draftBody:string):EmailHandoff{
  const body=messageBody(draftBody);
- if(!email||!validEmail(email))return 'Choose a valid email address listed in the official record.';
- if(/[\r\n\u0000]/.test(subject)||subject.length>2200)return 'Use a single-line subject of no more than 2,200 characters.';
- if(!subject.trim()||!body.trim())return 'Add a subject and message before opening your email app.';
- if(body.length>DRAFT_BODY_LIMIT)return 'Keep the message within 16,000 characters.';
- let recipient:string;try{const at=email.lastIndexOf('@');recipient=encodeURIComponent(email.slice(0,at))+'@'+email.slice(at+1)}catch{return 'Check the email address for unsupported characters.'}
- let url:string;try{url=`mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`}catch{return 'Check the subject and message for unsupported characters.'}
- return url.length>MAILTO_URL_LIMIT?'This draft is too long for a reliable email-app link. Use Copy message, paste it into a new email, and put the recipient and subject in their own fields.':undefined;
+ if(!email||!validEmail(email))return blocked('Choose a valid email address listed in the official record.');
+ if(/[\r\n\u0000]/.test(subject)||subject.length>2200)return blocked('Use a single-line subject of no more than 2,200 characters.');
+ if(!subject.trim()||!body.trim())return blocked('Add a subject and message before opening your email app.');
+ if(body.length>DRAFT_BODY_LIMIT)return blocked('Keep the message within 16,000 characters.');
+ let head:string;try{const at=email.lastIndexOf('@');head=`mailto:${encodeURIComponent(email.slice(0,at))}@${email.slice(at+1)}?subject=${encodeURIComponent(subject)}`}catch{return blocked('Check the email address and subject for unsupported characters.')}
+ let url:string;try{url=`${head}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`}catch{return blocked('Check the subject and message for unsupported characters.')}
+ if(url.length<=MAILTO_URL_LIMIT)return{mode:'link',url};
+ return head.length<=MAILTO_URL_LIMIT?{mode:'copy',url:head,body}:blocked('Shorten the subject so it fits in an email-app link.');
 }
-export function mailtoUrl(email:string|null|undefined,subject:string,draftBody:string){
- if(mailtoIssue(email,subject,draftBody))return;
- const body=messageBody(draftBody),at=email!.lastIndexOf('@'),recipient=encodeURIComponent(email!.slice(0,at))+'@'+email!.slice(at+1);
- return `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
-}
+/** Why no email-app handoff is possible, if that is the case. A draft that is only long is not an issue: it uses the copy handoff. */
+export function mailtoIssue(email:string|null|undefined,subject:string,draftBody:string):string|undefined{const h=emailHandoff(email,subject,draftBody);return h.mode==='blocked'?h.issue:undefined}
+/** The mailto URL that opens the whole draft directly, or undefined when the draft needs the copy handoff or is blocked. */
+export function mailtoUrl(email:string|null|undefined,subject:string,draftBody:string){const h=emailHandoff(email,subject,draftBody);return h.mode==='link'?h.url:undefined}
 /** Link target for a contact action: only a mailto: or tel: URL built above, never any other scheme. */
 export function contactHref(value:string|undefined,scheme:'mailto:'|'tel:'){return typeof value==='string'&&value.startsWith(scheme)&&!/[\s<>"]/.test(value)&&(scheme!=='tel:'||TEL_HREF.test(value))?value:undefined}
 /** tel: link for a structured record phone field; undefined unless the number checks out (see phone.ts). */

@@ -1,7 +1,7 @@
 import test from'node:test';import assert from'node:assert/strict';
-import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,messageBody,hasHeaderLines,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
+import{buildApplyPlan,chooseSite,contactChain,deterministicFlags,mergeFlags,emailSubject,composeEmail,buildFollowUpIcs,mailtoUrl,telUrl,contactHref,addBusinessDays,localDay,missingInput,blankPatient,contactsInconsistent,MAILTO_BODY_LIMIT,MAILTO_URL_LIMIT,mailtoIssue,messageBody,hasHeaderLines,emailHandoff,shortTitle,EMAIL_QUESTION_LIMIT,EMAIL_TITLE_LIMIT,DEFAULT_QUESTION_IDS,DEFAULT_PRESCREEN_IDS}from'../src/apply-plan';
 import{studyPageNctId}from'../src/apply-page';
-import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,type ApplyQuestionId}from'../shared/apply-contract.mjs';
+import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,type ApplyQuestionId,type ApplyPrescreenId}from'../shared/apply-contract.mjs';
 import{record,SALT_LAKE,TODAY,patient}from'./apply-fixture';
 test('study page ID comes only from a strict ClinicalTrials.gov study URL',()=>{
  assert.equal(studyPageNctId('https://clinicaltrials.gov/study/NCT07254806'),'NCT07254806');assert.equal(studyPageNctId('https://www.clinicaltrials.gov/study/NCT07254806/?tab=table#contacts'),'NCT07254806');
@@ -43,12 +43,13 @@ test('subject follows the site routing format and omits missing parts',()=>{
 test('email preserves the full local draft and only carries what the patient typed',()=>{
  const r=record(),plan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY});
  assert.match(plan.body,/^Hello Sam Lee,\n/);assert.match(plan.body,/at Wasatch Spine Research in Salt Lake City, Utah/);assert.match(plan.body,/- My diagnosis and when it was made: Disc degeneration diagnosed 2024/);assert.match(plan.body,/- How long I have had symptoms: About two years/);
- assert.doesNotMatch(plan.body,/84101|imaging|medicines/i,'no ZIP and no unanswered health items');for(const id of DEFAULT_QUESTION_IDS)assert.ok(plan.body.includes(APPLY_QUESTION_TEMPLATES[id]),id);
+ assert.doesNotMatch(plan.body,/84101|imaging|medicines/i,'no ZIP and no unanswered health items');DEFAULT_QUESTION_IDS.forEach((id,i)=>{assert.equal(plan.body.includes(APPLY_QUESTION_TEMPLATES[id]),i<EMAIL_QUESTION_LIMIT,`email carries only the first ${EMAIL_QUESTION_LIMIT} questions: ${id}`);assert.ok(plan.phoneScript.includes(APPLY_QUESTION_TEMPLATES[id]),`call script keeps ${id}`)});
  assert.deepEqual(plan.questionIds,[...DEFAULT_QUESTION_IDS]);assert.deepEqual(plan.prescreenIds,[...DEFAULT_PRESCREEN_IDS]);
  const many=Object.keys(APPLY_QUESTION_TEMPLATES).slice(0,8) as ApplyQuestionId[],long={...patient(),bestTimes:'x'.repeat(120),answers:Object.fromEntries(DEFAULT_PRESCREEN_IDS.map(id=>[id,'y'.repeat(400)]))};
  const body=composeEmail(r,r.sites[1],r.sites[1].contacts[0],long,many,DEFAULT_PRESCREEN_IDS);
- assert.ok(body.length>MAILTO_BODY_LIMIT,'full draft is preserved, not silently shortened');assert.match(body,/Thank you,\nMorgan Example$/);for(const id of many)assert.ok(body.includes(APPLY_QUESTION_TEMPLATES[id]));
- assert.equal(mailtoUrl('slee@wasatchspine.org','s',body),undefined);assert.match(mailtoIssue('slee@wasatchspine.org','s',body)!,/Use Copy message/);
+ assert.match(body,/Thank you,\nMorgan Example$/);many.forEach((id,i)=>assert.equal(body.includes(APPLY_QUESTION_TEMPLATES[id]),i<EMAIL_QUESTION_LIMIT,id));for(const id of DEFAULT_PRESCREEN_IDS)assert.ok(body.includes('y'.repeat(160)),'what the patient typed is kept as typed (to the per-answer limit)'+id);
+ const typed='My full message. '.repeat(450),link=mailtoUrl('slee@wasatchspine.org','s','My full message. '.repeat(250))!;assert.ok(typed.length>MAILTO_BODY_LIMIT&&link.length>2000&&link.length<=MAILTO_URL_LIMIT,'a draft past the old limit now opens directly');
+ assert.equal(mailtoUrl('slee@wasatchspine.org','s',typed),undefined);assert.equal(mailtoIssue('slee@wasatchspine.org','s',typed),undefined,'a long draft is not an error: it uses the copy handoff');
  const short=mailtoUrl('slee@wasatchspine.org','Study enquiry','Hello\nThank you')!;assert.ok(short.length<=MAILTO_URL_LIMIT);assert.equal(decodeURIComponent(short.split('&body=')[1]),'Hello\r\nThank you');
  assert.equal(mailtoUrl('bad address@x',plan.subject,'b'),undefined);assert.equal(plan.mailto?.startsWith('mailto:slee@wasatchspine.org?'),true);assert.equal(plan.tel,'tel:+18015550100');assert.equal(telUrl('12'),undefined);assert.equal(telUrl('+44 20 7946 0000'),'tel:+442079460000');
  assert.equal(contactHref('javascript:alert(1)','mailto:'),undefined);assert.equal(contactHref(plan.tel,'tel:'),plan.tel);
@@ -75,7 +76,7 @@ test('mailto handoff encodes recipient percent signs once and rejects header inj
  assert.ok(url.startsWith('mailto:a%250d%250abcc%253ax@example.org?'));assert.doesNotMatch(decodeURIComponent(url.split('?')[0]),/[\r\n]/);
  for(const address of ['a@example.org\r\nBcc:x@example.org','a@example.org?bcc=x@example.org','a@example.org,b@example.org'])assert.equal(mailtoUrl(address,'s','Hello'),undefined);
  for(const subject of ['s\rBcc: x@example.org','s\nBcc: x@example.org','s\u0000'])assert.equal(mailtoUrl('a@example.org',subject,'Hello'),undefined);
- assert.equal(mailtoUrl('a@example.org','s','中'.repeat(800)),undefined,'encoded UTF-8 length is bounded');
+ assert.equal(mailtoUrl('a@example.org','s','中'.repeat(1000)),undefined,'encoded UTF-8 length is bounded');
  assert.equal(mailtoUrl('a@example.org','s','\ud800'),undefined,'malformed Unicode does not crash rendering');
  assert.equal(mailtoUrl('a@example.org','','Hello'),undefined);assert.equal(mailtoUrl('a@example.org','s','  '),undefined);
 });
@@ -92,4 +93,34 @@ test('header lines pasted at the top of a message are left out of the email-app 
  assert.equal(messageBody(pasted),'Hello team,\nSubject: this line is part of my message.');assert.equal(messageBody('Hello\r\nThanks'),'Hello\r\nThanks','bodies without header lines are returned unchanged');
  const parts=mailtoParts(mailtoUrl('trials@discgenics.com','Study enquiry',pasted)!);assert.equal(parts.params.body,'Hello team,\r\nSubject: this line is part of my message.');assert.doesNotMatch(parts.params.body,/^To:|trials@discgenics\.com/m);
  assert.equal(mailtoUrl('trials@discgenics.com','Study enquiry','To: trials@discgenics.com\nSubject: Study enquiry\n'),undefined,'a body with only header lines has no message to send');
+});
+
+test('mailto limits: up to 8,000 encoded characters open directly; above that only recipient and subject are linked and the body is returned to copy',()=>{
+ assert.equal(MAILTO_URL_LIMIT,8000);assert.ok(MAILTO_BODY_LIMIT>1800&&MAILTO_BODY_LIMIT<MAILTO_URL_LIMIT);
+ const head='mailto:a@example.org?subject=s&body=',fits='a'.repeat(MAILTO_URL_LIMIT-head.length);
+ const at=emailHandoff('a@example.org','s',fits);assert.equal(at.mode,'link');assert.equal(at.mode==='link'&&at.url.length,MAILTO_URL_LIMIT,'exactly at the limit opens directly');
+ const over=emailHandoff('a@example.org','s',fits+'a');assert.deepEqual(over,{mode:'copy',url:'mailto:a@example.org?subject=s',body:fits+'a'},'one character over: recipient and subject only, plus the body to copy');
+ const typical=('Thank you for your time. '.repeat(7)+'\n').repeat(27),mid=emailHandoff('a@example.org','Study enquiry',typical);assert.ok(typical.length<=MAILTO_BODY_LIMIT&&typical.length>4500);assert.equal(mid.mode,'link','a plain-English body within MAILTO_BODY_LIMIT fits the URL limit once encoded');
+ const pasted=emailHandoff('a@example.org','Study enquiry','To: a@example.org\nSubject: Study enquiry\n\n'+fits+'a');assert.equal(pasted.mode,'copy');assert.equal(pasted.mode==='copy'&&pasted.body,fits+'a','pasted header lines are not copied');
+ const copy=over.mode==='copy'?over:undefined;assert.doesNotMatch(copy!.url,/body=|%0D|%0A/);
+ const wide=emailHandoff('a%b@example.org','s'.repeat(30),fits);assert.equal(wide.mode,'copy');assert.ok(wide.mode==='copy'&&wide.url.startsWith('mailto:a%25b@example.org?subject='));
+ assert.equal(emailHandoff('a@example.org','中'.repeat(1000),'Hello').mode,'blocked','a subject that cannot fit in a link is blocked, not silently cut');
+ assert.equal(emailHandoff('a@example.org','中'.repeat(1000),fits+'a').mode,'blocked');
+ assert.equal(emailHandoff('bad address@x','s',fits+'a').mode,'blocked','the copy handoff still needs a valid listed address');assert.equal(emailHandoff('a@example.org','s','x'.repeat(16001)).mode,'blocked');assert.equal(emailHandoff('a@example.org','s','\ud800'.repeat(10000)).mode,'blocked','malformed Unicode is blocked, not copied');
+});
+test('default email stays short: study title, NCT ID and link, three questions and a polite request; longer detail lives in the call script',()=>{
+ const r=record(),agent={nctId:'NCT07254806',questionIds:['crossover','placebo','costs'] as ApplyQuestionId[],prescreenIds:['affected_area','recent_imaging'] as ApplyPrescreenId[],flagIds:[]};
+ const blank=blankPatient(),named={...blank,name:'Morgan Example'};
+ for(const [label,args] of Object.entries({'typed patient near me':{patient:patient(),origin:SALT_LAKE},'typed patient, no origin':{patient:patient()},'blank patient':{patient:blank},'name only':{patient:named},'agent questions':{patient:patient(),origin:SALT_LAKE,agent},'agent questions, blank':{patient:blank,agent}}) as [string,any][]){
+  const plan=buildApplyPlan({record:r,today:TODAY,...args}),body=plan.body;
+  assert.ok(body.length<=1800,`${label}: ${body.length} characters`);assert.ok(body.includes(r.title)&&body.includes('(NCT07254806)')&&body.includes('https://clinicaltrials.gov/study/NCT07254806'),`${label}: study title, NCT ID and link`);
+  assert.equal(body.split('\n').filter(l=>/^- /.test(l)&&Object.values(APPLY_QUESTION_TEMPLATES).some(q=>l===`- ${q}`)).length,EMAIL_QUESTION_LIMIT,`${label}: three questions`);assert.match(body,/I would be grateful for a reply/);assert.match(body,/Thank you,\n/);assert.match(body,/^Hello [^\n]+,\n\nMy name is /);
+  assert.ok(mailtoUrl(plan.primary!.email,plan.subject,body),`${label}: opens directly`);assert.ok(plan.mailto!.length<3000);
+ }
+ const agentPlan=buildApplyPlan({record:r,patient:patient(),origin:SALT_LAKE,today:TODAY,agent});for(const id of agent.questionIds)assert.ok(agentPlan.body.includes(APPLY_QUESTION_TEMPLATES[id]));
+ const rich=buildApplyPlan({record:r,patient:{...patient(),answers:Object.fromEntries((['diagnosis_details','symptom_duration','prior_treatments'] as ApplyPrescreenId[]).map(id=>[id,'z'.repeat(100)]))},details:{name:'',condition:'c'.repeat(300),extra:'e'.repeat(150)},origin:SALT_LAKE,today:TODAY});
+ assert.ok(rich.body.length<=1800,`a well-filled draft: ${rich.body.length} characters`);assert.ok(rich.body.includes('c'.repeat(300))&&rich.body.includes('e'.repeat(150)),'typed details are kept in full');
+ assert.ok(buildApplyPlan({record:r,patient:named,today:TODAY}).body.length<=700,'the template itself, before anything the patient types, is well under the target');
+ const longTitle=buildApplyPlan({record:{...r,title:'Randomized trial of a very long study title '.repeat(40)},patient:patient(),today:TODAY});assert.ok(longTitle.body.length<=1800);assert.match(longTitle.body,/\.\.\."\s\(NCT07254806\)/,'a very long title is cut at a word with an ellipsis; the NCT ID and link still identify the study');
+ assert.equal(shortTitle(r.title),r.title);assert.ok(shortTitle('word '.repeat(200)).length<=EMAIL_TITLE_LIMIT);assert.equal(shortTitle('x'.repeat(500)).length,EMAIL_TITLE_LIMIT);assert.ok(!shortTitle('word '.repeat(200)).includes('  '));
 });
