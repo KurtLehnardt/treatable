@@ -7,7 +7,7 @@ export interface SiteSearchFilters{cond?:string;term?:string;intr?:string;titles
 export interface SiteSnapshot{generation:string;url:string;nctIds:string[];diagnostic:string;supported:boolean}
 export interface SiteScore{nctId:string;score:number}
 export interface LiveSiteStudy{id:string;title:string;status:string;conditions:string[];criteria:string;minimumAge:string|null;maximumAge:string|null;sex:string|null;healthyVolunteers:boolean|null;hasResults:boolean;sourceUrl:string;fetchedAt:string;lastUpdatePostDate:string|null}
-export type SiteRequestType='site.search'|'site.snapshot'|'site.layout'|'site.restore'|'site.close'|'site.fetch'|'site.rank';
+export type SiteRequestType='site.search'|'site.snapshot'|'site.layout'|'site.restore'|'site.close'|'site.fetch'|'site.rank'|'site.openPrivate';
 export interface SiteRequest{id:string;type:SiteRequestType;payload:Record<string,unknown>}
 export const SITE_OVERLAY_PORT='treatable.site.overlay.v1',SITE_BADGE_PORT='treatable.site.badge.v1';
 export const SITE_MAX_MESSAGE_BYTES=128*1024;
@@ -16,6 +16,6 @@ export function siteRecord(v:unknown):v is Record<string,unknown>{return !!v&&ty
 export function exactSiteKeys(v:unknown,keys:readonly string[]):v is Record<string,unknown>{return siteRecord(v)&&Object.keys(v).every(k=>keys.includes(k))}
 export function isNctId(v:unknown):v is string{return typeof v==='string'&&/^NCT[0-9]{8}$/.test(v)}
 export function siteNctIds(v:unknown,max=100):string[]{if(!Array.isArray(v)||v.length>max||v.some(x=>!isNctId(x))||new Set(v).size!==v.length)throw Error('Invalid public study identifiers');return [...v]}
-export function parseSiteRequest(v:unknown):SiteRequest{if(!exactSiteKeys(v,['id','type','payload'])||typeof v.id!=='string'||! /^[A-Za-z0-9_.:-]{1,80}$/.test(v.id)||!['site.search','site.snapshot','site.layout','site.restore','site.close','site.fetch','site.rank'].includes(String(v.type))||!siteRecord(v.payload)||siteBytes(v)>SITE_MAX_MESSAGE_BYTES)throw Error('Invalid site operation');return v as unknown as SiteRequest}
+export function parseSiteRequest(v:unknown):SiteRequest{if(!exactSiteKeys(v,['id','type','payload'])||typeof v.id!=='string'||! /^[A-Za-z0-9_.:-]{1,80}$/.test(v.id)||!['site.search','site.snapshot','site.layout','site.restore','site.close','site.fetch','site.rank','site.openPrivate'].includes(String(v.type))||!siteRecord(v.payload)||siteBytes(v)>SITE_MAX_MESSAGE_BYTES)throw Error('Invalid site operation');return v as unknown as SiteRequest}
 export function sitePageUrl(value:unknown){if(typeof value!=='string'||!isSupportedSite(value))throw Error('Unsupported site');const u=new URL(value);if(u.port)throw Error('Unsupported site');return u}
 export function emptySiteSnapshot(url:string,diagnostic='Waiting for result cards.'):SiteSnapshot{return{generation:'0',url,nctIds:[],diagnostic,supported:false}}

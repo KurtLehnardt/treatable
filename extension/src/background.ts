@@ -1,9 +1,10 @@
+import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-background';
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
 import {parsePageSource} from './core';
 import {parseDemoRequest,parseDemoReply,type DemoRequest} from '../shared/demo-contract.mjs';
 const panels=new Map<any,()=>void>();
-function allowedPanel(sender:any){return sender?.id===chrome.runtime.id&&!sender.tab&&sender.url===chrome.runtime.getURL('panel.html')}
+function allowedPanel(sender:any){return isProtectedPanelSender(chrome,sender)}
 function attachPanel(panel:any){
  if(panel.name!=='treatable-panel-v2'||!allowedPanel(panel.sender)){panel.disconnect();return}
  let native:any,closed=false;const pending=new Map<string,{request:Pick<DemoRequest,'id'|'type'>,timer:ReturnType<typeof setTimeout>}>();
@@ -14,7 +15,8 @@ function attachPanel(panel:any){
  panel.onMessage.addListener((message:any)=>{if(closed)return;if(message?.kind!=='native')return;let request:DemoRequest;try{request=parseDemoRequest(message.request);if(pending.has(request.id)||pending.size>=4)throw new Error('Busy')}catch{end();return}const timer=setTimeout(()=>{pending.delete(request.id);post({reply:failure(request.id)});end()},150000);pending.set(request.id,{request:{id:request.id,type:request.type},timer});try{connection().postMessage(request)}catch{clearTimeout(timer);pending.delete(request.id);post({reply:failure(request.id)})}});
  panel.onDisconnect.addListener(end);panels.set(panel,end);post({kind:'panelReady'});
 }
-chrome.runtime.onConnect.addListener(attachPanel);
+chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name))attachPanel(port)});
+installSiteAssistant(chrome,{onProtectedEnd:tabId=>{for(const[panel,end]of [...panels])if(panel.sender?.tab?.id===tabId){try{panel.postMessage({kind:'endSession'})}catch{}end()}}});
 async function readCurrentPage(){const[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||typeof tab.url!=='string'||!isSupportedSite(tab.url))throw new Error('Unsupported page');const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readPage,args:[[...TRIAL_ORIGINS]]});return parsePageSource(results?.[0]?.result)}
 // A manifest default_path is global. Keep the default disabled and opt in per tab.
 void chrome.sidePanel.setOptions({enabled:false}).catch(()=>{});
@@ -44,13 +46,6 @@ chrome.tabs.onActivated.addListener(({tabId}:{tabId:number})=>{
  void chrome.tabs.get(tabId).then((tab:any)=>{if(panelRevisions.get(tabId)===revision)void configurePanel(tab)}).catch(()=>{if(panelRevisions.get(tabId)===revision)void configurePanel({id:tabId})});
 });
 chrome.tabs.onRemoved.addListener((tabId:number)=>{panelRevisions.delete(tabId)});
-chrome.action.onClicked.addListener((tab:any)=>{
- if(!Number.isInteger(tab?.id)||tab.id<0)return;
- if(typeof tab.url!=='string'||!isSupportedSite(tab.url)){void updatePanel({id:tab.id});return}
- // Queue configuration before opening, without awaiting and losing the user gesture.
- void updatePanel(tab);
- void chrome.sidePanel.open({tabId:tab.id}).catch(()=>{});
-});
 // Chrome 142+: any closed panel ends all panel sessions, deliberately privacy-first.
 chrome.sidePanel.onClosed.addListener(()=>{for(const[panel,end]of [...panels]){try{panel.postMessage({kind:'endSession'})}catch{}end()}panels.clear()});
 chrome.runtime.onMessage.addListener((message:any,sender:any,respond:(v:unknown)=>void)=>{if(!allowedPanel(sender))return false;if(message?.kind==='readPage'){void readCurrentPage().then(source=>respond({ok:true,source})).catch(()=>respond({ok:false,error:'Open a supported ClinicalTrials.gov study page and retry.'}));return true}return false});
