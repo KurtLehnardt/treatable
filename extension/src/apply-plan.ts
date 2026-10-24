@@ -88,14 +88,16 @@ export function composeEmail(record:ApplyRecord,site:ApplySite|undefined,primary
  const name=clean(patient.name,120)||'[your name]',where=place(site);
  const answered=prescreenIds.flatMap(id=>{const a=clean(patient.answers[id],ANSWER_LIMIT);return a?[{label:firstPerson(APPLY_PRESCREEN_TEMPLATES[id]),answer:a}]:[]});
  const build=(questions:number,answerMax:number)=>[`Hello ${greetingName(primary)},`,'',`My name is ${name}. I am interested in the study "${clean(record.title,300)}" (${record.nctId})${where?` at ${where}`:''}, which I found on ClinicalTrials.gov. I would like to learn whether I could take part.`,...(answered.length?['','A little about me:',...answered.map(a=>`- ${a.label}: ${a.answer.slice(0,answerMax)}`)]:[]),...(questions?['','My questions:',...questionIds.slice(0,questions).map(id=>`- ${APPLY_QUESTION_TEMPLATES[id]}`)]:[]),'',reachLine(patient),'','Thank you,',name].join('\n');
- let questions=questionIds.length,answerMax=ANSWER_LIMIT,body=build(questions,answerMax);
- while(body.length>limit&&questions>1)body=build(--questions,answerMax);
- while(body.length>limit&&answerMax>40)body=build(questions,answerMax-=40);
- return body.length>limit?body.slice(0,limit):body;
+ // Measured as sent in a mailto: URL, where each line break becomes CRLF.
+ const size=(b:string)=>b.length+(b.match(/\n/g)?.length??0);let questions=questionIds.length,answerMax=ANSWER_LIMIT,body=build(questions,answerMax);
+ while(size(body)>limit&&questions>1)body=build(--questions,answerMax);
+ while(size(body)>limit&&answerMax>40)body=build(questions,answerMax-=40);
+ while(size(body)>limit)body=body.slice(0,body.length-(size(body)-limit));
+ return body;
 }
 export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,patient:ApplyPatient,questionIds:readonly ApplyQuestionId[],prescreenIds:readonly ApplyPrescreenId[]){
  const name=clean(patient.name,120)||'[your name]',where=place(site);
- return[`"Hello, my name is ${name}. I am calling about the study ${record.nctId}, "${clean(record.title,300)}"${where?`, at ${where}`:''}. I found it on ClinicalTrials.gov and would like to know if I could take part."`,'','Questions to ask:',...questionIds.map((id,i)=>`${i+1}. ${APPLY_QUESTION_TEMPLATES[id]}`),'','If they ask, have this ready:',...prescreenIds.map(id=>`- ${APPLY_PRESCREEN_TEMPLATES[id]}`),'',`Before you hang up: ${reachLine(patient).replace(/^You can reach me/,'tell them they can reach you').replace(/\bme\b/g,'you')}`,'Write down the name of the person you spoke with and the date.'].join('\n');
+ return[`Say: Hello, my name is ${name}. I am calling about the study ${record.nctId}, ${clean(record.title,300)}${where?`, at ${where}`:''}. I found it on ClinicalTrials.gov and would like to know if I could take part.`,'','Questions to ask:',...questionIds.map((id,i)=>`${i+1}. ${APPLY_QUESTION_TEMPLATES[id]}`),'','If they ask, have this ready:',...prescreenIds.map(id=>`- ${APPLY_PRESCREEN_TEMPLATES[id]}`),'',`Before you hang up: ${reachLine(patient).replace(/^You can reach me/,'tell them they can reach you').replace(/\bme\b/g,'you')}`,'Write down the name of the person you spoke with and the date.'].join('\n');
 }
 const contactName=(c:{name:string|null}|undefined,fallback:string)=>clean(c?.name,160)||fallback;
 export function followUpSteps(primary:PlanContact|undefined,backups:PlanContact[],investigator:ApplyOfficial|undefined){
@@ -115,7 +117,7 @@ export function buildFollowUpIcs(plan:Pick<ApplyPlan,'nctId'|'title'|'sourceUrl'
  const description=[`Study ${plan.nctId}: ${clean(plan.title,300)}`,plan.site?`Site: ${place(plan.site)}`:'',who,plan.followUp,plan.sourceUrl].filter(Boolean).join('\n');
  return['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Treatable//Help me apply//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',`UID:${plan.nctId}-${day}-follow-up@treatable.invalid`,`DTSTAMP:${stamp(now)}`,`DTSTART;VALUE=DATE:${day}`,`DTEND;VALUE=DATE:${next}`,`SUMMARY:${icsText(`Follow up on study ${plan.nctId}`)}`,`DESCRIPTION:${icsText(description)}`,`URL:${plan.sourceUrl}`,'BEGIN:VALARM','TRIGGER:PT9H','ACTION:DISPLAY',`DESCRIPTION:${icsText(`Follow up on study ${plan.nctId}`)}`,'END:VALARM','END:VEVENT','END:VCALENDAR'].map(fold).join('\r\n')+'\r\n';
 }
-export function mailtoUrl(email:string|null|undefined,subject:string,body:string){if(!email||!validEmail(email))return;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.slice(0,MAILTO_BODY_LIMIT).replace(/\r?\n/g,'\r\n'))}`}
+export function mailtoUrl(email:string|null|undefined,subject:string,body:string){if(!email||!validEmail(email))return;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n').slice(0,MAILTO_BODY_LIMIT))}`}
 /** Link target for a contact action: only a mailto: or tel: URL built above, never any other scheme. */
 export function contactHref(value:string|undefined,scheme:'mailto:'|'tel:'){return typeof value==='string'&&value.startsWith(scheme)&&!/[\s<>"]/.test(value)?value:undefined}
 export function telUrl(phone:string|null|undefined){const d=phoneDigits(phone);return d?`tel:${d}`:undefined}
