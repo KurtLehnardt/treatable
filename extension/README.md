@@ -78,3 +78,24 @@ The combined real-consent checkpoint passes 49 extension tests, 21 native tests,
 [North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
 
 Decisions and Agents are independent operations over the same selected case (fictional by default, explicitly consented real packet optionally). The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.
+
+
+## Search-first overlay development
+
+The primary build is now Version B: `npm run build` writes `dist/`, and
+`npm run build:b` writes the compatible `dist-b/` folder. The preserved A
+reference is explicitly built with `npm run build:a` into `dist-a/`. A and B
+retain the same extension identity; use one installed version at a time.
+
+New `overlay.html` and `score-badge.html` entries are web-accessible only on the
+two named ClinicalTrials.gov HTTPS hosts. The overlay collects website search
+filters and displays public results. It has no patient-profile, final-consent,
+credential, or native-model authority. Private matching opens the non-web-accessible
+protected extension window. Scores are rendered inside extension-origin badge
+frames, never written into website text, attributes, titles, or frame URLs.
+
+The overlay reports all loaded cards on the current results page. It does not
+claim to rank the entire registry. Its site-adapter integration and authenticated
+live scoring are separate implementation steps; the UI build does not fabricate
+production scores. Actual Chrome rendering, focus, iframe positioning, and motion
+checks remain unverified until browser integration is exercised.
