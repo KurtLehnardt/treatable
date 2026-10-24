@@ -14,6 +14,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  KEY_REJECTED:'OpenAI rejected the configured API key. Replace it with the helper Keychain setup, then retry. Local search and earlier results still work.',
  API_PERMISSION:'This API key or project lacks access to the required OpenAI API or model. Check the account permissions, then retry. Local search still works.',
  RATE_LIMITED:'The OpenAI rate limit or quota was reached. Wait a minute, then retry. Local search and earlier results still work.',
+ CONFIRMATION_CANCELLED:'You cancelled the secure confirmation. Nothing was sent to OpenAI. Your form is still available to review.',
  CANCELLED:'The operation stopped before finishing. Provider cleanup is attempted; check the trace. Local search and earlier results are unchanged.',
  API_ERROR:'OpenAI returned an unsuccessful response, so no result is shown in its place. Retry later. Local search still works.',
  NETWORK_ERROR:'The helper could not reach OpenAI. Check the network connection, then retry. Local search works offline.',
@@ -28,7 +29,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  INCOMPLETE_AGENT_TURN:'The Agents stream ended without a completed, tool-verified answer, so no result is shown. Check the trace for cleanup, then retry.',
 });
 /** Failures known to happen before any request body reaches the provider. */
-export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','INVALID_FIXTURE_STUDIES']);
+export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['CONFIRMATION_CANCELLED','NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','INVALID_FIXTURE_STUDIES']);
 export function failureCopy(code:unknown):string{return typeof code==='string'&&Object.hasOwn(FAILURE_COPY,code)?FAILURE_COPY[code]:GENERIC_FAILURE_COPY}
 /** Chrome reports native-host launch failures only as runtime.lastError text on the native port's disconnect. */
 export function nativeDisconnectCode(message:unknown):'NATIVE_HOST_MISSING'|'NATIVE_HOST_FORBIDDEN'|'NATIVE_HOST_DISCONNECTED'{

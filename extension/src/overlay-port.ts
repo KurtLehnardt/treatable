@@ -9,7 +9,7 @@ const object=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Arr
 export function parseSnapshot(v:unknown):OverlaySnapshot {
  if(!object(v)||typeof v.generation!=='string'||v.generation.length>160||typeof v.url!=='string'||typeof v.diagnostic!=='string'||v.diagnostic.length>2000||typeof v.supported!=='boolean'||!Array.isArray(v.nctIds)||v.nctIds.length>100||v.nctIds.some((id:unknown)=>typeof id!=='string'||!/^NCT[0-9]{8}$/.test(id))||new Set(v.nctIds).size!==v.nctIds.length)throw Error('The page snapshot was rejected.');
  const url=new URL(v.url);if(!TRIAL_ORIGINS.includes(url.origin)||url.username||url.password)throw Error('Unsupported page snapshot.');
- return {generation:v.generation,url:v.url,nctIds:[...v.nctIds],diagnostic:v.diagnostic,supported:v.supported};
+ for(const key of ['totalCards','hiddenCards','unverifiedCards'])if(v[key]!==undefined&&(!Number.isInteger(v[key])||v[key]<0||v[key]>100))throw Error('Invalid public card count');if(v.allNctIds!==undefined&&(!Array.isArray(v.allNctIds)||v.allNctIds.length>100||v.allNctIds.some((id:any)=>typeof id!=='string'||!/^NCT[0-9]{8}$/.test(id))||new Set(v.allNctIds).size!==v.allNctIds.length))throw Error('Invalid public card set');return {generation:v.generation,url:v.url,nctIds:[...v.nctIds],diagnostic:v.diagnostic,supported:v.supported,...(v.totalCards!==undefined?{totalCards:v.totalCards}:{}),...(v.hiddenCards!==undefined?{hiddenCards:v.hiddenCards}:{}),...(v.unverifiedCards!==undefined?{unverifiedCards:v.unverifiedCards}:{}),...(v.allNctIds?{allNctIds:[...v.allNctIds]}:{})};
 }
 export function readActivation(event:Pick<MessageEvent,'source'|'origin'|'data'>,parent:Window,purpose:SitePurpose){
  if(event.source!==parent||!(TRIAL_ORIGINS as readonly string[]).includes(event.origin)||!object(event.data))return;
@@ -38,7 +38,7 @@ export class SiteClient {
  port.onMessage.addListener((v:any)=>{if(this.ended||this.port!==port||!object(v)||siteBytes(v)>SITE_MAX_MESSAGE_BYTES)return;
   if(v.type==='site.ready'){try{const snapshot=parseSnapshot(v.snapshot);if(!Array.isArray(v.filters)||v.filters.length>100)throw Error();this.ready=true;clearTimeout(authTimer);this.cancelAuth=undefined;resolve({snapshot,filters:SITE_FILTERS.map(f=>({...f,options:f.options?.map(o=>({...o}))})),search:object(v.search)?v.search:undefined,compact:v.compact===true});this.emit(v)}catch{this.disconnect();reject(Error('The site connection was rejected.'))}return}
   if(v.type==='site.snapshot'){try{this.emit({...v,snapshot:parseSnapshot(v.snapshot)})}catch{}return}
-  if(v.type==='site.badge'){this.emit(v);return}
+  if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
   if(typeof v.id!=='string')return;const item=this.pending.get(v.id);if(!item)return;clearTimeout(item.timer);this.pending.delete(v.id);v.ok===true?item.resolve(v.result):item.reject(Error('The site action did not complete. Your local inputs were not sent.'));
  });
  port.onDisconnect.addListener(()=>{clearTimeout(authTimer);this.cancelAuth=undefined;this.port=undefined;this.ready=false;this.rejectPending();if(!this.ended)this.emit({type:'site.ended'});reject(Error('The site session closed.'))});

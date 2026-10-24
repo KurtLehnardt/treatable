@@ -47,8 +47,7 @@ void chrome.sidePanel.setOptions({enabled:false}).catch(()=>{});
 void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:false}).catch(()=>{});
 function configurePanel(tab:any){
  if(!Number.isInteger(tab?.id)||tab.id<0)return Promise.resolve();
- const enabled=typeof tab.url==='string'&&isSupportedSite(tab.url);
- return chrome.sidePanel.setOptions(enabled?{tabId:tab.id,path:'panel.html',enabled:true}:{tabId:tab.id,enabled:false}).catch(()=>{});
+ return chrome.sidePanel.setOptions({tabId:tab.id,enabled:false}).catch(()=>{});
 }
 let panelSequence=0;
 const panelRevisions=new Map<number,number>();
