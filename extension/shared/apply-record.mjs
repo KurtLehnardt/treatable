@@ -1,7 +1,7 @@
 // Normalizes an official ClinicalTrials.gov API v2 study into the public ApplyRecord used for the local contact plan.
 // Pure and shared: the native helper and the browser fallback produce identical records from the same raw JSON.
 import {sanitizeUntrustedText} from './untrusted-text.mjs';
-import {parseApplyRecord,applyNctId,APPLY_MAX_SITES,APPLY_MAX_SITE_CONTACTS,APPLY_MAX_CENTRAL_CONTACTS,APPLY_MAX_OFFICIALS,APPLY_RECORD_MAX_BYTES} from './apply-contract.mjs';
+import {parseApplyRecord,parsePublicStudyBrief,applyNctId,APPLY_MAX_SITES,APPLY_MAX_SITE_CONTACTS,APPLY_MAX_CENTRAL_CONTACTS,APPLY_MAX_OFFICIALS,APPLY_RECORD_MAX_BYTES} from './apply-contract.mjs';
 import {utf8Bytes} from './demo-contract.mjs';
 const DATE=/^\d{4}-\d{2}(-\d{2})?$/;
 function obj(v){return v&&typeof v==='object'&&!Array.isArray(v)?v:{};}
@@ -27,4 +27,29 @@ export function normalizeApplyRecord(raw,fetchedAt,maxBytes=APPLY_RECORD_MAX_BYT
   const empty=utf8Bytes({...record,sites:[],sitesTruncated:true});let total=empty,keep=0;for(const s of sites){const next=total+utf8Bytes(s)+(keep?1:0);if(next>limit)break;total=next;keep++;}
   record.sites=sites.slice(0,keep);record.sitesTruncated=true;}
  return parseApplyRecord(record);
+}
+
+// Source excerpts are quotations of sanitized official fields, not generated medical claims.
+export function normalizeStudyBrief(raw,fetchedAt){
+ const p=obj(obj(raw).protocolSection),nctId=applyNctId(obj(p.identificationModule).nctId),sourceUrl=`https://clinicaltrials.gov/study/${nctId}`,items=[],unknowns=[];
+ const add=(category,label,field,value,max=900)=>{const valueText=text(value,max);if(valueText&&items.length<36)items.push({id:`e${items.length+1}`,category,label,field:`protocolSection.${field}`,text:valueText,sourceUrl});};
+ const d=obj(p.descriptionModule),ds=obj(p.designModule),di=obj(ds.designInfo),st=obj(p.statusModule),el=obj(p.eligibilityModule),ai=obj(p.armsInterventionsModule);
+ add('overview','Study purpose','descriptionModule.briefSummary',d.briefSummary,1800);
+ // Split on paragraph/sentence boundaries so timeline and sham/crossover evidence remain exact source excerpts.
+ const sentences=typeof d.detailedDescription==='string'?sanitizeUntrustedText(d.detailedDescription).split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map(x=>x.trim()).filter(Boolean):[];
+ for(const [i,t] of sentences.slice(0,10).entries())add(/visit|week|month|follow.up|day|year|treatment.{0,30}apart/i.test(t)?'timeline':'design','Study description',`descriptionModule.detailedDescription`,t,1400);
+ for(const [field,label]of[['allocation','Assignment to groups'],['interventionModel','Study model'],['primaryPurpose','Study purpose type']])add('design',label,`designModule.designInfo.${field}`,di[field]);
+ add('design','Masking','designModule.designInfo.maskingInfo.masking',obj(di.maskingInfo).masking);
+ for(const [i,a]of arr(ai.armGroups).slice(0,4).entries())add('design',text(obj(a).label,80)||'Study group',`armsInterventionsModule.armGroups[${i}].description`,obj(a).description,900);
+ for(const [field,label]of[['startDateStruct','Study start'],['primaryCompletionDateStruct','Primary completion'],['completionDateStruct','Study completion']]){const v=obj(st[field]);if(date(v))add('timeline',label,`statusModule.${field}.date`,v.date);}
+ add('eligibility','Minimum age','eligibilityModule.minimumAge',el.minimumAge);add('eligibility','Maximum age','eligibilityModule.maximumAge',el.maximumAge);add('eligibility','Sex listed in criteria','eligibilityModule.sex',el.sex);
+ const criteria=typeof el.eligibilityCriteria==='string'?sanitizeUntrustedText(el.eligibilityCriteria).split(/\n+/).map(x=>x.trim()).filter(x=>x&&!/^(?:inclusion|exclusion) criteria:?$/i.test(x)):[];
+ for(const t of criteria.slice(0,8))add('eligibility','Listed participation criterion','eligibilityModule.eligibilityCriteria',t,900);
+ add('contact','Overall recruitment status','statusModule.overallStatus',st.overallStatus);
+ if(!items.some(x=>x.category==='timeline'))unknowns.push('The record does not give a clear participation timeline.');
+ if(!criteria.length)unknowns.push('Detailed eligibility criteria are not listed in the available source.');
+ if(!items.some(x=>/sham|placebo/i.test(x.text)))unknowns.push('A sham or placebo group is not described in the available excerpts.');
+ if(!items.some(x=>/cross.?over/i.test(x.text)))unknowns.push('Access to treatment after a control group is not stated in the available excerpts.');
+ if(!arr(obj(p.contactsLocationsModule).centralContacts).length&&!arr(obj(p.contactsLocationsModule).locations).some(l=>arr(obj(l).contacts).length))unknowns.push('No study contact is listed in the available record.');
+ const brief={nctId,sourceUrl,fetchedAt,items,unknowns,claims:[]};return parsePublicStudyBrief(brief);
 }
