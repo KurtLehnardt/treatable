@@ -1,7 +1,7 @@
 // "Help me apply" protocol. Only a public NCT ID crosses to the native helper; no patient data is accepted or sent to a model.
 // The native helper fetches the official record, pins the exact Agents request, and returns fixed-catalog IDs only.
 import {exactKeys,isRecord,validId,utf8Bytes,templateIdList,MAX_MESSAGE_BYTES} from './demo-contract.mjs';
-export const APPLY_REQUEST_TYPES=Object.freeze(['prepareApply','executeApply','revokeApply']);
+export const APPLY_REQUEST_TYPES=Object.freeze(['prepareApply','executeApply','revokeApply','prepareStudyBrief','executeStudyBrief','revokeStudyBrief']);
 export const APPLY_TOKEN_TTL_MS=5*60*1000;
 export const APPLY_MAX_SITES=150;
 export const APPLY_MAX_SITE_CONTACTS=4;
@@ -73,6 +73,7 @@ export function parseApplyRecord(v){
 }
 export function parseApplyRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid apply operation');const p=v.payload;
+ if(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief'].includes(v.type))return parseStudyBriefRequest(v);
  if(v.type==='prepareApply'){if(!exactKeys(p,['nctId']))throw Error('Invalid apply preparation');applyNctId(p.nctId);}
  else if(v.type==='executeApply'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid prepared apply receipt');}
  else if(v.type==='revokeApply'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid apply revocation');}
@@ -97,5 +98,38 @@ export function parseApplyResult(v){
 export function parseApplyReply(v,expectedId){
  if(!isRecord(v)||v.id!==expectedId||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||v.type!=='result'||typeof v.ok!=='boolean'||!exactKeys(v,['id','type','ok','result','code','error']))throw Error('Invalid apply reply');
  if(!v.ok){if(typeof v.code!=='string'||!/^[A-Z_]{1,40}$/.test(v.code)||typeof v.error!=='string'||v.error.length>300)throw Error('Invalid apply error');}
- else if(v.result!==undefined){if(v.result?.kind==='preparedApply')parsePreparedApply(v.result);else parseApplyResult(v.result);}return v;
+ else if(v.result!==undefined){if(v.result?.kind==='preparedApply')parsePreparedApply(v.result);else if(v.result?.kind==='preparedStudyBrief')parsePreparedStudyBrief(v.result);else if(v.result?.kind==='studyBrief')parseStudyBriefResult(v.result);else parseApplyResult(v.result);}return v;
+}
+
+// Source-only study brief: this authority accepts public NCT IDs and receipts, never a patient profile.
+export const STUDY_BRIEF_REQUEST_TYPES=Object.freeze(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief']);
+export const STUDY_BRIEF_CATEGORIES=Object.freeze(['overview','timeline','design','eligibility','contact']);
+export const STUDY_BRIEF_ROUTES=Object.freeze(['answered_by_record','ask_patient','ask_coordinator']);
+export function briefNctIds(v){if(!Array.isArray(v)||v.length<1||v.length>2||new Set(v).size!==v.length)throw Error('Choose one or two current public studies');v.forEach(applyNctId);return v;}
+export function parseStudyBriefRequest(v){
+ if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid study brief operation');const p=v.payload;
+ if(v.type==='prepareStudyBrief'){if(!exactKeys(p,['nctIds']))throw Error('Invalid public study selection');briefNctIds(p.nctIds);}
+ else if(v.type==='executeStudyBrief'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid study brief receipt');}
+ else if(v.type==='revokeStudyBrief'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid study brief revocation');}
+ else throw Error('Unsupported study brief operation');return v;
+}
+export function parsePublicStudyBrief(v){
+ if(!exactKeys(v,['nctId','sourceUrl','fetchedAt','items','unknowns','claims']))throw Error('Invalid study brief');applyNctId(v.nctId);
+ if(v.sourceUrl!==`https://clinicaltrials.gov/study/${v.nctId}`||!Number.isSafeInteger(v.fetchedAt)||!Array.isArray(v.items)||v.items.length>36||!Array.isArray(v.unknowns)||v.unknowns.length>8||v.unknowns.some(x=>!str(x,180,false)))throw Error('Invalid study sources');
+ for(const i of v.items)if(!exactKeys(i,['id','category','label','field','text','sourceUrl'])||typeof i.id!=='string'||!/^e[1-9][0-9]?$/.test(i.id)||!STUDY_BRIEF_CATEGORIES.includes(i.category)||!str(i.label,100,false)||!str(i.field,160,false)||!/^protocolSection\.[A-Za-z0-9_.\[\]]+$/.test(i.field)||!str(i.text,2200,false)||i.sourceUrl!==v.sourceUrl)throw Error('Invalid source item');
+ if(v.claims!==undefined){if(!Array.isArray(v.claims)||v.claims.length>8)throw Error('Invalid sourced claims');const source=new Map(v.items.map(i=>[i.id,i]));for(const c of v.claims){if(!exactKeys(c,['id','category','text','evidenceIds','sourceQuotes'])||typeof c.id!=='string'||!/^claim[1-8]$/.test(c.id)||!STUDY_BRIEF_CATEGORIES.includes(c.category)||!str(c.text,600,false)||!Array.isArray(c.evidenceIds)||c.evidenceIds.length<1||c.evidenceIds.length>3||new Set(c.evidenceIds).size!==c.evidenceIds.length||!Array.isArray(c.sourceQuotes)||c.sourceQuotes.length!==c.evidenceIds.length||c.evidenceIds.some((id,i)=>!source.has(id)||c.sourceQuotes[i]!==source.get(id).text))throw Error('Invalid claim citations');}if(new Set(v.claims.map(c=>c.id)).size!==v.claims.length)throw Error('Duplicate sourced claims');}
+ if(new Set(v.items.map(i=>i.id)).size!==v.items.length||utf8Bytes(v)>24*1024)throw Error('Invalid study brief bounds');return v;
+}
+export function parsePreparedStudyBrief(v){
+ if(!exactKeys(v,['kind','token','digest','expiresAt','records','briefs'])||v.kind!=='preparedStudyBrief'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Number.isSafeInteger(v.expiresAt)||!Array.isArray(v.records)||!Array.isArray(v.briefs))throw Error('Invalid prepared study brief');
+ briefNctIds(v.records.map(r=>parseApplyRecord(r).nctId));if(v.briefs.length!==v.records.length||v.briefs.some((b,i)=>parsePublicStudyBrief(b).nctId!==v.records[i].nctId)||utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Mismatched study briefs');return v;
+}
+export function parseStudyBriefResult(v){
+ if(!exactKeys(v,['kind','mode','digest','briefs','studyPlans','agentStatus','decisionStatus','failureCodes','cleanup','toolCalls'])||v.kind!=='studyBrief'||!['live','test'].includes(v.mode)||typeof v.digest!=='string'||!HASH.test(v.digest)||!['complete','failed'].includes(v.agentStatus)||!['complete','failed'].includes(v.decisionStatus)||!['deleted','failed','not_started'].includes(v.cleanup)||!Number.isInteger(v.toolCalls)||v.toolCalls<0||v.toolCalls>6||!Array.isArray(v.failureCodes)||v.failureCodes.length>2||v.failureCodes.some(c=>typeof c!=='string'||! /^[A-Z_]{1,40}$/.test(c))||!Array.isArray(v.briefs)||!Array.isArray(v.studyPlans))throw Error('Invalid study brief result');
+ briefNctIds(v.briefs.map(b=>parsePublicStudyBrief(b).nctId));if(v.studyPlans.length!==v.briefs.length)throw Error('Invalid study plans');
+ for(const [i,p] of v.studyPlans.entries()){
+  const b=v.briefs[i],ids=new Set(b.items.map(x=>x.id));if(!exactKeys(p,['nctId','briefItemIds','questionIds','prescreenIds','flagIds','routes','prioritizedQuestionIds'])||p.nctId!==b.nctId||!Array.isArray(p.briefItemIds)||p.briefItemIds.length>12||new Set(p.briefItemIds).size!==p.briefItemIds.length||p.briefItemIds.some(id=>!ids.has(id))||!templateIdList(p.questionIds,APPLY_QUESTION_TEMPLATES,1,8)||!templateIdList(p.prescreenIds,APPLY_PRESCREEN_TEMPLATES,0,8)||!templateIdList(p.flagIds,APPLY_FLAG_TEMPLATES,0,4)||!Array.isArray(p.routes)||p.routes.length!==p.questionIds.length)throw Error('Invalid source-linked plan');
+  const seen=new Set();for(const r of p.routes){if(!exactKeys(r,['questionId','route','evidenceIds'])||!p.questionIds.includes(r.questionId)||seen.has(r.questionId)||!STUDY_BRIEF_ROUTES.includes(r.route)||!Array.isArray(r.evidenceIds)||r.evidenceIds.length>3||new Set(r.evidenceIds).size!==r.evidenceIds.length||r.evidenceIds.some(id=>!ids.has(id))||r.route==='answered_by_record'&&!r.evidenceIds.length)throw Error('Invalid question route');seen.add(r.questionId);}
+  if(!Array.isArray(p.prioritizedQuestionIds)||p.prioritizedQuestionIds.length>3||new Set(p.prioritizedQuestionIds).size!==p.prioritizedQuestionIds.length||p.prioritizedQuestionIds.some(id=>!p.routes.some(r=>r.questionId===id&&r.route==='ask_coordinator')))throw Error('Invalid question priority');
+ }if(utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Study brief too large');return v;
 }
