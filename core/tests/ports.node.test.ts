@@ -24,7 +24,15 @@ test('sha256, token and clock reference ports', async () => {
   let fired = 0;
   const cancel = nodeClock.schedule(5, () => (fired += 1));
   cancel();
-  await new Promise(resolve => nodeClock.schedule(10, () => resolve(undefined)));
+  // nodeClock's timers are unref'd by design (a pending timer must not keep a host process alive
+  // on its own), so the test has to pin the event loop itself while it waits on one; otherwise the
+  // runner sees an empty loop and cancels the whole file ("promise resolution is still pending").
+  const keepAlive = setTimeout(() => undefined, 5_000);
+  try {
+    await new Promise(resolve => nodeClock.schedule(10, () => resolve(undefined)));
+  } finally {
+    clearTimeout(keepAlive);
+  }
   assert.equal(fired, 0, 'a cancelled timer never fires');
   assert.ok(nodeClock.monotonic() >= t0);
   assertPorts(createNodePorts());
