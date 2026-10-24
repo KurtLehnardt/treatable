@@ -44,3 +44,30 @@ export {
   type PreparedConsent,
 } from './consent/index.ts';
 export { loadJsonResource, loadResource, RESOURCE_ID_PATTERN, MAX_RESOURCE_BYTES, type ResourceSpec } from './resources.ts';
+export {
+  ALLOWED_STATUSES,
+  ageInYears,
+  civilDateOf,
+  coordinatesForProfile,
+  haversineMiles,
+  isStaleRecord,
+  MAX_SESSION_RECORDS,
+  nearestDistanceMiles,
+  nearestSite,
+  rememberRecords,
+  screenLocalPipeline,
+  screenStudyRecord,
+  STUDY_RECORDS,
+  type Coords,
+} from './screening.ts';
+export { loadZipTable, resolveZip, ZIP_RESOURCE, ZipTableSchema, type ResolvedZip, type ZipTable } from './zip.ts';
+export {
+  ACCEPT_VALUES,
+  ALLOWED_TRANSPORT_PATHS,
+  guardCorePorts,
+  guardTransport,
+  OPENAI_ORIGIN,
+  toTransportRequest,
+  type AcceptValue,
+  type OpenAIRequestOptions,
+} from './transport-gate.ts';
