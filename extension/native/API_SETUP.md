@@ -1,6 +1,6 @@
-# Fictional/public-only OpenAI demo bridge
+# Consented OpenAI native bridge
 
-This native helper has no HTTP listener and no Ollama daemon. It accepts only the pinned Chrome extension origin over native-messaging stdio. Patient form values, notes, page text, arbitrary prompts, URLs, tool definitions and credentials are not accepted operations.
+This native helper has no HTTP listener and no Ollama daemon. It accepts only the pinned Chrome extension origin over native-messaging stdio. Raw patient form values, notes, page text, arbitrary prompts, URLs, tool definitions and credentials are not accepted operations. The default demo remains fictional. The separately consented real-data path accepts only a coarse age band, optional US state/sex, explicitly selected IDs from the public condition-label catalog, and at most two selected public NCT IDs.
 
 ## Setup on macOS
 
@@ -25,7 +25,7 @@ The native status response distinguishes helper readiness and credential presenc
 - Decisions timeout: 25 seconds. Agent timeout: 90 seconds. At most six tool calls, 16 KB final agent JSON, bounded HTTP/SSE bodies. The documented Agents create schema has no max-output-token field; no unsupported parameter is invented. Low reasoning/verbosity, short schema, output-byte/time limits and two-study scope bound the demo, but are not a provider billing hard cap.
 - Provider requests go directly to the fixed TLS host with certificate verification and no redirects. The launcher starts Node in an empty environment with only non-secret HOME/PATH, preventing inherited proxy/Node/TLS flags.
 - Cancel/stdio EOF aborts work and requests cancellation for incomplete/active turns with a fresh cleanup budget, then attempts session DELETE with bounded polling/retries (at most 5.5 seconds total). Cancellation acceptance is not completion. The helper validates the exact deletion acknowledgement before labeling it deleted. No untrusted session-ID path component is used. A successful API DELETE is not a promise of immediate physical erasure. Agents retains provider state until deletion and is not a ZDR endpoint. If creation disconnects before the session ID is received, deletion cannot target that unknown session; cleanup is marked unconfirmed. Cleanup failure is explicit in the in-memory trace; after a panel closes there is no retained trace/history.
-- Only fictional/public data is sent. The helper cannot receive real-profile content. Fixed fixture input previews reuse the same request builders as the helper, including the public evidence returned by its tool.
+- The default demo sends only fictional/public data. The real-data path is separately policy-gated: `prepareReal` is local-only, validates the minimized packet and current policy receipt, loads native-owned public records, and pins both exact API request bodies plus public tool evidence. It returns a SHA-256 digest and an opaque five-minute RAM token. `executeReal` accepts only that token/digest/current receipt and one operation; it cannot replace the prepared data. Each operation is one-use. New preparation, revocation, cancellation, panel disconnect and TTL expiry clear the cache and abort relevant work. Unknown/private fields, stale policy, unknown conditions or studies, changed receipts and replay fail before credentials or network access. Conditions require explicit selection; the 3,514 public snapshot labels are not a MeSH ontology or automated diagnosis mapping. The native catalog contains the same 2,000 records and source hash as the UI. Minimized health data is still sensitive and is not claimed anonymous, HIPAA-certified or legally certified.
 
 ## Evidence and limits
 
@@ -34,3 +34,7 @@ The Swift Security helper was compiled after Apple documentation lookup; local X
 JavaScript/OS memory cannot be promised forensically erased, nor can this design defend against same-user administrator malware or a compromised browser/OS.
 
 Official contracts: [Decisions](https://developers.openai.com/api/docs/guides/decisions), [create decision](https://developers.openai.com/api/reference/resources/decisions/methods/create), [Agents create](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/methods/create), [functions](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), [events](https://developers.openai.com/api/docs/guides/agents-api/sessions/events), [session deletion](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [data controls](https://developers.openai.com/api/docs/guides/your-data).
+
+## Real-data verification
+
+Seven additional tests cover the full catalog hash, strict packet boundaries, pinned two-operation previews, policy/digest/token replay and TTL rejection, and actual native stdio through the intercepted HTTPS serializer. Six generated API requests match only the exact consented bodies/public tool evidence; caller RPC IDs, tokens, digest, operator/contact text and unauthorized canaries are absent. This is intercepted test traffic with fake credentials, not a live OpenAI run. Existing 14 native lifecycle/protocol tests remain passing.

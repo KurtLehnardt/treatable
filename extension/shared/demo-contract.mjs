@@ -1,5 +1,5 @@
 import{parseRealRequest,parseRealResult,parsePreparedResult}from './real-contract.mjs';
-// Public/fictional-only native contract. No patient fields or arbitrary prompts cross this boundary.
+// Typed native contract. Raw private fields and arbitrary prompts are rejected; real data requires a prepared consent receipt.
 export const FIXTURE_IDS = Object.freeze(['fibromyalgia', 'pancreatic', 'neuropathy']);
 export const MAX_MESSAGE_BYTES = 96 * 1024;
 export const MAX_ID_LENGTH = 80;
