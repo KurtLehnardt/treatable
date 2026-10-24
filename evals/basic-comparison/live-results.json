@@ -1,0 +1,125 @@
+{
+  "predeclarationCommit": "4a31b36",
+  "startedAt": "2026-10-24T13:26:05.914Z",
+  "authenticatedRequestsAttempted": 3,
+  "completed": 3,
+  "agentsRequests": 0,
+  "results": [
+    {
+      "profileId": "fictional-fibromyalgia",
+      "latencyMs": 948.948708,
+      "requestSha256": "0165628d2003b2d16b69258dfa82e614343b09ebc1e225ec15ace2b4a581e4e9",
+      "scores": [
+        {
+          "nctId": "NCT07254806",
+          "index": 0,
+          "confidence": 0.99
+        },
+        {
+          "nctId": "NCT06567886",
+          "index": 98,
+          "confidence": 0.94
+        },
+        {
+          "nctId": "NCT05067998",
+          "index": 87,
+          "confidence": 0.6
+        },
+        {
+          "nctId": "NCT06229834",
+          "index": 1,
+          "confidence": 0.98
+        },
+        {
+          "nctId": "NCT06473597",
+          "index": 4,
+          "confidence": 0.87
+        },
+        {
+          "nctId": "NCT02846571",
+          "index": 0,
+          "confidence": 1
+        }
+      ]
+    },
+    {
+      "profileId": "fictional-migraine",
+      "latencyMs": 245.41716599999995,
+      "requestSha256": "f23d2f7834392c1c85524be0deb35f56cd19906e3995e8e1fe52feb7a5f3052f",
+      "scores": [
+        {
+          "nctId": "NCT07254806",
+          "index": 0,
+          "confidence": 1
+        },
+        {
+          "nctId": "NCT06567886",
+          "index": 0,
+          "confidence": 1
+        },
+        {
+          "nctId": "NCT05067998",
+          "index": 0,
+          "confidence": 0.99
+        },
+        {
+          "nctId": "NCT06229834",
+          "index": 100,
+          "confidence": 0.99
+        },
+        {
+          "nctId": "NCT06473597",
+          "index": 94,
+          "confidence": 0.81
+        },
+        {
+          "nctId": "NCT02846571",
+          "index": 0,
+          "confidence": 1
+        }
+      ]
+    },
+    {
+      "profileId": "fictional-diabetes",
+      "latencyMs": 264.5514999999998,
+      "requestSha256": "3a57aac298630c6ac9d36d4f2770966e2aad3fa711ee56018060085349a4117e",
+      "scores": [
+        {
+          "nctId": "NCT07254806",
+          "index": 0,
+          "confidence": 1
+        },
+        {
+          "nctId": "NCT06567886",
+          "index": 0,
+          "confidence": 1
+        },
+        {
+          "nctId": "NCT05067998",
+          "index": 4,
+          "confidence": 0.89
+        },
+        {
+          "nctId": "NCT06229834",
+          "index": 1,
+          "confidence": 0.98
+        },
+        {
+          "nctId": "NCT06473597",
+          "index": 1,
+          "confidence": 0.96
+        },
+        {
+          "nctId": "NCT02846571",
+          "index": 95,
+          "confidence": 0.85
+        }
+      ]
+    }
+  ],
+  "cost": null,
+  "costReason": "Actual usage/cost are not exposed by the production native protocol.",
+  "catalogFetchedAt": 1792848366370,
+  "catalogContentSha256": "c9a2e5b91049af9d0d706a8df95f80f1d1d8f6fcc402c2b69164a06bb77ce398",
+  "finishedAt": "2026-10-24T13:26:07.849Z"
+}

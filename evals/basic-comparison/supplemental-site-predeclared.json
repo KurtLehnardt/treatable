@@ -1,0 +1,26 @@
+{
+  "createdAt": "2026-10-24T13:28:53.926Z",
+  "originalFrozenCase": "nearby-terminated-site",
+  "reason": "Original omitted country. Clarify the US geography precondition before any Basic or site-helper execution. Separate from the original predeclared score.",
+  "sites": [
+    {
+      "facility": "Near closed",
+      "status": "TERMINATED",
+      "lat": 43.6,
+      "lon": -116.2,
+      "country": "United States"
+    },
+    {
+      "facility": "Far recruiting",
+      "status": "RECRUITING",
+      "lat": 40.7,
+      "lon": -74,
+      "country": "United States"
+    }
+  ],
+  "origin": {
+    "lat": 43.6,
+    "lon": -116.2
+  },
+  "expectedNearestSelectableFacility": "Far recruiting"
+}
