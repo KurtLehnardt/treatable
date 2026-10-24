@@ -25,7 +25,8 @@ export async function runAgentContext(transport,fixture,requestBody,toolResults,
 }
 // Shared Agents session loop for every agent path. answer(arguments) maps one function call to a pinned output ({key,output,trace}) or
 // undefined (the fixed failed tool result, never echoed); finish(text,read) validates the completed turn given the keys read in first-read order.
-export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult,toolError=TOOL_ARGUMENT_ERROR},{signal,onTrace=()=>{}}={}){
+export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult,toolError=TOOL_ARGUMENT_ERROR,toolName='get_public_trial_evidence'},{signal,onTrace=()=>{}}={}){
+ if(!['get_public_trial_evidence','get_public_selected_study'].includes(toolName))throw new ApiError('INVALID_TOOL_CALL');
  let sessionId,completed=false,text='',toolCalls=0,cleanup='failed',plan;const handled=new Set(),read=new Set();
  const remember=event=>{const id=event?.session?.id??event?.session_id;if(id!==undefined){if(!providerId(id)||sessionId&&sessionId!==id)throw new ApiError('INVALID_SESSION_ID');if(!sessionId){sessionId=id;onTrace({stage:'agent.session.created',sessionId});}}};
  const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000);
@@ -35,7 +36,7 @@ export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wr
   for await(const event of events){if(!isRecord(event)||typeof event.type!=='string')throw new ApiError('INVALID_STREAM');remember(event);if(FATAL_EVENTS.includes(event.type))throw new ApiError('AGENT_FAILED');if(event.subagent_id||event.turn?.subagent_id)throw new ApiError('UNEXPECTED_SUBAGENT');
    if(event.type==='agent.session.requires_action'){
     if(!sessionId)throw new ApiError('MISSING_SESSION_ID');const session=await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,{signal:combined});if(session.id!==sessionId||!Array.isArray(session.required_actions)||!session.required_actions.length||session.required_actions.length>6)throw new ApiError('INVALID_REQUIRED_ACTION');
-    for(const action of session.required_actions){if(!exactKeys(action,['type','turn_id','call_id','name','arguments'])||action.type!=='function_call'||action.name!=='get_public_trial_evidence'||!providerId(action.turn_id)||!providerId(action.call_id))throw new ApiError('INVALID_TOOL_CALL');const key=`${action.turn_id}:${action.call_id}`;if(handled.has(key))throw new ApiError('DUPLICATE_TOOL_CALL');if(++toolCalls>6)throw new ApiError('TOOL_LIMIT');handled.add(key);
+    for(const action of session.required_actions){if(!exactKeys(action,['type','turn_id','call_id','name','arguments'])||action.type!=='function_call'||action.name!==toolName||!providerId(action.turn_id)||!providerId(action.call_id))throw new ApiError('INVALID_TOOL_CALL');const key=`${action.turn_id}:${action.call_id}`;if(handled.has(key))throw new ApiError('DUPLICATE_TOOL_CALL');if(++toolCalls>6)throw new ApiError('TOOL_LIMIT');handled.add(key);
      const hit=answer(action.arguments);
      // Invalid or non-selected arguments get the documented failed tool result (success:false + fixed error), never evidence.
      if(!hit){await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.tool_result',turn_id:action.turn_id,call_id:action.call_id,success:false,error:toolError}]},{signal:combined});continue;}
