@@ -1,5 +1,7 @@
 # Treatable Chrome extension — local-first patient prototype
 
+> Update: the scoring pipeline branch adds an opt-in OpenAI provider (Decisions API and Agents API) behind a consent screen, and adds `https://api.openai.com/*` to host permissions and CSP `connect-src`. Page reading remains ClinicalTrials.gov-only. See README.md for the current privacy boundaries; statements below describe the earlier local-only build.
+
 ## Delivered
 
 - ClinicalTrials.gov only: exact `https://clinicaltrials.gov/*` and `https://www.clinicaltrials.gov/*` host permissions. No activeTab, all-sites, optional all-hosts, or cloud-provider permissions. `sites.json` drives the packed permissions and runtime allowlist.

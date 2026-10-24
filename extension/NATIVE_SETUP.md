@@ -1,6 +1,6 @@
 # Local model setup for the Chrome extension
 
-Treatable uses a small Chrome native-messaging helper and your installed Ollama binary. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
+The **Local LLM** provider uses a small Chrome native-messaging helper and your installed Ollama binary. It answers the same scoring questions and builds the same eligibility checklist as the OpenAI provider, without anything leaving this computer. It is the mode to use for real health details. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
 
 ## macOS
 
@@ -22,7 +22,7 @@ If the helper or a usable model is missing, local search and deterministic scree
 ## Privacy boundaries
 
 - The helper does not log prompts, profiles or generated text; Ollama subprocess output is discarded and debug logging is disabled.
-- Profile/page text never goes to OpenAI or another cloud provider through this helper. The dedicated daemon explicitly disables Ollama cloud execution. Runtime/model names alone are returned during status checks.
+- Profile/page text never goes to OpenAI or another cloud provider through this helper. OpenAI mode is a separate, opt-in provider in the extension settings; it does not use this helper. The dedicated daemon explicitly disables Ollama cloud execution. Runtime/model names alone are returned during status checks.
 - No patient information belongs in filenames, URL parameters or error messages. Model download/setup traffic is separate from matching.
 - Ordinary browsing of an external website still uses that website's network. The extension's private analysis does not conceal that browsing from the site.
 - Native messaging does not protect against malicious software already running as the same OS user. Extension-local storage is not a promise of encrypted-at-rest storage.
