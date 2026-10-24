@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Treatable \u2014 private study finder",
   "version": "0.1.0",
-  "description": "Panel-memory ClinicalTrials.gov screening and an explicitly consented fictional OpenAI Decisions/Agents demo.",
+  "description": "Search ClinicalTrials.gov and review source-backed study relevance with optional, explicitly consented OpenAI analysis.",
   "minimum_chrome_version": "142",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvcOJ8uGg9hCXEaYn7urct1IO5H7i9VU+UVHNfdcuKfTcutfAzbPYAp3IGFezl8Jt2tPYBEyimBVDycEapCPKNJseuU/XmpX/uBV/SBixqfMJYjjoSIrXTDIl0GKMcTOTj/ZxhCrs95yK+so0x78IDdlqfMJK1CrSMMUTZ+LAVQWdGxDEi2T1qyrnO92PugAEMxVmh4ZtDxzd82QlMehsI6JmS60rJ1NrUJMfXrinLKRtw54vwamf6FH7vLT+yBfUOjRn4ON3HZmtF/0mA9eG3nG77Kb3vbL/QBI3U0qnTMC/HZIGPOSaUYixBRUqMVmKA/Ila0SRPzhmJ5xqaTqeCwIDAQAB",
   "permissions": [
