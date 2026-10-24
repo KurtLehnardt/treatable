@@ -209,15 +209,15 @@ Retry guidance: check the outcome first (a session may already exist), honor `Re
 
 ## 4. Retention, tracing, and data-control statements
 
-From the data-controls endpoint table (https://developers.openai.com/api/docs/guides/your-data):
+From the data-controls endpoint table (https://developers.openai.com/api/docs/guides/your-data; cell values verbatim, the last column heading reworded):
 
-| Endpoint | Data used for training | Abuse monitoring retention | Application state retention | Zero Data Retention eligible |
+| Endpoint | Data used for training | Abuse monitoring retention | Application state retention | Eligible for Zero Data Retention |
 | --- | --- | --- | --- | --- |
 | `/v1/decisions` | No | 30 days | None, see below for exceptions | Yes, see below for limitations |
 | `/v1/agents` | No | 30 days | Until deleted | No |
 
 - Decisions exception (paraphrased from the `/v1/decisions` notes on the same page): prompt caching may store key/value tensors in GPU-local storage as application state, and that data is not retained after a 24-hour expiration. This is OpenAI's description of its own mechanism, not a Treatable statement.
-- Agents overview: "The Agents API retains session state so you can continue work across turns without rebuilding the conversation context. You can delete sessions and published artifacts when you no longer need them. The Agents API currently supports data residency only in the United States and does not support Zero Data Retention (ZDR). Choosing a self-hosted sandbox does not make the Agents API ZDR-eligible."
+- Agents overview: "The Agents API retains session state so you can continue work across turns without rebuilding the conversation context. You can delete sessions and published artifacts when you no longer need them. The Agents API currently supports data residency only in the United States and does not support Zero Data Retention (ZDR)." The overview adds (paraphrased) that choosing a self-hosted sandbox does not make the Agents API eligible for Zero Data Retention.
 - Abuse monitoring: "Abuse monitoring logs may contain certain customer content, such as prompts and responses, as well as metadata derived from that customer content, such as classifier outputs. By default, abuse monitoring logs are generated for all API feature usage and retained for up to 30 days, unless longer retention is required by law, or is reasonably necessary to protect our services or any third party from harm." The endpoint table lists 30-day abuse-monitoring retention for both `/v1/decisions` and `/v1/agents`. The documentation does not say that deleting an Agents session removes its abuse-monitoring logs, so Treatable must not imply that it does.
 - Training: "As of March 1, 2023, data sent to the OpenAI API is not used to train or improve OpenAI models (unless you explicitly opt in to share data with us)." Because each user supplies their own key, the user's own OpenAI organization may have opted in, and Treatable cannot see that setting. The endpoint table's "Data used for training: No" column must therefore always be repeated with the opt-in exception.
 - The Decisions guide says ZDR and HIPAA use are available "for eligible customers" with required agreements. Treatable has no such approval or agreement and must not state or imply either.
