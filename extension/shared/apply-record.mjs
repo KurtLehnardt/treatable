@@ -31,11 +31,12 @@ export function normalizeApplyRecord(raw,fetchedAt,maxBytes=APPLY_RECORD_MAX_BYT
 
 // Recognizes registry eligibility headings such as "Inclusion Criteria:", "Key Exclusion Criteria:", "Exclusions:" or "Inclusion criteria (Part A):".
 // A heading is either the bare heading words or ends with a colon; prose such as "Exclusion of pregnant women" is not a heading.
+// A bulleted line is a heading only when nothing follows its colon, so "* Exclusions: none" stays a criterion of its section.
 // The returned heading is the source wording itself so that quoted excerpts are never re-labelled.
 function criterionHeading(line){
  const m=/^[^A-Za-z0-9]*(?:(?:key|main|major|general|additional|other)\s+)?(inclusion|exclusion)s?\b(.*)$/i.exec(line);if(!m)return;
  const bare=/^(?:\s+criteri(?:a|on)\b)?\s*$/i.test(m[2]),colon=bare?undefined:/^(?:\s+criteri(?:a|on)\b[^:]{0,40})?\s*:\s*(.*)$/i.exec(m[2]);if(!bare&&!colon)return;
- const inline=colon?colon[1]:'';return{context:m[1].toLowerCase()==='inclusion'?'inclusion':'exclusion',heading:line.slice(0,line.length-inline.length).trim(),inline};
+ const inline=colon&&/[A-Za-z0-9]/.test(colon[1])?colon[1]:'';if(inline&&/^\s*(?:[-*\u2022+]|\d+[.)])\s/.test(line))return;return{context:m[1].toLowerCase()==='inclusion'?'inclusion':'exclusion',heading:line.slice(0,line.length-inline.length).trim(),inline};
 }
 // Source excerpts are quotations of sanitized official fields, not generated medical claims.
 export function normalizeStudyBrief(raw,fetchedAt){

@@ -41,3 +41,8 @@ test('key, bare and colon eligibility headings switch context and are quoted in 
  assert.deepEqual(brief('Exclusion: Pregnancy').map(x=>[x.context,x.text]),[['exclusion','Exclusion:\nPregnancy']]);
  assert.deepEqual(brief('* Must be 18\n* Exclusion of smokers').map(x=>x.context),['eligibility_unspecified','eligibility_unspecified'],'prose that starts with "Exclusion of" is not a heading');
 });
+test('bulleted criteria that mention exclusions stay in their section and empty heading remainders are not criteria',()=>{
+ const items=criteria=>{const raw=syntheticRaw();raw.protocolSection.eligibilityModule.eligibilityCriteria=criteria;return normalizeStudyBrief(raw,1).items.filter(x=>x.category==='eligibility'&&x.context).map(x=>[x.context,x.text])};
+ assert.deepEqual(items('Inclusion Criteria:\n* Exclusions: none\n* Age 18 or older'),[['inclusion','Inclusion Criteria:\n* Exclusions: none'],['inclusion','Inclusion Criteria:\n* Age 18 or older']]);
+ assert.deepEqual(items('**Inclusion Criteria:**\n* A\nExclusion Criteria: -\n* B'),[['inclusion','**Inclusion Criteria:**\n* A'],['exclusion','Exclusion Criteria: -\n* B']]);
+});
