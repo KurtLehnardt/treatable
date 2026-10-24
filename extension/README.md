@@ -1,55 +1,64 @@
-# Treatable Chrome extension
+# Treatable extension MVP
 
-Private study finding for patients with medical conditions. **Research information, not medical advice.** Matching does not establish eligibility or predict treatment benefit. Confirm details with the study team and your care team.
+ClinicalTrials.gov study exploration for patients, with a panel-memory local workflow and a separate **fictional-only OpenAI Decisions/Agents demo**. Version B applies [make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better). The standalone web prototype on localhost:5556 is separate and unchanged.
 
-## Build and load
+## Current build and setup
 
-From this repository's `extension/` directory, with Node 20+:
+Requires Chrome **142+** (the documented `sidePanel.onClosed` event), Node 20+, macOS and Xcode command-line tools for the native Keychain helper.
 
 ```sh
+cd extension
 npm ci
+npm run build:all
 npm run typecheck
-npm test
-npm run build
+node --import tsx --test tests/*.test.ts
+node --test native/test/core.test.mjs
 ```
 
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repository's `extension/dist` folder. The extension public key gives the stable development ID `lmgmjeabbalehlcakdbolielnfgchojf`. It does not contain a private signing key. No store publication is performed.
+From the repository root:
 
-Click the Treatable toolbar icon while viewing an HTTPS ClinicalTrials.gov page. The side panel can:
+```sh
+node extension/native/install.mjs --manifest extension/dist-b/manifest.json
+node extension/native/credentials-setup.mjs configure
+```
 
-- Store a patient profile for the browser session, or remember it locally after explicit selection.
-- Search the shipped 2,000-study US snapshot and resolve ZIP distances locally.
-- Read selected or rendered text on the active page after your click.
-- Recognize ClinicalTrials.gov study IDs and use the matching offline record when available.
-- Show clearly unverified ClinicalTrials.gov page excerpts when no offline structured record is available.
-- Save studies, view source criteria/contacts, and clear all stored patient data.
-- Add optional local model explanations through the native helper.
+The second command securely prompts in a terminal and writes only the dedicated macOS Keychain item. Never put the key in Chrome, a command argument, environment variable, a configuration file, chat, or logs. [Native/API setup](native/API_SETUP.md) describes the exact permissions and retention limits. Setup does not verify API authorization or make a provider request.
 
-This first release supports only `https://clinicaltrials.gov/*` and `https://www.clinicaltrials.gov/*`. It has no all-sites access or activeTab permission. The single `sites.json` allowlist drives packed host permissions and exact runtime origin checks before page injection. Other domains, lookalikes, arbitrary subdomains, and HTTP pages are rejected. Forms, editable controls, hidden text and script content are excluded, including selected text in editable fields. A study outside the snapshot remains unverified rather than being fabricated. Dedicated support for other registries is deferred.
+Chrome → Extensions → Developer mode → Load unpacked → choose `extension/dist-b` for B or `extension/dist` for A. Both use the same pinned extension ID and native helper; test only one variant in a Chrome profile at a time. No Chrome installation or switching was performed by the agents. Do not uninstall an existing installation as an implicit switching step. Unpacked switching and real Chrome/native handshake remain unverified.
 
-## Release artifact
+**Current A and B share the new security policy.** Any original A ZIP retained from the earlier prototype is an archived **PRE-PRIVACY BASELINE — NOT CURRENT** artifact. It includes the former storage behavior and is not the current MVP download.
 
-`npm run build` creates the loadable `dist/` folder. The local delivery also includes `treatable-extension.zip`, with the built manifest at its root; extract it before using Load unpacked. Native helper installation is separate and explicit.
+## Real patient workflow
 
-## Local AI
+- The temporary `storage` permission exists only to remove the known legacy `treatable.patient.v1` key from extension local and session areas. The migration does not read stored values or write a migration flag.
+- Patient entry and API actions remain disabled until deletion succeeds and the panel's session channel is ready. Failures stay visibly blocked with a retry action.
+- Profiles, notes, local search results, captured page text and traces live only in the mounted panel. There is no save/remember control, storage sync, browser-history feature, or patient-data cache.
+- Search and structured screening use the bundled 2,000-study snapshot and offline ZIP centroids. The snapshot is incomplete and may become stale. Missing facts stay unknown; a distance preference is not medical exclusion.
+- Only exact HTTPS `clinicaltrials.gov` and `www.clinicaltrials.gov` hosts can be read. There is no `activeTab`, all-site, cookies, debugger or web-request permission.
+- Form submission is prevented before validation; autofill and spellchecking are requested off. Browser/OS honoring of those requests is not guaranteed.
 
-See [native helper setup](NATIVE_SETUP.md). The native helper is required only for model explanations. Deterministic search and source checks work without it. No OpenAI key or cloud provider is used. Local model quality and speed depend on hardware/model; weak or unavailable output leaves source results intact.
+## Fictional API workflow
 
-## Privacy boundaries
+1. Open **API demo**, choose one of three compiled fictional fixtures, and inspect the full shared request preview.
+2. Explicitly consent to sending that fictional profile and its fixed public study excerpts to OpenAI.
+3. Run **Decisions scoring**. The displayed index measures relevance for the fictional profile, not eligibility, enrollment probability, safety or benefit.
+4. Run the **Agents task**. It must call the allowlisted `get_public_trial_evidence` tool and return only known study/question/caution IDs. The UI renders trusted templates rather than arbitrary model advice.
+5. Inspect the actual in-memory request stages, tool calls, result mode and cleanup status. Stubbed test results say `test`; a live success requires validated provider responses.
 
-- Host permissions name only the two ClinicalTrials.gov HTTPS origins. No all-sites access, cloud requests, analytics, remote executable code, or `storage.sync` use.
-- Extension CSP permits data loading only from itself. Patient details are never injected into the website or sent as a study-search/ZIP query.
-- Profile defaults to `chrome.storage.session`; Remember uses `chrome.storage.local`. Both are restricted to trusted extension contexts. This is local storage, not Treatable-managed encryption at rest.
-- Ordinary browsing and opening source links still make normal website requests. The privacy guarantee concerns extension processing, not the browser's preexisting website traffic.
-- Page text is untrusted evidence. It cannot invoke native operations or change deterministic eligibility checks. Model output is a draft, not verified medical information. A conservative English-language check rejects obvious eligibility/benefit promises and unverified citations; it is an engineering guard, not clinical validation. Source checks remain visible if narration is rejected.
-- Clear all removes the extension's patient profile/saved IDs and resets the active page/analysis/results. It does not erase browser history, website data, downloaded model weights, or operating-system backups.
+The native helper accepts only fixture IDs and fixture-allowlisted public NCT IDs, never a browser-supplied real profile, page text, arbitrary prompt, endpoint, credentials or tools. Real profile searches do not choose the demo studies. The stdio helper has no HTTP listener or Ollama daemon. Fixed TLS provider requests occur only after explicit demo consent.
 
-## Source and limits
+## Session end and limits
 
-Bundled study records preserve ClinicalTrials.gov URLs, fetch timestamps, and source-update dates. This is an incomplete registry snapshot; recruiting status and contacts can change. Distance is approximate, measured from GeoNames ZIP-area centers (CC BY 4.0), and remains a travel preference. Missing data never becomes medical exclusion. Only structured contradictory age/sex facts can produce Unlikely; unverified free-text criteria stay unknown.
+**End session**, panel page-hide, hidden-document events, Chrome panel-close events and context unload request clearing and native disconnection. Closing any Treatable panel deliberately ends all registered panel sessions. Reopened/ended panels require a blank session. Each panel owns its native connection; there is no global patient/native session.
 
-The browser bundle reuses the existing Treatable patient/study contracts and deterministic screening module. It does not import the Next server or saved cloud-provider configuration. Source modules are imported at build time; the built extension is standalone.
+These are application lifecycle controls, **not forensic memory erasure**. Same-user malware, an administrator, a compromised browser/OS, swap/crash data, website cookies/history, and arbitrary debugging are outside this guarantee. Actual Chrome close/hide and keyboard behavior have not been integration-tested here because the browser-control connection was unavailable.
 
-## Version B interface
+Agents keeps provider state until deletion and is not a zero-data-retention endpoint. The helper attempts bounded deletion after completion/cancellation. Deletion may fail; physical cleanup may be asynchronous; creation loss before receiving a session ID may leave unconfirmed state. Only fictional/public data is sent in this MVP. [Provider details](native/API_SETUP.md).
 
-[Version B](VERSION_B.md) provides a separately built panel using the make-interfaces-feel-better skill. Build with `npm run build:b` from `extension/`; load `dist-b`. Version A remains the default `dist` build. Both use the same extension ID/native helper and must be compared one at a time. See the B instructions for a reload workflow that does not require uninstalling the extension.
+## Verification
+
+The combined checkpoint passed 42 extension tests, 10 native protocol/security tests, typecheck and both builds. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
+
+[North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
+
+Decisions and Agents are independent operations over the same compiled fictional case. The interface joins their display by NCT ID; the Agents task does not consume Decisions scores. No derived-score cache or caller-supplied scores exist.

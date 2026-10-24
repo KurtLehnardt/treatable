@@ -1,3 +1,5 @@
+> Historical UI-only review at `9e909cb`. This is not approval of the later privacy/API implementation. The current MVP removes saved profiles and adds a fictional OpenAI demo; a new combined security review is required. Original A artifacts are PRE-PRIVACY BASELINE — NOT CURRENT.
+
 # Version B interface review
 
 **Mode:** full. **Scope:** Chrome extension panel B, its shared controller/results extraction, and A/B build delivery. **Framework/style:** existing React 18 + plain CSS + existing Inter/system and Georgia type families. No UI framework, motion dependency, remote font, asset, provider, native-host, screening, or site-access change. Matching/source/storage/native modules are unchanged.

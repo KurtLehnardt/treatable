@@ -8,12 +8,12 @@ const origin='chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/';
 const payload={fixtureId:'fibromyalgia',consent:true};
 function scoreAnswer(id){return{type:'score',name:id,score:2,confidence:.8,probabilities:SCORING_LEVELS.map((x,i)=>({value:i,label:x.label,probability:i===2?1:0}))};}
 class FakeAPI{
- constructor({noTool=false,noTerminal=false,badTool=false,deleteFails=false,abort=false}={}){Object.assign(this,{noTool,noTerminal,badTool,deleteFails,abort});this.mode='test';this.calls=[];this.fixture=getDemoFixture('fibromyalgia');}
- async request(method,url,body,options={}){this.calls.push({method,url,body});if(method==='DELETE'){if(this.deleteFails)throw Error('unavailable');return{deleted:true};}
+ constructor({noTool=false,noTerminal=false,badTool=false,deleteFails=false,abort=false,fatalEvent}={}){Object.assign(this,{noTool,noTerminal,badTool,deleteFails,abort,fatalEvent});this.mode='test';this.calls=[];this.fixture=getDemoFixture('fibromyalgia');}
+ async request(method,url,body,options={}){this.calls.push({method,url,body});if(method==='DELETE'){if(this.deleteFails)throw Error('unavailable');return{id:'sess_test',deleted:true,object:'agent.session.deleted'};}
   if(url==='/v1/decisions')return{answers:this.fixture.studies.map(x=>scoreAnswer(x.id))};
   if(method==='GET')return{id:'sess_test',required_actions:this.fixture.studies.map((s,i)=>({type:'function_call',turn_id:'turn_test',call_id:`call_${i}`,name:this.badTool?'run_shell':'get_public_trial_evidence',arguments:{nctId:s.id}}))};
   if(url.endsWith('/events'))return{};
-  const self=this;return(async function*(){yield{type:'agent.session.created',session:{id:'sess_test'}};if(self.abort){await new Promise((resolve,reject)=>{options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});});return;}
+  const self=this;return(async function*(){yield{type:'agent.session.created',session:{id:'sess_test'}};if(self.fatalEvent)yield{type:self.fatalEvent,error:{code:'internal_server_error',message:'SENSITIVE_SENTINEL'}};if(self.abort){await new Promise((resolve,reject)=>{options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});});return;}
    if(!self.noTool)yield{type:'agent.session.requires_action',session:{id:'sess_test'}};
    yield{type:'agent.session.turn.output_text.done',text:JSON.stringify({comparisons:self.fixture.studies.map(x=>({nctId:x.id,questionIds:['eligibility','visits']})),cautionIds:['team_confirms','snapshot','no_benefit_promise']})};
    if(!self.noTerminal)yield{type:'agent.session.turn.completed',turn:{subagent_id:null}};
@@ -74,3 +74,11 @@ test('actual framed helper rejects PHI and duplicate IDs before any credential r
 });
 
 test('create disconnect before a session ID reports unconfirmed cleanup instead of fabricated deletion',async()=>{const trace=[];const api={mode:'test',async request(){return(async function*(){yield{type:'agent.session.status.changed',status:'in_progress'};})();}};await assert.rejects(runAgent(api,payload,{onTrace:x=>trace.push(x)}));assert.ok(trace.some(x=>x.stage==='agent.cleanup.failed'&&!x.sessionId));assert.ok(!trace.some(x=>x.stage==='agent.cleanup.deleted'));});
+
+test('generic provider/environment error events cannot be followed by a fabricated successful turn',async()=>{for(const fatalEvent of ['error','environment.failed','agent.session.environment.failed']){const api=new FakeAPI({fatalEvent});await assert.rejects(runAgent(api,payload),error=>!String(error).includes('SENSITIVE_SENTINEL'));assert.ok(api.calls.some(x=>x.method==='DELETE'));assert.equal(api.calls.filter(x=>x.url.endsWith('/events')&&x.body?.events?.[0]?.type==='agent.session.input.tool_result').length,0)}});
+
+test('incomplete active turns receive cancellation before deletion; cancellation acceptance is not treated as completion',async()=>{const api=new FakeAPI({noTerminal:true}),trace=[];await assert.rejects(runAgent(api,payload,{onTrace:x=>trace.push(x)}));const cancel=api.calls.findIndex(x=>x.body?.events?.[0]?.type==='agent.session.input.cancel'),deleted=api.calls.findIndex(x=>x.method==='DELETE');assert.ok(cancel>=0&&cancel<deleted);assert.ok(trace.some(x=>x.stage==='agent.cleanup.deleted'))});
+
+test('malformed successful DELETE bodies never claim deleted and retries remain bounded',async()=>{const api=new FakeAPI(),original=api.request.bind(api),trace=[];api.request=async function(method,url,body,options){if(method==='DELETE'){this.calls.push({method,url,body});return{deleted:true}}return original(method,url,body,options)};const result=await runAgent(api,payload,{onTrace:x=>trace.push(x)});assert.equal(result.cleanup,'failed');assert.equal(api.calls.filter(x=>x.method==='DELETE').length,2);assert.ok(trace.some(x=>x.stage==='agent.cleanup.failed'));assert.ok(!trace.some(x=>x.stage==='agent.cleanup.deleted'))});
+
+test('active deletion conflict polls and retries instead of treating accepted cancel as a deletion',async()=>{const api=new FakeAPI({noTerminal:true}),original=api.request.bind(api);let attempts=0;api.request=async function(method,url,body,options){if(method==='DELETE'&&++attempts===1){this.calls.push({method,url,body});throw Error('active conflict')}return original(method,url,body,options)};const trace=[];await assert.rejects(runAgent(api,payload,{onTrace:x=>trace.push(x)}));assert.equal(attempts,2);assert.ok(api.calls.some((x,i)=>x.method==='GET'&&api.calls.slice(0,i).some(y=>y.method==='DELETE')));assert.ok(trace.some(x=>x.stage==='agent.cleanup.deleted'))});
