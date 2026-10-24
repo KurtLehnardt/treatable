@@ -127,3 +127,13 @@ test('lexer separates code from strings, templates, regular expressions, and com
   assert.ok(!code.includes('x/y'));
   assert.equal(scanSource('/virtual/src/a.ts', "const s = 'node:fs';\n", '/virtual/src').length, 0, 'a string that is not a specifier is not an import');
 });
+
+test('core/src contains no literal bidirectional control characters (write them as \\u escapes)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { files } = scanTree(SRC);
+  const bidi = /[؜‎‏‪-‮⁦-⁩]/;
+  for (const file of files) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => assert.ok(!bidi.test(line), `${path.relative(SRC, file)}:${i + 1}`));
+  }
+});

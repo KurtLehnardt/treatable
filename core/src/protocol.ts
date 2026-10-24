@@ -179,7 +179,7 @@ export const CTGOV_DATE_PATTERN = /^\d{4}-\d{2}(?:-\d{2})?$/;
 export const API_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{19,511}$/;
 
 /** C0/C1 controls (except tab, line feed, carriage return) and bidirectional overrides (validation.ts). */
-const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
 const LINE_BREAKS = /[\r\n\t]/;
 
 function hasLoneSurrogate(text: string): boolean {
@@ -204,13 +204,13 @@ export function isSafeText(text: string, multiline = false): boolean {
  * (including no-break and other Unicode spaces), the characters ( ) . + - /, and the Unicode
  * hyphen, dash, and minus characters U+2010 to U+2015 and U+2212.
  */
-const DIGIT_SEPARATORS = /[\s().+\-\/‐-―−]/g;
+const DIGIT_SEPARATORS = /[\s().+\-\/\u2010-\u2015\u2212]/g;
 /**
  * Five or more decimal digits in a row, in the digit sets a phone number or ZIP code is most likely
  * typed in: ASCII, Arabic-Indic, Extended Arabic-Indic, Devanagari, and fullwidth. Explicit ranges
  * are used instead of a Unicode property escape so the pattern means the same on every runtime.
  */
-const DIGIT_RUN = /[0-9٠-٩۰-۹०-९０-９]{5,}/;
+const DIGIT_RUN = /[0-9\u0660-\u0669\u06f0-\u06f9\u0966-\u096f\uff10-\uff19]{5,}/;
 
 /**
  * Text that a user types or picks for a search or condition term must not look like a ZIP code,
@@ -223,7 +223,7 @@ const DIGIT_RUN = /[0-9٠-٩۰-۹०-९０-９]{5,}/;
  * is such a record term.
  */
 export function hasContactLikeContent(text: string): boolean {
-  return DIGIT_RUN.test(text.replace(DIGIT_SEPARATORS, '')) || /[@＠]/.test(text) || text.includes('://');
+  return DIGIT_RUN.test(text.replace(DIGIT_SEPARATORS, '')) || /[@\uff20]/.test(text) || text.includes('://');
 }
 
 /** Request text: validated, then NFC-normalized and trimmed (as boundedText does). */

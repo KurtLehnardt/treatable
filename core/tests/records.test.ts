@@ -100,7 +100,7 @@ test('condition terms match byte for byte only: no case folding, trimming, or Un
   await merged(index, [record(FICTIONAL_IDS[0], { conditions: ['Sjögren Syndrome'], meshTerms: ['Rhinitis, Allergic, Seasonal'] })]);
   assert.equal(index.hasConditionTerm('Sjögren Syndrome'), true);
   assert.equal(index.hasConditionTerm('Rhinitis, Allergic, Seasonal'), true, 'MeSH terms count');
-  for (const variant of ['sjögren syndrome', 'Sjögren Syndrome ', ' Sjögren Syndrome', 'Sjögren Syndrome', 'Sjogren Syndrome', 'Sjögren', '', 'Rhinitis', 42 as unknown as string]) {
+  for (const variant of ['sjögren syndrome', 'Sjögren Syndrome ', ' Sjögren Syndrome', 'Sjo\u0308gren Syndrome', 'Sjogren Syndrome', 'Sjögren', '', 'Rhinitis', 42 as unknown as string]) {
     assert.equal(index.hasConditionTerm(variant), false, JSON.stringify(variant));
   }
 });
