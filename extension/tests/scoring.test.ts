@@ -291,3 +291,16 @@ test('provider switching: OpenAI and Local return the same result shape for the 
   assert.match(a.providerLabel!, /OpenAI/);
   assert.match(b.providerLabel!, /Local LLM/);
 });
+
+test('consent and README copy: not set up for PHI, BAA plus Modified Retention, no compliance claim', () => {
+  const panel = readFileSync(new URL('../src/panel.tsx', import.meta.url), 'utf8');
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  for (const text of [panel, readme]) {
+    assert.match(text, /OpenAI mode is not set up for protected health information/);
+    assert.match(text, /executed BAA and Modified Retention/);
+    assert.match(text, /use only synthetic or non-identifying information, or use Local LLM mode/);
+    assert.doesNotMatch(text, /HIPAA[- ]compliant|is HIPAA compliant|HIPAA-ready/i);
+  }
+  assert.doesNotMatch(readme, /No OpenAI key or cloud provider is used|No all-sites access, cloud requests/i);
+  assert.match(panel, /never sends your ZIP code, your name, your notes, or your saved studies/);
+});

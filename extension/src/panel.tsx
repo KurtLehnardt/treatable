@@ -7,6 +7,7 @@ import {OpenAIProvider, ProviderError, FAILURE_MESSAGES, redact} from './openai'
 import {LocalProvider} from './localProvider';
 import {runPipeline, visibleAt, countLine, emptyMessage, type PipelineResult, type ScoredStudy, type MinMatch} from './pipeline';
 import {TIER_LABELS, type ProviderChecklistResult, type ScoringProvider} from './scoring';
+import {PhiNotice, BAA_ATTESTATION_LABEL} from './notices';
 import './panel.css';
 
 const emptyForm = {condition: '', notes: '', age: '', sex: 'prefer_not_to_say', zip: '', radius: '100'};
@@ -35,6 +36,7 @@ function App() {
   const [tab, setTab] = useState<'results' | 'saved'>('results');
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [apiKey, setApiKey] = useState('');
+  const [baaAttested, setBaaAttested] = useState(false);
   const [keyDraft, setKeyDraft] = useState('');
   const [native, setNative] = useState<NativeStatus>({ok: false, models: [], message: 'Local helper not checked yet.'});
   const [nativeBusy, setNativeBusy] = useState(false);
@@ -79,7 +81,8 @@ function App() {
         setZips(postal);
         setSaved(stored.state.savedIds);
         setRemember(stored.remember);
-        setApiKey(key);
+        setApiKey(key.key);
+        setBaaAttested(key.baaAttested);
         let nextSettings = prefs;
         if (prefs.provider === 'local') void checkNative();
         if (!prefs.provider) {
@@ -227,7 +230,7 @@ function App() {
     const key = keyDraft.trim();
     if (!key) { setError('Paste an OpenAI API key first.'); return; }
     try {
-      await queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, key, settings.rememberKey));
+      await queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, key, settings.rememberKey, baaAttested));
       setApiKey(key);
       setKeyDraft('');
       setNotice(settings.rememberKey ? 'OpenAI key saved on this computer.' : 'OpenAI key saved for this browser session.');
@@ -235,12 +238,12 @@ function App() {
   }
 
   async function forgetKey() {
-    try { await queue(() => clearApiKey(chrome.storage.session, chrome.storage.local)); setApiKey(''); setNotice('OpenAI key removed.'); } catch { setError('Could not remove the key.'); }
+    try { await queue(() => clearApiKey(chrome.storage.session, chrome.storage.local)); setApiKey(''); setBaaAttested(false); setNotice('OpenAI key and BAA attestation removed.'); } catch { setError('Could not remove the key.'); }
   }
 
   async function clearEverything() {
     cancel();
-    setForm(emptyForm); setProfile(undefined); setResult(undefined); setChecklists({}); setSource(undefined); setSaved([]); setRemember(false); setApiKey(''); setSynthetic(false);
+    setForm(emptyForm); setProfile(undefined); setResult(undefined); setChecklists({}); setSource(undefined); setSaved([]); setRemember(false); setApiKey(''); setBaaAttested(false); setSynthetic(false);
     setError(''); setNotice('Patient details, saved studies, results, and the OpenAI key were cleared.');
     void chrome.runtime.sendMessage({kind: 'nativeDisconnect'}).catch(() => {});
     try { await queue(async () => { await clearState(chrome.storage.session, chrome.storage.local); await clearApiKey(chrome.storage.session, chrome.storage.local); }); } catch { setError('Storage could not be cleared. Retry before closing the panel.'); }
@@ -315,7 +318,9 @@ function App() {
 
   return <main>
     <header><div className="brand"><span className="mark" aria-hidden="true">t</span><div><h1>Treatable</h1><p>Studies worth asking about.</p></div></div><span className={cloud ? 'private cloud' : 'private'}><span aria-hidden="true">●</span> {cloud ? 'OpenAI scoring on' : 'Local & private'}</span></header>
-    <div className="privacy-note">{cloud ? 'OpenAI mode: your condition, age band, sex, spine region, and public study text go to OpenAI. Never ZIP, notes, or saved studies. Not configured for protected health information.' : 'Nothing leaves this computer in this mode. Browsing a website still makes normal website requests.'}</div>
+    <div className="privacy-note">{cloud ? 'OpenAI mode: your condition, age band, sex, spine region, and public study text go to OpenAI. Never ZIP, notes, or saved studies. Not set up for protected health information.' : 'Nothing leaves this computer in this mode. Browsing a website still makes normal website requests.'}</div>
+
+    <PhiNotice openaiActive={cloud} baaAttested={baaAttested}/>
 
     <section className="intake"><div className="section-heading"><h2>Your starting point</h2><button className="text-button" disabled={!ready} onClick={loadSynthetic}>Load synthetic example</button></div>
       {synthetic && <p className="message">Synthetic example: a made-up profile for demonstration, not a real patient.</p>}
@@ -338,14 +343,17 @@ function App() {
         <p>If you accept, Treatable sends the following to OpenAI (api.openai.com, Decisions API and Agents API) for each shortlisted study:</p>
         <ul><li>Your condition as typed</li><li>Your age as a five-year band (for example 40-44), not your exact age</li><li>Your sex for study criteria</li><li>Your spine region, if your condition names one</li><li>The public ClinicalTrials.gov text of the study</li></ul>
         <p>Treatable never sends your ZIP code, your name, your notes, or your saved studies.</p>
-        <p className="warning"><strong>This build is not configured for protected health information (PHI).</strong> Do not enter real health details in OpenAI mode unless you have your own Business Associate Agreement with OpenAI and the matching OpenAI account configuration in place. You are responsible for that. For real health details, choose Local LLM: nothing leaves this computer.</p>
+        <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for meeting those requirements before entering real health details. Local LLM mode keeps everything on this computer.</p>
         <p>Agent sessions are deleted after the checklist is read. OpenAI's own data retention terms still apply to your API key's account.</p>
+        <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
+        <p className="fine">Optional. Leave it unchecked unless it is true. It is stored only with your key and is forgotten when the key is.</p>
         <div className="actions"><button className="primary" onClick={() => updateSettings({openaiConsent: true})}>I understand and accept</button><button onClick={() => updateSettings({provider: 'none'})}>Send nothing instead</button></div>
       </div>}
       {settings.provider === 'openai' && settings.openaiConsent && <>
         <p className="fine">Consent accepted. <button className="text-button" onClick={() => { cancel(); setResult(undefined); updateSettings({openaiConsent: false}); }}>Withdraw consent</button></p>
         <label>OpenAI API key {apiKey ? '(a key is set)' : '(none set)'}<input type="password" autoComplete="off" value={keyDraft} onChange={e => setKeyDraft(e.target.value)} placeholder={apiKey ? 'Paste to replace' : 'sk-…'}/></label>
-        <label className="check"><input type="checkbox" checked={settings.rememberKey} onChange={e => { updateSettings({rememberKey: e.target.checked}); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, e.target.checked)); }}/>Remember the key on this computer (otherwise kept for this browser session only)</label>
+        <label className="check"><input type="checkbox" checked={settings.rememberKey} onChange={e => { updateSettings({rememberKey: e.target.checked}); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, e.target.checked, baaAttested)); }}/>Remember the key on this computer (otherwise kept for this browser session only)</label>
+        <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
         <div className="actions"><button onClick={() => void storeKey()}>Save key</button>{apiKey && <button onClick={() => void forgetKey()}>Forget key</button>}</div>
       </>}
       {settings.provider === 'local' && <>

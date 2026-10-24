@@ -26,18 +26,27 @@ export async function loadSettings(local: StorageArea): Promise<Settings> {
 }
 export async function saveSettings(local: StorageArea, settings: Settings) { await local.set({[SETTINGS_KEY]: settings}); }
 
-/** The OpenAI key: chrome.storage.session by default, chrome.storage.local only when Remember is selected. */
+/**
+ * The OpenAI key and the user's BAA attestation, stored together: chrome.storage.session by
+ * default, chrome.storage.local only when Remember is selected. Forgetting the key forgets the
+ * attestation too.
+ */
 export const KEY_STORAGE_KEY = 'treatable.openai.key.v1';
-export async function loadApiKey(session: StorageArea, local: StorageArea): Promise<string> {
+export interface StoredKey {key: string; baaAttested: boolean}
+export async function loadApiKey(session: StorageArea, local: StorageArea): Promise<StoredKey> {
   for (const area of [session, local]) {
     const v = (await area.get(KEY_STORAGE_KEY))[KEY_STORAGE_KEY];
-    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'string' && v.trim()) return {key: v.trim(), baaAttested: false};
+    if (v && typeof v === 'object') {
+      const r = v as Record<string, unknown>;
+      if (typeof r.key === 'string' && r.key.trim()) return {key: r.key.trim(), baaAttested: r.baaAttested === true};
+    }
   }
-  return '';
+  return {key: '', baaAttested: false};
 }
-export async function saveApiKey(session: StorageArea, local: StorageArea, key: string, remember: boolean) {
+export async function saveApiKey(session: StorageArea, local: StorageArea, key: string, remember: boolean, baaAttested = false) {
   const target = remember ? local : session, other = remember ? session : local;
   await other.remove(KEY_STORAGE_KEY);
-  if (key.trim()) await target.set({[KEY_STORAGE_KEY]: key.trim()}); else await target.remove(KEY_STORAGE_KEY);
+  if (key.trim()) await target.set({[KEY_STORAGE_KEY]: {key: key.trim(), baaAttested}}); else await target.remove(KEY_STORAGE_KEY);
 }
 export async function clearApiKey(session: StorageArea, local: StorageArea) { await Promise.all([session.remove(KEY_STORAGE_KEY), local.remove(KEY_STORAGE_KEY)]); }
