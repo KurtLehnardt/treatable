@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  readFileSync, readdirSync, existsSync, realpathSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, appendFileSync, symlinkSync,
+  readFileSync, readdirSync, existsSync, realpathSync, statSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, appendFileSync, symlinkSync,
   chmodSync,
 } from 'node:fs';
 import {createHash} from 'node:crypto';
@@ -65,7 +65,9 @@ const PROSE_EXTENSIONS = new Set([
 ]);
 // Project and build files can carry user-visible text (INFOPLIST_KEY_* in a pbxproj, <Description> in a csproj).
 // Every rule runs on them except the ones for the everyday word "private", which these formats use as a keyword.
-const CONFIG_TEXT_EXTENSIONS = new Set(['.pbxproj', '.xcconfig', '.csproj', '.vbproj', '.props', '.targets', '.toml', '.properties']);
+const CONFIG_TEXT_EXTENSIONS = new Set([
+  '.pbxproj', '.xcconfig', '.csproj', '.vbproj', '.props', '.targets', '.toml', '.properties', '.ini', '.cfg', '.conf',
+]);
 // Files that are deliberately not scanned: media, binaries, archives, generated maps.
 const NON_TEXT_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.icns', '.bmp', '.tif', '.tiff', '.ttf', '.otf', '.woff', '.woff2', '.eot',
@@ -75,17 +77,23 @@ const NON_TEXT_EXTENSIONS = new Set([
 ]);
 // Build and tool configuration without user-facing wording.
 const CONFIG_EXTENSIONS = new Set([
-  '.sln', '.slnx', '.xcscheme', '.lock', '.resolved', '.lockb', '.cfg', '.ini', '.conf', '.tsbuildinfo',
+  '.sln', '.slnx', '.xcscheme', '.lock', '.resolved', '.lockb', '.tsbuildinfo',
 ]);
 const SKIPPED_FILE_NAMES = new Set([
-  'package-lock.json', '.ds_store', '.gitkeep', '.git', '.gitignore', '.gitattributes', '.gitmodules', '.npmrc', '.nvmrc', '.editorconfig',
+  '.ds_store', '.gitkeep', '.git', '.gitignore', '.gitattributes', '.gitmodules', '.npmrc', '.nvmrc', '.editorconfig',
   '.prettierrc', '.eslintrc', '.dockerignore',
 ]);
 
+// A generated lock file is skipped only when the manifest it belongs to sits in the same folder. Anywhere else a file
+// with that name is read like any other JSON file.
+const LOCK_FILE_MANIFESTS = {'package-lock.json': 'package.json'};
+
 // Returns 'code', 'json', 'markdown', 'prose', 'config', 'skip', or 'unknown'. An extensionless name is scanned as prose.
-export function classifyFile(relPath) {
+// `hasSibling(name)` tells whether a file with that name sits in the same folder.
+export function classifyFile(relPath, {hasSibling = () => false} = {}) {
   const name = path.posix.basename(relPath).toLowerCase();
   if (SKIPPED_FILE_NAMES.has(name)) return 'skip';
+  if (Object.hasOwn(LOCK_FILE_MANIFESTS, name) && hasSibling(LOCK_FILE_MANIFESTS[name])) return 'skip';
   const ext = path.posix.extname(name);
   if (ext === '') return name.startsWith('.') ? 'unknown' : 'prose';
   if (CODE_EXTENSIONS.has(ext)) return 'code';
@@ -112,6 +120,15 @@ const IGNORED_DIRECTORY_PATTERNS = [
 
 export function isIgnoredDirectory(relDir) {
   return IGNORED_DIRECTORY_PATTERNS.some(re => re.test(relDir));
+}
+
+// With git, a folder is skipped only because git ignores it; the one exception is node_modules, whose untracked
+// contents are never read. Without git (an exported copy), the generated-folder patterns above decide, and each
+// folder skipped that way is reported.
+const ALWAYS_SKIPPED_DIRECTORY = /(?:^|\/)node_modules$/i;
+
+export function skipsDirectoryByPath(relDir, gitAvailable) {
+  return gitAvailable ? ALWAYS_SKIPPED_DIRECTORY.test(relDir) : isIgnoredDirectory(relDir);
 }
 
 // Recorded public registry responses (for example ClinicalTrials.gov fixtures) and test files that quote hostile text
@@ -272,8 +289,9 @@ function walk(dir, found, onlyTracked) {
       found.seen.add(found.key(rel));
       found.symlinks.push(rel);
     } else if (entry.isDirectory) {
-      if (!isIgnoredDirectory(rel)) walk(full, found, onlyTracked);
+      if (!skipsDirectoryByPath(rel, Boolean(found.git))) walk(full, found, onlyTracked);
       else if (found.git?.hasTrackedUnder(rel)) walk(full, found, true);
+      else found.skippedDirs.push(rel);
     } else if (entry.isFile) {
       considerFile(full, rel, found);
     } else {
@@ -285,7 +303,7 @@ function walk(dir, found, onlyTracked) {
 function considerFile(full, rel, found) {
   found.seen.add(found.key(rel));
   if (isSelf(full)) return;
-  const kind = classifyFile(rel);
+  const kind = classifyFile(rel, {hasSibling: name => statSync(path.join(path.dirname(full), name), {throwIfNoEntry: false})?.isFile() ?? false});
   if (kind === 'skip') return;
   if (kind === 'unknown') found.unknown.push(rel);
   else found.files.push({full, rel, ignoreRules: exemptRulesFor(rel)});
@@ -297,7 +315,7 @@ function considerFile(full, rel, found) {
 export function collectFiles(root = REPO_ROOT, git = gitState(root)) {
   const found = {
     root, git, key: p => pathKey(p, git?.ignoreCase ?? false), seen: new Set(),
-    files: [], unknown: [], symlinks: [], nestedRepos: [], missingTracked: [],
+    files: [], unknown: [], symlinks: [], nestedRepos: [], missingTracked: [], skippedDirs: [],
   };
   const rootEntries = entriesOf(root);
   for (const e of rootEntries) {
@@ -313,6 +331,9 @@ export function collectFiles(root = REPO_ROOT, git = gitState(root)) {
       const pinned = LEGACY_ROOT_FILE_DIGESTS[e.name];
       if (pinned && sha256(readFileSync(path.join(root, e.name))) === pinned) found.seen.add(found.key(e.name));
       else considerFile(path.join(root, e.name), e.name, found);
+    } else if (!e.isDirectory) {
+      // A root-level special file (a FIFO, a socket, or a device) cannot be read as text, so it fails the scan.
+      found.unknown.push(e.name);
     }
   }
   const docs = rootEntries.find(e => e.isDirectory && e.name.toLowerCase() === 'docs');
@@ -1450,6 +1471,10 @@ test('claims scan: every top-level folder and docs entry is classified', () => {
 test('claims scan: every file under a scan root has a known type, decodes as text, and is not a symlink', t => {
   const found = collectFiles();
   if (!found.git) t.diagnostic('git is unavailable or this is not a git work tree, so every file on disk was read');
+  if (found.skippedDirs.length > 0) {
+    const why = found.git ? 'dependency folders with nothing tracked inside' : 'generated folders skipped by path because git is unavailable';
+    t.diagnostic(`not scanned, ${why}: ${found.skippedDirs.join(', ')}`);
+  }
   assert.deepEqual(found.unknown, [], 'classify these extensions in the test file (scanned, non-text, or config)');
   assert.deepEqual(found.symlinks, [], 'a symlink under a scan root hides its target from the scan: replace it with a real file');
   assert.deepEqual(found.nestedRepos, [], 'a nested repository or submodule hides its files from git and from this scan: move its files into this repository');
@@ -1643,8 +1668,13 @@ test('self-test: file types are classified, and an unknown type is reported rath
     assert.notEqual(classifyFile(f), 'skip', f);
     assert.notEqual(classifyFile(f), 'unknown', f);
   }
-  for (const f of ['a.png', 'a.ttf', 'a.exe', 'a.deb', 'a.sln', 'package-lock.json', '.DS_Store', 'x/.gitignore', '.git']) assert.equal(classifyFile(f), 'skip', f);
-  for (const f of ['a.csproj', 'a.vbproj', 'a.pbxproj', 'a.xcconfig', 'a.props', 'a.targets', 'a.toml', 'a.properties']) assert.equal(classifyFile(f), 'config', f);
+  for (const f of ['a.png', 'a.ttf', 'a.exe', 'a.deb', 'a.sln', '.DS_Store', 'x/.gitignore', '.git']) assert.equal(classifyFile(f), 'skip', f);
+  for (const f of ['a.csproj', 'a.vbproj', 'a.pbxproj', 'a.xcconfig', 'a.props', 'a.targets', 'a.toml', 'a.properties', 'a.ini', 'a.cfg', 'a.conf']) assert.equal(classifyFile(f), 'config', f);
+  // A lock file is skipped only beside its manifest.
+  assert.equal(classifyFile('core/package-lock.json', {hasSibling: name => name === 'package.json'}), 'skip');
+  assert.equal(classifyFile('docs/apps/package-lock.json'), 'json');
+  assert.ok(scanText('linux/treatable.conf', 'Description=Your data is anonymous').length > 0);
+  assert.ok(scanText('windows/setup.ini', 'description=Your data is anonymous').length > 0);
   for (const f of ['a.zzz', 'a.frobnicate', '.mysterydotfile']) assert.equal(classifyFile(f), 'unknown', f);
 });
 
@@ -1659,6 +1689,12 @@ test('self-test: build output and dependency directories are ignored by path, so
     'desktop-helper/bin', 'core/src/build', 'core/src/dist', 'core/bin', 'core/obj', 'mobile/src/build', 'linux/bin', 'macos/bin',
     'docs/apps', 'core/strings', 'core/src/coverage',
   ]) assert.equal(isIgnoredDirectory(dir), false, dir);
+  // With git, only node_modules is skipped by path; every other folder is skipped only if git ignores it.
+  assert.equal(skipsDirectoryByPath('core/node_modules', true), true);
+  for (const dir of ['core/dist', 'windows/App/bin', 'mobile/android/app/build']) {
+    assert.equal(skipsDirectoryByPath(dir, true), false, dir);
+    assert.equal(skipsDirectoryByPath(dir, false), true, dir);
+  }
 });
 
 test('self-test: top-level folders and docs entries must be classified', () => {
@@ -1839,17 +1875,46 @@ test('self-test: a nested repository or a submodule under a scan root fails the 
   assert.deepEqual(found.nestedRepos, ['windows']);
 });
 
-test('self-test: tracked files in build folders are scanned, and a tracked file missing on disk is reported', {skip: GIT_SKIP}, t => {
-  const dir = tempRepo(t, {'core/dist/strings.json': '{"tagline": "Your data is anonymous"}\n', 'core/keep.md': CLEAN_MD});
-  writeFiles(dir, {'core/dist/bundle.js': 'const s = "Your data is anonymous";\n'});
+test('self-test: build folders are skipped only when git ignores them, and a tracked file missing on disk is reported', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {
+    'core/dist/strings.json': '{"tagline": "Your data is anonymous"}\n', 'core/keep.md': CLEAN_MD, '.gitignore': 'mobile/build/\n',
+  });
+  writeFiles(dir, {
+    'core/dist/bundle.js': 'const s = "Your data is anonymous";\n',
+    'windows/App/bin/Strings.cs': 'var s = "Your data is anonymous";\n',
+    'mobile/build/out.js': 'const s = "Your data is anonymous";\n',
+    'core/node_modules/lib/index.js': 'const s = "Your data is anonymous";\n',
+  });
   rmSync(path.join(dir, 'core', 'keep.md'));
   const found = collectFiles(dir);
   const files = hitFiles(scanFound(found));
   assert.ok(files.has('core/dist/strings.json'), 'a tracked file in a build folder is scanned');
-  assert.ok(!files.has('core/dist/bundle.js'), 'untracked build output is not scanned');
+  assert.ok(files.has('core/dist/bundle.js'), 'an untracked file that git does not ignore is scanned, even in a build folder');
+  assert.ok(files.has('windows/app/bin/strings.cs'), 'an untracked source file under windows/App/bin is scanned');
+  assert.ok(!files.has('mobile/build/out.js'), 'a folder that git ignores is skipped');
+  assert.ok(!files.has('core/node_modules/lib/index.js'), 'untracked dependencies are never read');
+  assert.deepEqual(found.skippedDirs, ['core/node_modules']);
   assert.deepEqual(found.missingTracked, ['core/keep.md']);
   const noGit = collectFiles(dir, null);
-  assert.ok(!noGit.files.some(f => f.rel.startsWith('core/dist/')), 'without git, build folders are skipped by path');
+  assert.ok(!noGit.files.some(f => f.rel.startsWith('core/dist/') || f.rel.startsWith('windows/App/bin/')), 'without git, build folders are skipped by path');
+  assert.deepEqual(noGit.skippedDirs.sort(), ['core/dist', 'core/node_modules', 'mobile/build', 'windows/App/bin'], 'and each skipped folder is reported');
+});
+
+test('self-test: a lock file is skipped only beside its manifest, and a root-level special file is reported', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {
+    'core/package.json': '{"name":"core","private":true}\n', 'core/package-lock.json': '{"note":"Your data is anonymous"}\n',
+    'docs/apps/package-lock.json': '{"note":"Your data is anonymous"}\n',
+  });
+  const files = hitFiles(scanFound(collectFiles(dir)));
+  assert.ok(!files.has('core/package-lock.json'), 'a lock file beside package.json is skipped');
+  assert.ok(files.has('docs/apps/package-lock.json'), 'a file named like a lock file elsewhere is scanned');
+  try {
+    execFileSync('mkfifo', [path.join(dir, 'pipe')], {stdio: 'ignore'});
+  } catch {
+    t.skip('mkfifo is not available, so a special file cannot be created');
+    return;
+  }
+  assert.deepEqual(collectFiles(dir).unknown, ['pipe']);
 });
 
 test('self-test: a symlink that git does not ignore is reported', {skip: GIT_SKIP}, t => {
