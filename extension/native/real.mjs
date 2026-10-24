@@ -1,4 +1,4 @@
-import{readFile}from'node:fs/promises';import{createHash,randomBytes}from'node:crypto';
+import{readFile}from'node:fs/promises';import{createHash,randomBytes,timingSafeEqual}from'node:crypto';
 import{PUBLIC_CATALOG_METADATA,PUBLIC_CONDITIONS,PUBLIC_STUDY_IDS}from'../shared/public-catalog.mjs';
 import{parseRealPacket,parsePolicyReceipt,REAL_POLICY_VERSION,PREPARED_TTL_MS}from'../shared/real-contract.mjs';
 import{MAX_MESSAGE_BYTES,QUESTION_TEMPLATES,CAUTION_TEMPLATES,utf8Bytes}from'../shared/demo-contract.mjs';
@@ -7,6 +7,8 @@ import{sanitizeUntrustedText,untrustedPublicRecordText,UNTRUSTED_TEXT_RULE,MAX_P
 import{ApiError}from'./transport.mjs';
 const labels=new Map(PUBLIC_CONDITIONS.map(x=>[x.id,x.label]));
 const sha=value=>createHash('sha256').update(value).digest('hex');
+// Constant-time for equal lengths; unequal lengths fail without comparing.
+export function sameSecret(a,b){if(typeof a!=='string'||typeof b!=='string')return false;const x=Buffer.from(a,'utf8'),y=Buffer.from(b,'utf8');return x.length===y.length&&timingSafeEqual(x,y);}
 function frozen(value){if(value&&typeof value==='object'){Object.values(value).forEach(frozen);Object.freeze(value);}return value;}
 export async function loadPublicCorpus(){const bytes=await readFile(new URL('data/studies.json',import.meta.url));if(sha(bytes)!==PUBLIC_CATALOG_METADATA.corpusSha256)throw new ApiError('CATALOG_MISMATCH');const rows=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));if(!Array.isArray(rows)||rows.length!==PUBLIC_CATALOG_METADATA.studyCount||new Set(rows.map(x=>x.id)).size!==rows.length||rows.some(x=>!PUBLIC_STUDY_IDS.includes(x.id)))throw new ApiError('CATALOG_MISMATCH');return new Map(rows.map(x=>[x.id,x]));}
 const optionalText=v=>typeof v==='string'?sanitizeUntrustedText(v):null;
@@ -23,6 +25,6 @@ export class PreparedRealStore{
  prepare(packet,receipt){parsePolicyReceipt(receipt);const analysis=buildRealAnalysis(packet,this.corpus);const digest=sha(JSON.stringify({policyVersion:REAL_POLICY_VERSION,catalogMetadata:PUBLIC_CATALOG_METADATA,preview:analysis.preview}));const token=this.makeToken(),expiresAt=this.wallNow()+PREPARED_TTL_MS;
   const reply={kind:'preparedReal',token,digest,expiresAt,policyVersion:REAL_POLICY_VERSION,catalogMetadata:PUBLIC_CATALOG_METADATA,preview:analysis.preview};if(utf8Bytes(reply)>MAX_MESSAGE_BYTES-1024)throw new ApiError('PREVIEW_TOO_LARGE');this.clear();this.active={token,digest,expires:this.now()+PREPARED_TTL_MS,analysis,used:new Set()};this.timer=setTimeout(()=>this.clear(),PREPARED_TTL_MS);this.timer.unref?.();return structuredClone(reply);
  }
- take(payload){parsePolicyReceipt(payload.policyReceipt);const current=this.active;if(!current||current.expires<=this.now()){this.clear();throw new ApiError('CONSENT_EXPIRED');}if(payload.token!==current.token||payload.digest!==current.digest||!['score','agent'].includes(payload.operation)||current.used.has(payload.operation))throw new ApiError('INVALID_CONSENT_RECEIPT');current.used.add(payload.operation);return{...current.analysis,consentDigest:current.digest};}
- revoke(token){if(token!==undefined&&this.active&&token!==this.active.token)throw new ApiError('INVALID_CONSENT_RECEIPT');this.clear();}
+ take(payload){parsePolicyReceipt(payload.policyReceipt);const current=this.active;if(!current||current.expires<=this.now()){this.clear();throw new ApiError('CONSENT_EXPIRED');}const matches=sameSecret(payload.token,current.token)&sameSecret(payload.digest,current.digest);if(!matches||!['score','agent'].includes(payload.operation)||current.used.has(payload.operation))throw new ApiError('INVALID_CONSENT_RECEIPT');current.used.add(payload.operation);return{...current.analysis,consentDigest:current.digest};}
+ revoke(token){if(token!==undefined&&this.active&&!sameSecret(token,this.active.token))throw new ApiError('INVALID_CONSENT_RECEIPT');this.clear();}
 }
