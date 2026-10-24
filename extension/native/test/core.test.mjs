@@ -4,6 +4,7 @@ import {validateOrigin,validateRequest,encodeMessage,MessageDecoder,MAX_MESSAGE_
 import {getDemoFixture,getDemoPreview,SCORING_LEVELS} from '../../shared/demo-fixtures.mjs';
 import {parseDemoReply} from '../../shared/demo-contract.mjs';
 import {runScore,runAgent,fixtureFor,parseScores,agentPayload} from '../provider.mjs';
+import {ApiError} from '../transport.mjs';
 const origin='chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/';
 const payload={fixtureId:'fibromyalgia',consent:true};
 function scoreAnswer(id){return{type:'score',name:id,score:2,confidence:.8,probabilities:SCORING_LEVELS.map((x,i)=>({value:i,label:x.label,probability:i===2?1:0}))};}
@@ -82,3 +83,37 @@ test('incomplete active turns receive cancellation before deletion; cancellation
 test('malformed successful DELETE bodies never claim deleted and retries remain bounded',async()=>{const api=new FakeAPI(),original=api.request.bind(api),trace=[];api.request=async function(method,url,body,options){if(method==='DELETE'){this.calls.push({method,url,body});return{deleted:true}}return original(method,url,body,options)};const result=await runAgent(api,payload,{onTrace:x=>trace.push(x)});assert.equal(result.cleanup,'failed');assert.equal(api.calls.filter(x=>x.method==='DELETE').length,2);assert.ok(trace.some(x=>x.stage==='agent.cleanup.failed'));assert.ok(!trace.some(x=>x.stage==='agent.cleanup.deleted'))});
 
 test('active deletion conflict polls and retries instead of treating accepted cancel as a deletion',async()=>{const api=new FakeAPI({noTerminal:true}),original=api.request.bind(api);let attempts=0;api.request=async function(method,url,body,options){if(method==='DELETE'&&++attempts===1){this.calls.push({method,url,body});throw Error('active conflict')}return original(method,url,body,options)};const trace=[];await assert.rejects(runAgent(api,payload,{onTrace:x=>trace.push(x)}));assert.equal(attempts,2);assert.ok(api.calls.some((x,i)=>x.method==='GET'&&api.calls.slice(0,i).some(y=>y.method==='DELETE')));assert.ok(trace.some(x=>x.stage==='agent.cleanup.deleted'))});
+
+
+test('cleanup failures expose only a bounded reason, HTTP status and delete-attempt count',async()=>{
+ for(const entry of [
+  {error:new ApiError('API_ERROR',409),code:'API_ERROR',status:409},
+  {error:new ApiError('CANCELLED'),code:'CANCELLED'},
+  {error:Object.assign(Error('PRIVATE_RAW_BODY'),{code:'PRIVATE_CODE',status:'PRIVATE_STATUS',headers:{Authorization:'PRIVATE_KEY'}}),code:'CLEANUP_ERROR'},
+  {ack:{deleted:true,body:'PRIVATE_RAW_BODY'},code:'INVALID_DELETE_ACK'}
+ ]){
+  const api=new FakeAPI(),original=api.request.bind(api),trace=[];
+  api.request=async function(method,url,body,options){if(method==='DELETE'){this.calls.push({method,url});if(entry.error)throw entry.error;return entry.ack;}return original(method,url,body,options)};
+  const result=await runAgent(api,payload,{onTrace:value=>trace.push(value)});
+  assert.equal(result.cleanup,'failed');
+  const diagnostic=trace.find(value=>value.stage==='agent.cleanup.failed');
+  assert.deepEqual(diagnostic,{stage:'agent.cleanup.failed',cleanupAttempts:2,cleanupCode:entry.code,...(entry.status?{httpStatus:entry.status}:{})});
+  assert.equal(api.calls.filter(value=>value.method==='DELETE').length,2);
+  assert.doesNotMatch(JSON.stringify(diagnostic),/PRIVATE_|sess_test|Authorization|https:|token/);
+  parseDemoReply({id:'cleanup',type:'trace',ok:true,trace:{sequence:1,...diagnostic}},'cleanup');
+ }
+});
+
+test('successful retry reports attempts without stale failure status or reason',async()=>{
+ const api=new FakeAPI(),original=api.request.bind(api),trace=[];let deletes=0;
+ api.request=async function(method,url,body,options){if(method==='DELETE'&&++deletes===1)throw new ApiError('API_ERROR',409);return original(method,url,body,options)};
+ const result=await runAgent(api,payload,{onTrace:value=>trace.push(value)});
+ assert.equal(result.cleanup,'deleted');
+ assert.deepEqual(trace.find(value=>value.stage==='agent.cleanup.deleted'),{stage:'agent.cleanup.deleted',cleanupAttempts:2});
+});
+
+test('cleanup trace validation rejects invented reasons, counts, stages and raw diagnostic detail',()=>{
+ const reply=trace=>({id:'cleanup',type:'trace',ok:true,trace:{sequence:1,stage:'agent.cleanup.failed',cleanupCode:'CLEANUP_ERROR',cleanupAttempts:2,...trace}});
+ for(const trace of [{cleanupCode:'PRIVATE_RAW_BODY'},{cleanupAttempts:3},{cleanupAttempts:-1},{cleanupAttempts:1.5},{cleanupAttempts:'2'},{stage:'agent.complete'},{stage:'agent.cleanup.deleted'},{httpStatus:600},{body:'PRIVATE_RAW_BODY'},{headers:{Authorization:'PRIVATE_KEY'}},{url:'https://evil.invalid'}])assert.throws(()=>parseDemoReply(reply(trace),'cleanup'));
+ const missing=reply({});delete missing.trace.cleanupAttempts;assert.throws(()=>parseDemoReply(missing,'cleanup'));
+});
