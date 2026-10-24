@@ -331,11 +331,60 @@ export function collectFiles(root = REPO_ROOT, git = gitState(root)) {
   return found;
 }
 
-// A text file is read as UTF-8, or as UTF-16 when it has a byte order mark. Anything else with NUL bytes is binary.
-function decode(buffer) {
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) return buffer.toString('utf16le');
-  if (buffer.includes(0)) return null;
-  return buffer.toString('utf8');
+// Decoding fails closed. A file is read as strict UTF-8 (a UTF-8 byte order mark is allowed), or as strict UTF-16
+// when it starts with the little-endian (FF FE) or big-endian (FE FF) byte order mark. Everything else is a problem
+// that fails the scan: bytes that are not valid UTF-8, NUL bytes without a UTF-16 byte order mark, and UTF-16 that
+// does not decode. A decoder never substitutes a replacement character, because a substituted byte could split a
+// phrase that the normalizer would otherwise have joined. The one exception is an extensionless file that starts
+// with an executable signature (a built binary): it is reported as a binary and not scanned.
+const STRICT_UTF8 = new TextDecoder('utf-8', {fatal: true});
+const STRICT_UTF16LE = new TextDecoder('utf-16le', {fatal: true});
+const EXECUTABLE_SIGNATURES = [
+  {name: 'ELF', bytes: [0x7f, 0x45, 0x4c, 0x46]},
+  {name: 'Mach-O', bytes: [0xfe, 0xed, 0xfa, 0xce]},
+  {name: 'Mach-O', bytes: [0xfe, 0xed, 0xfa, 0xcf]},
+  {name: 'Mach-O', bytes: [0xce, 0xfa, 0xed, 0xfe]},
+  {name: 'Mach-O', bytes: [0xcf, 0xfa, 0xed, 0xfe]},
+  {name: 'Mach-O universal', bytes: [0xca, 0xfe, 0xba, 0xbe]},
+];
+
+const startsWithBytes = (buffer, bytes) => buffer.length >= bytes.length && bytes.every((b, i) => buffer[i] === b);
+
+// The name of the executable format, or null. A PE file ("MZ") must also carry the "PE\0\0" header at the offset that
+// the DOS header names, so that a text file that merely starts with the letters MZ is not taken for a binary.
+export function executableSignature(buffer) {
+  for (const {name, bytes} of EXECUTABLE_SIGNATURES) if (startsWithBytes(buffer, bytes)) return name;
+  if (startsWithBytes(buffer, [0x4d, 0x5a]) && buffer.length >= 0x40) {
+    const offset = buffer.readUInt32LE(0x3c);
+    if (offset >= 0x40 && offset + 4 <= buffer.length && startsWithBytes(buffer.subarray(offset), [0x50, 0x45, 0, 0])) return 'PE';
+  }
+  return null;
+}
+
+// Returns {text}, {binary} (the executable format of an extensionless file), or {problem} (why the bytes are not
+// readable text). The decode check and the scan both use this one function.
+export function decodeText(buffer, relPath) {
+  const strict = (decoder, bytes, encoding) => {
+    let text;
+    try {
+      text = decoder.decode(bytes);
+    } catch {
+      return {problem: `not valid ${encoding}`};
+    }
+    // A NUL character inside decoded text means the encoding was guessed wrong (for example UTF-32 read as UTF-16).
+    return text.includes('\0') ? {problem: `contains NUL characters after decoding as ${encoding}`} : {text};
+  };
+  if (startsWithBytes(buffer, [0xff, 0xfe])) return strict(STRICT_UTF16LE, buffer.subarray(2), 'UTF-16LE');
+  if (startsWithBytes(buffer, [0xfe, 0xff])) {
+    const body = Buffer.from(buffer.subarray(2));
+    if (body.length % 2 !== 0) return {problem: 'not valid UTF-16BE (odd number of bytes)'};
+    return strict(STRICT_UTF16LE, body.swap16(), 'UTF-16BE');
+  }
+  if (buffer.includes(0)) {
+    const signature = path.posix.extname(path.posix.basename(relPath)) === '' ? executableSignature(buffer) : null;
+    return signature ? {binary: signature} : {problem: 'contains NUL bytes but has no UTF-16 byte order mark'};
+  }
+  return strict(STRICT_UTF8, buffer, 'UTF-8');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1198,14 +1247,28 @@ test('strings.en.json: the only email address is the notice-only privacy contact
 // Part 2: scan
 // ---------------------------------------------------------------------------------------------
 
-// Scans every collected file and returns the hits.
-function scanFound(found) {
-  const hits = [];
+// Decodes every collected file. Returns the decoded texts, the extensionless executables, and the decoding problems.
+function decodeFound(found) {
+  const texts = [];
+  const binaries = [];
+  const problems = [];
   for (const file of found.files) {
-    const text = decode(readFileSync(file.full));
-    if (text !== null) hits.push(...scanText(file.rel, text, {ignoreRules: file.ignoreRules}));
+    const decoded = decodeText(readFileSync(file.full), file.rel);
+    if (decoded.problem) problems.push(`${file.rel}: ${decoded.problem}`);
+    else if (decoded.binary) binaries.push(`${file.rel} (${decoded.binary})`);
+    else texts.push({file, text: decoded.text});
   }
-  return hits;
+  return {texts, binaries, problems};
+}
+
+// Scans every collected file and returns the hits. A file that cannot be decoded as text makes the scan throw:
+// it never turns into a clean result.
+function scanFound(found) {
+  const {texts, problems} = decodeFound(found);
+  if (problems.length > 0) {
+    throw new Error(`the claims scan cannot read these files as text, so it fails closed:\n${problems.join('\n')}`);
+  }
+  return texts.flatMap(({file, text}) => scanText(file.rel, text, {ignoreRules: file.ignoreRules}));
 }
 
 test('claims scan: every top-level folder and docs entry is classified', () => {
@@ -1225,11 +1288,10 @@ test('claims scan: every file under a scan root has a known type, decodes as tex
   assert.deepEqual(found.symlinks, [], 'a symlink under a scan root hides its target from the scan: replace it with a real file');
   assert.deepEqual(found.nestedRepos, [], 'a nested repository or submodule hides its files from git and from this scan: move its files into this repository');
   assert.deepEqual(found.missingTracked, [], 'git tracks these files but the scan did not find them on disk: restore them or commit their removal');
-  const undecodable = found.files.filter(f => decode(readFileSync(f.full)) === null).map(f => f.rel);
-  // An extensionless file with NUL bytes is a binary (for example a built executable). It is skipped, but reported.
-  const binaries = undecodable.filter(rel => path.posix.extname(rel) === '');
-  if (binaries.length > 0) t.diagnostic(`skipped as binary (extensionless, contains NUL bytes): ${binaries.join(', ')}`);
-  assert.deepEqual(undecodable.filter(rel => !binaries.includes(rel)), [], 'a file with a text extension contains NUL bytes');
+  const {binaries, problems} = decodeFound(found);
+  // An extensionless file that starts with an executable signature is a built binary. It is not scanned, but reported.
+  if (binaries.length > 0) t.diagnostic(`not scanned, extensionless executable: ${binaries.join(', ')}`);
+  assert.deepEqual(problems, [], 'these files are not valid UTF-8, or UTF-16 with a byte order mark: convert them to UTF-8');
 });
 
 test('claims scan: pinned legacy root files are listed by SHA-256 digest only', () => {
@@ -1642,6 +1704,66 @@ test('self-test: a read error during the scan fails the check instead of passing
   assert.throws(() => scanFound(found));
 });
 
+const bytes = (...parts) => Buffer.concat(parts.map(p => (typeof p === 'string' ? Buffer.from(p, 'utf8') : Buffer.from(p))));
+const utf16be = text => Buffer.from(text, 'utf16le').swap16();
+
+test('self-test: decoding fails closed on bytes that are not valid text', () => {
+  const problem = (rel, buffer) => decodeText(buffer, rel).problem;
+  // Legacy code pages: each byte is invalid UTF-8 and would have been replaced by U+FFFD inside the phrase.
+  assert.ok(problem('core/notice.txt', bytes('We are HIPAA', [0xa0], 'compliant.\n')), 'Latin-1 no-break space');
+  assert.ok(problem('core/s.resx', bytes('<data>Fully anony', [0xad], 'mous</data>\n')), 'Latin-1 soft hyphen');
+  assert.ok(problem('docs/apps/x.md', bytes('We are HIPAA', [0x96], 'compliant.\n')), 'Windows-1252 en dash');
+  // NUL bytes without a byte order mark, in a text file or in an extensionless file that is not an executable.
+  assert.ok(problem('core/n.txt', Buffer.from('Your data is anonymous.', 'utf16le')), 'UTF-16LE without a byte order mark');
+  assert.ok(problem('core/NOTICE', Buffer.from('Your data is anonymous.', 'utf16le')), 'extensionless UTF-16LE without a byte order mark');
+  assert.ok(problem('core/NOTICE', bytes('MZ', [0], 'Your data is anonymous.')), 'the letters MZ alone are not a PE executable');
+  assert.ok(problem('core/tool.txt', bytes([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], 'Your data is anonymous.')), 'an executable signature counts only without an extension');
+  // Broken UTF-16 and UTF-32 read through a UTF-16 byte order mark.
+  assert.ok(problem('core/a.txt', bytes([0xff, 0xfe, 0x00, 0xd8, 0x41, 0x00])), 'a lone surrogate in UTF-16LE');
+  assert.ok(problem('core/a.txt', bytes([0xfe, 0xff, 0x00, 0x41, 0x00])), 'an odd number of UTF-16BE bytes');
+  assert.ok(problem('core/a.txt', bytes([0xff, 0xfe, 0, 0], Buffer.from('A\0\0\0', 'latin1'))), 'UTF-32LE is not read as UTF-16LE');
+  // Text that must decode.
+  assert.deepEqual(decodeText(bytes('Récupération des données, naïve café.\n'), 'core/a.md'), {text: 'Récupération des données, naïve café.\n'});
+  assert.deepEqual(decodeText(bytes([0xef, 0xbb, 0xbf], 'Research information.\n'), 'core/a.md'), {text: 'Research information.\n'});
+  assert.deepEqual(decodeText(bytes([0xff, 0xfe], Buffer.from('Not PHI-ready.', 'utf16le')), 'core/a.txt'), {text: 'Not PHI-ready.'});
+  assert.deepEqual(decodeText(bytes([0xfe, 0xff], utf16be('Not PHI-ready.')), 'core/NOTICE'), {text: 'Not PHI-ready.'});
+  // Extensionless executables are binaries, not text and not problems.
+  assert.deepEqual(decodeText(bytes([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0, 0, 0]), 'linux/bin/treatable-helper'), {binary: 'ELF'});
+  assert.deepEqual(decodeText(bytes([0xcf, 0xfa, 0xed, 0xfe, 7, 0, 0, 1]), 'macos/helper'), {binary: 'Mach-O'});
+  const pe = Buffer.alloc(0x88);
+  pe.write('MZ', 0, 'latin1');
+  pe.writeUInt32LE(0x80, 0x3c);
+  pe.write('PE\0\0', 0x80, 'latin1');
+  assert.deepEqual(decodeText(pe, 'windows/helper'), {binary: 'PE'});
+});
+
+test('self-test: a file that does not decode as text fails the scan, and decodable text is scanned', {skip: GIT_SKIP}, t => {
+  const failing = {
+    'core/notice.txt': bytes('We are HIPAA', [0xa0], 'compliant.\n'),
+    'core/s.resx': bytes('<data>Fully anony', [0xad], 'mous</data>\n'),
+    'docs/apps/x.md': bytes('We are HIPAA', [0x96], 'compliant.\n'),
+  };
+  for (const [rel, content] of Object.entries(failing)) {
+    const dir = tempRepo(t, {'core/a.md': CLEAN_MD, [rel]: content});
+    assert.throws(() => scanFound(collectFiles(dir)), new RegExp(`${rel.replace(/[.]/g, '\\.')}: not valid UTF-8`), rel);
+  }
+  // An extensionless UTF-16 big-endian file with a byte order mark is decoded and its claim is caught.
+  const be = tempRepo(t, {'core/NOTICE': bytes([0xfe, 0xff], utf16be('Your data is anonymous.'))});
+  assert.ok(hitFiles(scanFound(collectFiles(be))).has('core/notice'));
+  // Clean text in every accepted form passes, and an extensionless executable is reported but not scanned.
+  const ok = tempRepo(t, {
+    'core/accents.md': bytes('Récupération des données: research information, not medical advice.\n'),
+    'core/bom.md': bytes([0xef, 0xbb, 0xbf], CLEAN_MD),
+    'windows/Strings.txt': bytes([0xff, 0xfe], Buffer.from(CLEAN_MD, 'utf16le')),
+    'linux/bin/treatable-helper': bytes([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0], [0, 0, 0, 0], 'Your data is anonymous.'),
+  });
+  const found = collectFiles(ok);
+  assert.deepEqual(scanFound(found), []);
+  const decoded = decodeFound(found);
+  assert.deepEqual(decoded.problems, []);
+  assert.deepEqual(decoded.binaries, ['linux/bin/treatable-helper (ELF)']);
+});
+
 test('self-test: a directory that cannot be read fails the scan instead of being skipped', {skip: GIT_SKIP}, t => {
   const dir = tempRepo(t, {'core/a.md': CLEAN_MD});
   const locked = path.join(dir, 'core', 'locked');
@@ -1655,8 +1777,30 @@ test('self-test: a directory that cannot be read fails the scan instead of being
     error = e;
   }
   chmodSync(locked, 0o755);
-  if (error === null) t.skip('this account can read an unreadable directory (for example running as root), so the failure cannot be simulated');
+  if (error === null) {
+    // t.skip() only marks the test. It does not stop it, so the test must return here.
+    t.skip('this account can read an unreadable directory (for example running as root), so the failure cannot be simulated');
+    return;
+  }
   assert.equal(error.code, 'EACCES', 'the walk must crash on a directory it cannot read');
+});
+
+test('self-test: a file that cannot be read fails the scan instead of being skipped', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {'core/a.md': CLEAN_MD, 'core/locked.md': CLAIM_MD});
+  const locked = path.join(dir, 'core', 'locked.md');
+  chmodSync(locked, 0o000);
+  let error = null;
+  try {
+    scanFound(collectFiles(dir));
+  } catch (e) {
+    error = e;
+  }
+  chmodSync(locked, 0o644);
+  if (error === null) {
+    t.skip('this account can read an unreadable file (for example running as root), so the failure cannot be simulated');
+    return;
+  }
+  assert.equal(error.code, 'EACCES', 'the read must crash on a file it cannot read');
 });
 
 test('self-test: a phrase split by an HTML comment is still caught', () => {
