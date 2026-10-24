@@ -20,9 +20,9 @@ Credential setup prompts in an interactive terminal with echo disabled. It store
 
 ### This checkout’s runtime prerequisite
 
-The prior installed Homebrew Node executable could not start because its `libcrypto.4.dylib` dependency was missing. The native installation has been refreshed using the working bundled Node 24.22.1 runtime. Native stdio status is now successful and reports provider `openai`, but credential metadata remains **`configured: false`**. No credential has been retrieved and no live provider request has been verified.
+The prior installed Homebrew Node executable could not start because its `libcrypto.4.dylib` dependency was missing. The native installation has been refreshed using the working bundled Node 24.22.1 runtime. Native stdio status is now successful and reports provider `openai`. The user has securely configured the dedicated key; safe metadata reports **`configured: true`**. Configuration does not need to be repeated. The bounded live-check results are recorded below.
 
-The current checkout’s secure configuration command is independent of the terminal’s working directory:
+For a future fresh setup or deliberate credential replacement, this checkout’s secure configuration command is independent of the terminal’s working directory:
 
 ```sh
 /Users/LenovoT440p/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node /Users/LenovoT440p/work/treatable/extension/native/credentials-setup.mjs configure
@@ -64,6 +64,10 @@ Raw private state ends with the protected window/native session. After explicit 
 
 At `e95f8d0`, 52 native tests pass alongside 116 extension tests, typecheck and all three builds. Tests use fake Keychain helpers and intercepted provider transports, including strict request serialization, source/packet/token binding, replay/expiry, unknown-field rejection, key/canary non-egress, required evidence calls, fatal/incomplete event handling and cleanup failures. These are automated boundary checks, not live API acceptance.
 
-On the current machine, repaired native stdio status passes with `configured: false`. The installed helper also fetched the public Gov record `NCT06567886` through its real `liveCatalog` operation, and all 14 installed native/shared files match their source copies. No model request was made. Chrome rendering, the Chrome-to-native handshake and authorized OpenAI execution remain outstanding. For a bounded live preflight, use the toolbar’s current-page matching window with a clearly fictional entered profile and public records, initially at most one Decisions batch and one Agents task. Identify the example as fictional; the preview still labels the real-analysis transport in use. Show failures honestly.
+On the current machine, repaired native stdio status passes; the securely configured key reports `configured: true`. The installed helper fetched public Gov record `NCT06567886` through its real `liveCatalog` operation, and all 14 installed native/shared files match source.
+
+An explicitly authorized live smoke sent only a fictional `45_59` / female profile and a public condition label. Exactly one Decisions request returned a validated live score for one study. Exactly one Agents task completed its required public-evidence tool call and returned valid study/template IDs. Its bounded session cleanup produced **no validated deletion acknowledgment**, so deletion is unconfirmed and provider state may remain. The original trace did not identify an HTTP status or failure cause. The successful task output does not prove successful cleanup. No additional authenticated requests were made to diagnose the failure.
+
+Actual Chrome rendering and the Chrome-to-native handshake remain outstanding. Any further live check requires an explicit bounded scope; identify fictional inputs clearly and inspect the exact preview. The current-page transport remains labeled as real analysis even when the presenter enters fictional example values. Show request and cleanup failures honestly.
 
 Official contracts: [Decisions](https://developers.openai.com/api/docs/guides/decisions), [create decision](https://developers.openai.com/api/reference/resources/decisions/methods/create), [Agents create](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/methods/create), [functions](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), [events](https://developers.openai.com/api/docs/guides/agents-api/sessions/events), [session deletion](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [data controls](https://developers.openai.com/api/docs/guides/your-data).
