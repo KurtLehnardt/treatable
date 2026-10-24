@@ -17,4 +17,4 @@ for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(ro
 const studies=JSON.parse(await readFile(path.join(root,'dist/data/studies.json'),'utf8'));
 if(studies.length!==2000)throw new Error(`Expected 2,000 shipped studies, got ${studies.length}`);
 await writeFile(path.join(root,'dist/data/provenance.json'),JSON.stringify({count:studies.length,fetchedAt:studies[0]?.fetchedAt,source:'ClinicalTrials.gov API v2',search:'Local BM25 retrieval with optional OpenAI or local-model scoring; snapshot is incomplete and recruitment may change',zipAttribution:'GeoNames, CC BY 4.0; approximate postal-area centers'},null,2));
-console.log(`Built private Chrome extension with ${studies.length} studies`);
+console.log(`Built Treatable Chrome extension with ${studies.length} studies`);

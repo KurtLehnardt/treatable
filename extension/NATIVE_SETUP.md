@@ -1,6 +1,6 @@
 # Local model setup for the Chrome extension
 
-The **Local LLM** provider uses a small Chrome native-messaging helper and your installed Ollama binary. It answers the same scoring questions and builds the same eligibility checklist as the OpenAI provider, without anything leaving this computer. It is the mode to use for real health details. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
+The **Local LLM** provider uses a small Chrome native-messaging helper and your installed Ollama binary. It answers the same scoring questions and builds the same eligibility checklist as the OpenAI provider, with requests sent to the local helper on this device. It is the recommended mode for real health details. Patient text passes from the extension to the helper through Chrome's native-messaging pipe, then to a dedicated loopback-only Ollama process with `OLLAMA_NO_CLOUD=1`. There is no cloud fallback and no extra public HTTP endpoint. The existing Treatable website API is not used or relaxed.
 
 ## macOS
 
@@ -15,7 +15,7 @@ node extension/native/install.mjs --manifest extension/dist/manifest.json
 
 The installer copies its executable files into `~/Library/Application Support/Treatable/native-host` and registers only the pinned Treatable extension ID (`lmgmjeabbalehlcakdbolielnfgchojf`) under Chrome's `NativeMessagingHosts`. It resolves an absolute Node executable path, so Chrome does not need your terminal's PATH or a git worktree. It does not change existing Ollama settings, start a global daemon, or download a model. Restart the extension after installation.
 
-Use `--ollama /absolute/path/to/ollama` if needed. Use `--models-dir /absolute/path/to/models` for an existing custom model store; that directory must contain `manifests` and `blobs`. The helper uses only models with positively verified local weight files, completion capability, and no remote metadata. Cloud tags and unknown aliases are rejected.
+Use `--ollama /absolute/path/to/ollama` if needed. Use `--models-dir /absolute/path/to/models` for an existing custom model store; that directory must contain `manifests` and `blobs`. The helper uses only models whose local weight files it finds on disk, completion capability, and no remote metadata. Cloud tags and unknown aliases are rejected.
 
 If the helper or a usable model is missing, local search and deterministic screening continue. The panel explains setup rather than sending data elsewhere. Local generation has a 60-second deadline and Stop cancels the request. Each native connection owns a separate temporary loopback daemon, which is stopped when the connection closes.
 
@@ -24,7 +24,7 @@ If the helper or a usable model is missing, local search and deterministic scree
 - The helper does not log prompts, profiles or generated text; Ollama subprocess output is discarded and debug logging is disabled.
 - Profile/page text never goes to OpenAI or another cloud provider through this helper. OpenAI mode is a separate, opt-in provider in the extension settings; it does not use this helper. The dedicated daemon explicitly disables Ollama cloud execution. Runtime/model names alone are returned during status checks.
 - No patient information belongs in filenames, URL parameters or error messages. Model download/setup traffic is separate from matching.
-- Ordinary browsing of an external website still uses that website's network. The extension's private analysis does not conceal that browsing from the site.
+- Ordinary browsing of an external website still uses that website's network. The extension's local analysis does not conceal that browsing from the site.
 - Native messaging does not protect against malicious software already running as the same OS user. Extension-local storage is not a promise of encrypted-at-rest storage.
 
 ## Uninstall

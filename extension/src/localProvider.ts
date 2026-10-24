@@ -1,6 +1,7 @@
 /**
  * Local LLM provider: the same Stage 3/4 contract as OpenAI, answered by the native helper
- * (Ollama on this computer). Nothing leaves the device. It never calls fetch.
+ * (Ollama on this computer). Requests go to the local helper on this device; this module makes
+ * no fetch calls (enforced by tests).
  */
 import {z} from 'zod';
 import {

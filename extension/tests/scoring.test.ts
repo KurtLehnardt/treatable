@@ -304,7 +304,9 @@ test('consent and README copy: not set up for PHI, BAA plus Modified Retention, 
     assert.doesNotMatch(text, /HIPAA[- ]compliant|is HIPAA compliant|HIPAA-ready/i);
   }
   assert.doesNotMatch(readme, /No OpenAI key or cloud provider is used|No all-sites access, cloud requests/i);
-  assert.match(panel, /never sends your ZIP code, your name, your notes, or your saved studies/);
+  assert.match(panel, /Your ZIP code, notes, and saved studies are not included in requests/);
+  assert.match(readme, /Research information, not medical advice/);
+  assert.match(readme, /No warranty/);
 });
 
 test('critic fixes: multi-region patient is unspecified; partial failures are surfaced; agent sessions are deleted on failure; CRLF SSE parses', async () => {

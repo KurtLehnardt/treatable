@@ -1,7 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {StudySchema, profileFromForm, nearestSite, sourceExcerpts, safeWebUrl, type Study, type PatientProfile, type ZipData, type PageSource} from './core';
-import {secureStorage, loadState, saveState, clearState, loadSettings, saveSettings, loadApiKey, saveApiKey, clearApiKey, DEFAULT_SETTINGS, type Settings, type ProviderChoice} from './storage';
+import {restrictStorageAccess, loadState, saveState, clearState, loadSettings, saveSettings, loadApiKey, saveApiKey, clearApiKey, DEFAULT_SETTINGS, type Settings, type ProviderChoice} from './storage';
 import {LocalModelClient, LatestRun, type NativeStatus} from './native';
 import {redact} from './openai';
 import {CONFIG} from './config';
@@ -72,7 +72,7 @@ function App() {
     let mounted = true;
     void (async () => {
       try {
-        await secureStorage(chrome.storage.session, chrome.storage.local);
+        await restrictStorageAccess(chrome.storage.session, chrome.storage.local);
         const [records, postal, stored, prefs, key] = await Promise.all([
           fetch(chrome.runtime.getURL('data/studies.json')).then(r => r.json()),
           fetch(chrome.runtime.getURL('data/us-zip-centroids.json')).then(r => r.json()),
@@ -96,7 +96,7 @@ function App() {
         if (p) setForm({condition: p.primaryDiagnoses.join(', '), notes: p.symptomNarrative, age: String(p.ageYears), sex: p.sex, zip: p.location.zip || '', radius: String(p.travelRadiusMiles)});
         setReady(true);
       } catch {
-        if (mounted) setError('Offline data or private storage could not be loaded. Reload the extension.');
+        if (mounted) setError('Offline data or extension storage could not be loaded. Reload the extension.');
       }
     })();
     return () => { mounted = false; active.current?.abort(); };
@@ -339,26 +339,26 @@ function App() {
   const savedRows = studies.filter(s => saved.includes(s.id));
 
   return <main>
-    <header><div className="brand"><span className="mark" aria-hidden="true">t</span><div><h1>Treatable</h1><p>Studies worth asking about.</p></div></div><span className={cloud ? 'private cloud' : 'private'}><span aria-hidden="true">●</span> {cloud ? 'OpenAI scoring on' : 'Local & private'}</span></header>
-    <div className="privacy-note">{cloud ? 'OpenAI mode: your condition, age band, sex, spine region, and public study text go to OpenAI. Never ZIP, notes, or saved studies. Not set up for protected health information.' : 'Nothing leaves this computer in this mode. Browsing a website still makes normal website requests.'}</div>
+    <header><div className="brand"><span className="mark" aria-hidden="true">t</span><div><h1>Treatable</h1><p>Studies worth asking about.</p></div></div><span className={cloud ? 'private cloud' : 'private'}><span aria-hidden="true">●</span> {cloud ? 'OpenAI scoring on' : settings.provider === 'local' ? 'Local LLM mode' : 'No model requests'}</span></header>
+    <div className="privacy-note">{cloud ? 'OpenAI mode: your condition, age band, sex, spine region, and the public study text are sent to OpenAI. ZIP, notes, and saved studies are not included in requests. Not set up for protected health information.' : settings.provider === 'local' ? 'Local LLM mode: requests are sent to the local helper on this device. Browsing a website still makes normal website requests.' : 'In this mode the extension makes no model requests. Browsing a website still makes normal website requests.'}</div>
 
     {CONFIG.syntheticDemoBanner && <div className="message error demo-banner" role="alert"><strong>Synthetic demo.</strong> Enter synthetic example data only. Do not enter real health details in this build.</div>}
-    {CONFIG.hipaaGateEnabled && !settings.firstRunSeen && <section className="consent" aria-label="Welcome"><h3>Local LLM is the default</h3><p>Treatable scores studies with a model on this computer, so nothing leaves the device. OpenAI mode is available only if your organization's IT admin has deployed a Treatable policy that allows it, your API key belongs to an allowed OpenAI organization, and you confirm the BAA attestation. That check is an organization-policy gate plus your attestation; it does not verify a BAA.</p><div className="actions"><button className="primary" onClick={() => updateSettings({firstRunSeen: true})}>Got it</button></div></section>}
+    {CONFIG.hipaaGateEnabled && !settings.firstRunSeen && <section className="consent" aria-label="Welcome"><h3>Local LLM is the default</h3><p>Treatable scores studies with a model through the local helper on this device. OpenAI mode is available only if your organization's IT admin has deployed a Treatable policy that allows it, your API key belongs to an allowed OpenAI organization, and you confirm the BAA attestation. That check is an organization-policy check plus your confirmation; it does not verify a BAA.</p><div className="actions"><button className="primary" onClick={() => updateSettings({firstRunSeen: true})}>Got it</button></div></section>}
     <PhiNotice openaiActive={cloud} baaAttested={baaAttested}/>
 
     <section className="intake"><div className="section-heading"><h2>Your starting point</h2><button className="text-button" disabled={!ready} onClick={loadSynthetic}>Load synthetic example</button></div>
       {synthetic && <p className="message">Synthetic example: a made-up profile for demonstration, not a real patient.</p>}
       <label>Medical condition<input value={form.condition} onChange={e => edit('condition', e.target.value)} placeholder="e.g. lumbar degenerative disc disease" maxLength={500}/></label>
-      <label>Notes for yourself (never sent anywhere)<textarea value={form.notes} onChange={e => edit('notes', e.target.value)} placeholder="Optional" maxLength={6000} rows={2}/></label>
+      <label>Notes for yourself (not included in any request)<textarea value={form.notes} onChange={e => edit('notes', e.target.value)} placeholder="Optional" maxLength={6000} rows={2}/></label>
       <div className="grid"><label>Age<input type="number" min="0" max="120" value={form.age} onChange={e => edit('age', e.target.value)} placeholder="Years"/></label><label>Sex for study criteria<select value={form.sex} onChange={e => edit('sex', e.target.value)}><option value="prefer_not_to_say">Not provided</option><option value="female">Female</option><option value="male">Male</option></select></label></div>
-      <div className="grid"><label>US ZIP (optional, never sent)<input value={form.zip} onChange={e => edit('zip', e.target.value)} placeholder="83702" maxLength={10} inputMode="numeric"/></label><label>Travel preference<select value={form.radius} onChange={e => edit('radius', e.target.value)}>{['25', '50', '100', '250', 'anywhere'].map(v => <option key={v} value={v}>{v === 'anywhere' ? 'Anywhere' : `${v} miles`}</option>)}</select></label></div>
+      <div className="grid"><label>US ZIP (optional, not included in any request)<input value={form.zip} onChange={e => edit('zip', e.target.value)} placeholder="83702" maxLength={10} inputMode="numeric"/></label><label>Travel preference<select value={form.radius} onChange={e => edit('radius', e.target.value)}>{['25', '50', '100', '250', 'anywhere'].map(v => <option key={v} value={v}>{v === 'anywhere' ? 'Anywhere' : `${v} miles`}</option>)}</select></label></div>
       <label className="check"><input type="checkbox" checked={remember} onChange={e => { const value = e.target.checked; setRemember(value); void queue(() => saveState(chrome.storage.session, chrome.storage.local, {profile, savedIds: saved}, value)).catch(() => setError('Could not update storage preference.')); }}/>Remember my profile on this computer after Chrome closes</label>
       <div className="actions"><button className="primary" disabled={!ready || running} onClick={() => applySearch()}>{running ? 'Scoring…' : 'Find studies'} <span aria-hidden="true">→</span></button><button disabled={!ready || running} onClick={() => void analyzePage()}>Analyze ClinicalTrials.gov page</button>{running && <button onClick={() => { cancel(); setNotice('Stopped.'); }}>Stop</button>}</div>
     </section>
 
     <section className="model-box"><div className="section-heading"><h2>Settings: how results are refined</h2></div>
       <div className="provider-choice" role="radiogroup" aria-label="Scoring provider">
-        {([['openai', 'OpenAI', 'Decisions API scores each shortlisted study; Agents API builds the checklist. Needs your API key and consent.'], ['local', 'Local LLM', 'Same questions answered by a model on this computer through the native helper. Nothing leaves the device. Use this for real health details.'], ['none', 'Send nothing', `Stages 1-2 only. ${UNREFINED_LABEL}; nothing can show as Strong.`]] as Array<[ProviderChoice, string, string]>).map(([value, label, help]) =>
+        {([['openai', 'OpenAI', 'Decisions API scores each shortlisted study; Agents API builds the checklist. Needs your API key and consent.'], ['local', 'Local LLM', 'Same questions answered by a model through the local helper on this device. Recommended for real health details.'], ['none', 'Send nothing', `Stages 1-2 only. ${UNREFINED_LABEL}; nothing can show as Strong.`]] as Array<[ProviderChoice, string, string]>).map(([value, label, help]) =>
           <label key={value} className="check"><input type="radio" name="provider" checked={settings.provider === value} onChange={() => { cancel(); setResult(undefined); updateSettings({provider: value}); if (value === 'local' && !native.ok) void checkNative(); }}/><span><strong>{label}</strong> · {help}</span></label>)}
         {!settings.provider && <p className="message" role="status">Choose a provider. Until you do, results are unrefined and nothing is sent anywhere.</p>}
       </div>
@@ -367,8 +367,8 @@ function App() {
         <h3>Before anything is sent to OpenAI</h3>
         <p>If you accept, Treatable sends the following to OpenAI (api.openai.com, Decisions API and Agents API) for each shortlisted study:</p>
         <ul><li>Your condition as typed</li><li>Your age as a five-year band (for example 40-44), not your exact age</li><li>Your sex for study criteria</li><li>Your spine region, if your condition names one</li><li>The public ClinicalTrials.gov text of the study</li></ul>
-        <p>Treatable never sends your ZIP code, your name, your notes, or your saved studies.</p>
-        <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for meeting those requirements before entering real health details. Local LLM mode keeps everything on this computer.</p>
+        <p>Your ZIP code, notes, and saved studies are not included in requests, and Treatable does not ask for your name.</p>
+        <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for confirming your own BAA and endpoint coverage before entering real health details. In Local LLM mode, requests are sent to the local helper on this device.</p>
         <p>Treatable asks OpenAI to delete each agent session after the checklist is read, and shows whether the deletion was confirmed. OpenAI's own data retention terms still apply to your API key's account.</p>
         <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); resetGate(); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>
         <p className="fine">Optional. Leave it unchecked unless it is true. It is stored only with your key and is forgotten when the key is.</p>

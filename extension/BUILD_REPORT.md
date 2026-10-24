@@ -8,7 +8,7 @@
 - Patient profile, offline search over 2,000 real US studies, local ZIP-center distance, deterministic structured age/sex checks, source criteria/contacts/questions, saved studies, and current-page reading.
 - Exact supported-origin validation before injection, within the serialized page reader, and during source parsing. Study IDs require a complete eight-digit NCT route. Other sites and malformed identifiers are rejected.
 - Session-only patient storage by default; explicit Remember uses extension-local storage. Both areas restrict access to trusted extension contexts. Clear all removes patient/saved state, cancels pending generation, and disconnects the helper-owned local daemon.
-- Optional native-messaging Ollama helper with a pinned extension origin, typed bounded messages, positively verified local model weights, no remote aliases, dedicated temporary loopback daemon, `OLLAMA_NO_CLOUD=1`, direct HTTP transport that ignores poisoned proxies, no cloud fallback, and no prompt logs.
+- Optional native-messaging Ollama helper with a pinned extension origin, typed bounded messages, local model weights checked on disk, no remote aliases, dedicated temporary loopback daemon, `OLLAMA_NO_CLOUD=1`, direct HTTP transport that ignores poisoned proxies, no cloud fallback, and no prompt logs.
 - Local narration is a separate unverified draft. It cannot replace deterministic checks. Unsupported citations and obvious English-language eligibility/benefit promises are rejected, preserving source results. This guard is not clinical validation.
 
 ## Verification

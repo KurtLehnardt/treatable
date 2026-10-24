@@ -1,7 +1,7 @@
 /**
  * Phase 2 organization-policy gate for OpenAI mode. Fails closed.
  *
- * Honest scope: this is an organization-policy gate plus a user attestation. It is NOT
+ * Scope: this is an organization-policy check plus the user's confirmation. It is NOT
  * verification of a BAA. OpenAI documents no API that tells a client whether the key's
  * organization has an executed BAA, Modified Retention, or endpoint coverage. What it does:
  *   1. An IT admin must deploy a managed policy (chrome.storage.managed, managed_schema.json)
@@ -17,7 +17,7 @@ import {LocalProvider, type LocalGenerator} from './localProvider';
 import type {ScoringProvider} from './scoring';
 
 export interface ManagedPolicy {hipaaOpenAIEnabled: boolean; allowedOpenAIOrgIds: string[]}
-export const GATE_NAME = 'Organization policy gate plus attestation (not BAA verification)';
+export const GATE_NAME = 'Organization-policy check plus your confirmation (this is not BAA verification)';
 const ORG_ID = /^org-[A-Za-z0-9]{6,64}$/;
 
 export function parsePolicy(raw: unknown): {ok: true; policy: ManagedPolicy} | {ok: false; reason: string} {
@@ -78,7 +78,7 @@ export function resolveProvider(input: ResolveInput): Resolved {
   const localFallback = (reason: string): Resolved => input.local?.model
     ? {provider: new LocalProvider(input.local.generator, input.local.model), reason}
     : {reason: `${reason} Local LLM is not available either, so results are unrefined.`};
-  if (choice === 'none') return {reason: 'Send nothing mode: no data leaves this computer.'};
+  if (choice === 'none') return {reason: 'Send nothing mode: no model requests are made.'};
   if (choice === 'local') return input.local?.model ? {provider: new LocalProvider(input.local.generator, input.local.model)} : {reason: 'Local LLM selected, but the local helper or a model was not detected. See extension/NATIVE_SETUP.md.'};
   if (input.config.hipaaGateEnabled) {
     if (!input.gate || !input.gate.open) return localFallback(`OpenAI mode is locked. ${input.gate && !input.gate.open ? input.gate.reason : 'The organization gate has not been checked.'} Using Local LLM.`);

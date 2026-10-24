@@ -1,6 +1,6 @@
 # Treatable Chrome extension
 
-Study finding for patients with medical conditions. Nothing leaves your computer unless you opt in to OpenAI scoring. **Research information, not medical advice.** Matching does not establish eligibility or predict treatment benefit. Confirm details with the study team and your care team.
+Local-first study finder for patients. OpenAI scoring is opt-in; see [PRIVACY.md](PRIVACY.md) for what is sent to whom in each mode. **Research information, not medical advice.** Matching does not establish eligibility or predict treatment benefit. Confirm details with the study team and your care team.
 
 ## Build and load
 
@@ -13,7 +13,7 @@ npm test
 npm run build
 ```
 
-Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repository's `extension/dist` folder. The extension public key gives the stable development ID `lmgmjeabbalehlcakdbolielnfgchojf`. It does not contain a private signing key. No store publication is performed.
+Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repository's `extension/dist` folder. The extension public key gives the stable development ID `lmgmjeabbalehlcakdbolielnfgchojf`. It does not contain the signing key. No store publication is performed.
 
 Click the Treatable toolbar icon while viewing an HTTPS ClinicalTrials.gov page. The side panel can:
 
@@ -37,7 +37,7 @@ Tiers: 80+ Strong, 65-79 Possible, 50-64 Weak. "Matches what you told us" appear
 
 Choose one in Settings. Until you choose, results stay unrefined and nothing is sent anywhere. If the local helper is detected, Local LLM is selected by default.
 
-- **Local LLM.** Stages 3 and 4 run through the native helper and a model on this computer. Nothing leaves the device and no API key is needed. **Use this mode for real health details.** See [native helper setup](NATIVE_SETUP.md).
+- **Local LLM.** Stages 3 and 4 run through the native helper and a model on this computer. Requests are sent to the local helper on this device, and no API key is needed. This is the recommended mode for real health details. See [native helper setup](NATIVE_SETUP.md).
 - **OpenAI (opt-in).** Stage 3 uses the OpenAI Decisions API (`POST /v1/decisions`, model `gpt-6-luna`), one request per shortlisted study. Stage 4 uses the OpenAI Agents API (`POST /v1/agents/sessions`, model `gpt-6-astra`, no sandbox environment, JSON-schema output). You paste your own API key. Agents API use needs a key with `api.agents.read` and `api.agents.write`.
 - **Send nothing.** Stages 1 and 2 only, labeled "Unrefined: keyword screening only." Nothing can display as Strong in this mode.
 
@@ -48,13 +48,13 @@ If a provider fails (missing key, 401, 403, 429, timeout, malformed response, of
 `src/config.ts` holds one constant, `PHASE`. Changing it is a one-line switch.
 
 - **Phase 1, `PHASE = 'demo'` (current build).** OpenAI is the default provider. A persistent banner says this is a synthetic demo: enter synthetic example data only. The consent screen and key entry still come first; nothing is sent without consent.
-- **Phase 2, `PHASE = 'hipaa'`.** Local LLM is the default, and a first-run screen says so. OpenAI mode unlocks only through an **organization policy gate plus attestation**. Treatable never defaults to sending data to OpenAI in this phase.
+- **Phase 2, `PHASE = 'hipaa'`.** Local LLM is the default, and a first-run screen says so. OpenAI mode unlocks only through **an organization-policy check plus your confirmation**. In this phase the default provider is Local LLM, not OpenAI (enforced by tests).
 
 To switch to Phase 2, set `export const PHASE: Phase = 'hipaa';` in `src/config.ts`, then run `npm run build`.
 
 ### What the Phase 2 gate checks, and what it does not
 
-OpenAI documents no API that tells a client whether an API key's organization has an executed BAA, Modified Retention, or confirmed endpoint coverage. The gate therefore does **not** verify a BAA. It requires all of the following, and any missing, malformed, or mismatched input keeps OpenAI locked and falls back to Local LLM with a message:
+OpenAI documents no API that tells a client whether an API key's organization has an executed BAA, Modified Retention, or confirmed endpoint coverage. The check therefore does **not** verify a BAA. It is an organization-policy check plus your confirmation. It requires all of the following, and any missing, malformed, or mismatched input keeps OpenAI locked and falls back to Local LLM with a message:
 
 1. A managed policy deployed by an IT admin through Chrome enterprise policy (`chrome.storage.managed`, schema in `managed_schema.json`), with `hipaaOpenAIEnabled: true` and `allowedOpenAIOrgIds` (OpenAI organization IDs, `org-...`).
 2. The user ticks the BAA attestation checkbox. In Phase 2 an unchecked attestation keeps OpenAI locked. The organization check runs only after OpenAI consent.
@@ -79,19 +79,19 @@ The extension ID is `lmgmjeabbalehlcakdbolielnfgchojf`. Set the policy under Chr
 
 Check the result at `chrome://policy`. Setting this policy is the organization's statement that its OpenAI agreement and configuration cover this use. The extension makes no HIPAA compliance claim.
 
-## Privacy boundaries
+## Data handling
 
-- **OpenAI mode is opt-in.** It stays off until you accept a consent screen. That screen lists exactly what is sent: your condition as typed, a five-year age band (not your exact age), your sex for study criteria, your spine region, and the public study text. Treatable never sends your ZIP code, name, notes, or saved studies.
-- **OpenAI mode is not set up for protected health information. HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode.** You are responsible for meeting those requirements before entering real health details. This extension makes no HIPAA compliance claim, and makes no claim that the Decisions API or the Agents API is eligible for protected health information.
-- The consent screen has an optional, unchecked box: "My organization has an executed OpenAI BAA with Modified Retention, and this API key belongs to that organization." In Phase 1 (demo), unchecked, OpenAI mode still works but shows a persistent banner: "Not PHI-ready: use synthetic or non-identifying information only." Checked, the panel shows: "You are responsible for confirming that the Decisions and Agents endpoints are covered by your BAA." The extension does not verify the attestation. It is stored only with the key (session storage by default) and is forgotten with the key.
+- **OpenAI mode is opt-in.** It stays off until you accept a consent screen. That screen lists exactly what is sent: your condition as typed, a five-year age band (not your exact age), your sex for study criteria, your spine region, and the public study text. ZIP code, notes, and saved studies are not included in requests (enforced by tests), and the extension does not ask for your name.
+- **OpenAI mode is not set up for protected health information. HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode.** You are responsible for confirming your own BAA and endpoint coverage before entering real health details. This extension makes no HIPAA compliance claim, and makes no claim that the Decisions API or the Agents API is eligible for protected health information.
+- The consent screen has an optional, unchecked box: "My organization has an executed OpenAI BAA with Modified Retention, and this API key belongs to that organization." In Phase 1 (demo), unchecked, OpenAI mode still works but shows a persistent banner: "Not PHI-ready: use synthetic or non-identifying information only." Checked, the panel shows: "You are responsible for confirming your own BAA and that the Decisions and Agents endpoints are covered by it. Treatable does not check this." The extension does not check the attestation. It is stored only with the key (session storage by default) and is forgotten with the key.
 - Data sent in OpenAI mode goes to OpenAI and is subject to OpenAI's terms for your API key's account. Treatable asks OpenAI to delete each agent session (`DELETE /v1/agents/sessions/{id}`) after the task ends, whether it succeeded or failed, and the checklist shows whether OpenAI confirmed the deletion.
-- Your OpenAI key is stored in `chrome.storage.session` by default and in `chrome.storage.local` only if you select Remember. It is sent only in the Authorization header to `https://api.openai.com`. It is never logged, never placed in page context, and never included in error messages. Clear all removes it.
+- Your OpenAI key is stored in `chrome.storage.session` by default and in `chrome.storage.local` only if you select Remember. It is sent in the Authorization header to `https://api.openai.com`. Tests check that it does not appear in console output, request bodies, or error messages. It is not placed in page context. Clear all removes it.
 - OpenAI responses are kept in the panel's memory for the current view only. They are not written to storage or logs.
 - Host permissions name the two ClinicalTrials.gov HTTPS origins for page reading plus `https://api.openai.com/*` for API calls. The extension CSP allows connections only to itself and `https://api.openai.com`. Page reading still runs only on ClinicalTrials.gov; there is no all-sites access, activeTab permission, analytics, remote executable code, or `storage.sync` use.
-- Local LLM and Send nothing modes make no cloud requests. Patient details are never injected into the website or sent as a study-search or ZIP query.
+- In Local LLM mode, requests are sent to the local helper on this device. In Send nothing mode, no model requests are made. Tests check that the Local provider makes no network requests. Patient details are not injected into the website or sent as a study-search or ZIP query.
 - Profile defaults to `chrome.storage.session`; Remember uses `chrome.storage.local`. Both are restricted to trusted extension contexts. This is local storage, not Treatable-managed encryption at rest.
 - Ordinary browsing and opening source links still make normal website requests.
-- Page text and study text are untrusted evidence. They cannot invoke native operations or change deterministic exclusions. Model output can lower a score but never lift past a deterministic cap, and it never removes a study's structured checks.
+- Page text and study text are untrusted evidence. They cannot invoke native operations or change deterministic exclusions. Model output can lower a score but cannot lift it past a deterministic cap (enforced by tests), and it does not remove a study's structured checks.
 - Clear all removes the patient profile, saved IDs, results, and the OpenAI key. It does not erase browser history, website data, downloaded model weights, or operating-system backups.
 
 ## Tests and live smoke test
@@ -103,3 +103,11 @@ Check the result at `chrome://policy`. Setting this policy is the organization's
 Bundled study records preserve ClinicalTrials.gov URLs, fetch timestamps, and source-update dates. This is an incomplete registry snapshot; recruiting status and contacts can change. Distance is approximate, measured from GeoNames ZIP-area centers (CC BY 4.0), and remains a travel preference. Missing data never becomes medical exclusion. Only structured contradictory age/sex facts exclude a study; unverified free-text criteria stay unknown. Model scores are research aids, not eligibility decisions. Local model quality and speed depend on hardware and model.
 
 The browser bundle reuses the existing Treatable patient/study contracts and deterministic screening module. It does not import the Next server or saved cloud-provider configuration. Source modules are imported at build time; the built extension is standalone.
+
+## Disclaimer
+
+- **Research information, not medical advice.** A match score does not establish eligibility, recommend a treatment, or predict benefit. Confirm everything with the study team and your clinician.
+- The project operates no servers. Depending on the mode you choose, data goes to OpenAI under your own API key, to the local helper on your device, or nowhere. See [PRIVACY.md](PRIVACY.md).
+- You are responsible for legal and regulatory compliance for your use, including confirming your own BAA and OpenAI endpoint coverage before any use with protected health information. This is not legal advice.
+- The extension is not clinically validated and makes no HIPAA compliance claim.
+- No warranty. The software is provided "as is", without warranty of any kind, under the MIT License in the repository's `LICENSE` file.
