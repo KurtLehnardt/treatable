@@ -24,6 +24,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  INVALID_CONSENT_RECEIPT:'The preview receipt was stale, changed or already used, so nothing was sent to OpenAI. Prepare and review a fresh preview.',
  PREVIEW_TOO_LARGE:'The selected records exceed the preview size limit, so nothing was sent to OpenAI. Choose fewer labels or studies and prepare again.',
  INVALID_FIXTURE_STUDIES:'Only the fictional fixture’s own public studies are allowed, so nothing was sent to OpenAI. Reselect the fixture and retry.',
+ INTERNAL_ERROR:'The helper hit an internal error and returned no result. Retry once; if it repeats, restart Chrome. Local search and the offline study snapshot still work.',
  INCOMPLETE_AGENT_TURN:'The Agents stream ended without a completed, tool-verified answer, so no result is shown. Check the trace for cleanup, then retry.',
 });
 /** Failures known to happen before any request body reaches the provider. */
