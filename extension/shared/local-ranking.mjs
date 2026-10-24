@@ -31,14 +31,14 @@ export function parseRankingStudies(v){
  for(const s of v)if(!exactKeys(s,['nctId','title','conditions','summary','criteria'])||typeof s.nctId!=='string'||!NCT.test(s.nctId)||!text(s.title,1000)||!Array.isArray(s.conditions)||s.conditions.length>10||s.conditions.some(c=>!text(c,200))||s.summary!==undefined&&s.summary!==null&&!text(s.summary,6000)||s.criteria!==undefined&&s.criteria!==null&&!text(s.criteria,6000))throw Error('Invalid public study record');
  if(new Set(v.map(s=>s.nctId)).size!==v.length)throw Error('Duplicate study');return v;
 }
-export const RANK_FAILURES=Object.freeze(['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_TIMEOUT','LOCAL_INVALID_OUTPUT']);
+export const RANK_FAILURES=Object.freeze(['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_FAILED','LOCAL_TIMEOUT','LOCAL_INVALID_OUTPUT']);
 /** One entry per input study, in input order. A scored entry has score and reasonId; a failed entry has only its failure code. */
 export function parseLocalRankingResult(v,nctIds){
  if(!exactKeys(v,['provider','model','version','durationMs','studies'])||v.provider!=='local'||!isLocalModelName(v.model)||v.version!==null&&(typeof v.version!=='string'||!/^[0-9A-Za-z][0-9A-Za-z.+-]{0,39}$/.test(v.version))||!Number.isSafeInteger(v.durationMs)||v.durationMs<0||!Array.isArray(v.studies)||v.studies.length!==nctIds.length)throw Error('Invalid local ranking');
  for(const [i,s] of v.studies.entries()){
   if(!isRecord(s)||s.nctId!==nctIds[i])throw Error('Mismatched local ranking');
   if(s.failure!==undefined){if(!exactKeys(s,['nctId','failure'])||!RANK_FAILURES.includes(s.failure))throw Error('Invalid ranking failure');continue;}
-  const bounds=RANK_REASON_SCORE_BOUNDS[s.reasonId];if(!exactKeys(s,['nctId','score','reasonId'])||!Number.isInteger(s.score)||s.score<0||s.score>100||!bounds||s.score<bounds[0]||s.score>bounds[1])throw Error('Invalid local score');
+  const bounds=typeof s.reasonId==='string'&&Object.hasOwn(RANK_REASONS,s.reasonId)?RANK_REASON_SCORE_BOUNDS[s.reasonId]:undefined;if(!exactKeys(s,['nctId','score','reasonId'])||!Number.isInteger(s.score)||s.score<0||s.score>100||!bounds||s.score<bounds[0]||s.score>bounds[1])throw Error('Invalid local score');
  }
  if(utf8Bytes(v)>16*1024)throw Error('Local ranking too large');return v;
 }

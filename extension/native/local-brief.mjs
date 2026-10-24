@@ -42,7 +42,7 @@ export function buildLocalBriefRequest(briefs,model){
  const format={type:'object',additionalProperties:false,properties:{studies:{type:'array',minItems:briefs.length,maxItems:briefs.length,prefixItems:briefs.map(studySchema)}},required:['studies']};
  return chatRequest(briefs,model,BRIEF_TASK+JSON.stringify({questions:APPLY_QUESTION_TEMPLATES,prescreen:APPLY_PRESCREEN_TEMPLATES,flags:APPLY_FLAG_TEMPLATES}),format,BRIEF_NUM_PREDICT);
 }
-const ROUTING_TASK='Task: route each listed study question using ONLY the public source excerpts above. answered_by_record means the cited evidence directly answers the entire question; missing costs, visit length, eligibility or timing stays ask_coordinator. ask_patient means the answer must be supplied by the patient (never infer it). ask_coordinator means not fully answered, unclear, or requiring the study team to confirm. Do not make eligibility, benefit or safety judgments. Return one entry per listed question name, in the given order. confidence is optional: your own estimate from 0 to 1 that the route is right. ';
+const ROUTING_TASK='Task: route each listed study question using ONLY the public source excerpts above. answered_by_record means the cited evidence directly answers the entire question; missing costs, visit length, eligibility or timing stays ask_coordinator. ask_patient means the answer must be supplied by the patient (never infer it). ask_coordinator means not fully answered, unclear, or requiring the study team to confirm. Do not make eligibility, benefit or safety judgments. Return one entry per listed question name, in the given order. confidence is optional: give it only if you can say how confident you are in the route, from 0 (not confident) to 1 (very confident). ';
 /** The second local request: one route per selected question, with the same public input the Decisions request carries. */
 export function buildLocalRoutingRequest(briefs,plans,model){
  const questions=plans.flatMap(p=>p.questionIds.map(id=>({name:`${p.nctId}_${id}`,nctId:p.nctId,question:APPLY_QUESTION_TEMPLATES[id]})));
@@ -61,10 +61,13 @@ export function parseLocalRouting(text,plans){
 }
 const safeCode=e=>typeof e?.code==='string'&&/^[A-Z_]{1,40}$/.test(e.code)?e.code:'LOCAL_INVALID_OUTPUT';
 // Runtime-level failures make a second local request pointless; output failures still let step 2 run on the default plan, as on the OpenAI path.
-const RUNTIME_FAILURES=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_TIMEOUT','CANCELLED'];
+const RUNTIME_FAILURES=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_FAILED','LOCAL_TIMEOUT','CANCELLED'];
+// With a time budget (the rest of the browser session), step 1 leaves this much for step 2 and is not started with less than the minimum.
+const ROUTING_RESERVE_MS=15000,MIN_STEP_MS=8000;
 function chatText(reply){if(!isRecord(reply)||!isRecord(reply.message)||typeof reply.message.content!=='string'||reply.remote_host||reply.remote_model)throw new ApiError('LOCAL_INVALID_OUTPUT');return reply.message.content;}
 /** Runs the pinned local brief. runtime: {ensure(signal), chat(body,{signal,timeout}), describe(model,signal), version}. */
-export async function runLocalStudyBrief(runtime,pinned,{signal,onTrace=()=>{},now=()=>performance.now(),briefTimeout=LOCAL_BRIEF_TIMEOUT_MS,routingTimeout=LOCAL_ROUTING_TIMEOUT_MS}={}){
+export async function runLocalStudyBrief(runtime,pinned,{signal,onTrace=()=>{},now=()=>performance.now(),briefTimeout=LOCAL_BRIEF_TIMEOUT_MS,routingTimeout=LOCAL_ROUTING_TIMEOUT_MS,budgetMs}={}){
+ const begun=now(),left=()=>Number.isSafeInteger(budgetMs)?budgetMs-(now()-begun):Infinity;
  const model=pinned.engine.model;let plans=pinned.briefs.map(fallbackPlan),agentStatus='failed',decisionStatus='failed',studyPlans,stop;const failureCodes=[],steps=[],confidences=new Map();
  const step=async(name,body,timeout,parse)=>{const started=now();let output=null;onTrace({stage:`local.${name}.request`});try{const reply=await runtime.chat(body,{signal,timeout});output=chatText(reply);const value=parse(output);steps.push({step:name,status:'complete',durationMs:Math.round(now()-started),request:body,output});onTrace({stage:`local.${name}.complete`});return value;}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');steps.push({step:name,status:'failed',durationMs:Math.round(now()-started),request:body,output});throw e;}};
  try{onTrace({stage:'local.runtime.start'});await runtime.ensure(signal);const info=await runtime.describe(model,signal);if(!info.completion)throw new ApiError('LOCAL_MODEL_UNAVAILABLE');onTrace({stage:'local.runtime.ready'});}
@@ -72,21 +75,29 @@ export async function runLocalStudyBrief(runtime,pinned,{signal,onTrace=()=>{},n
  const thinking=!stop&&(await runtime.describe(model,signal).catch(()=>({}))).thinking===true;
  // Thinking models are asked to answer directly; the pinned body is otherwise sent unchanged and is what the trace shows.
  const withThink=body=>thinking?{...body,think:false}:body;
- if(!stop){try{plans=await step('brief',withThink(pinned.localRequest),briefTimeout,text=>{try{return parseBriefAgentOutput(text,pinned.briefs)}catch{throw new ApiError('LOCAL_INVALID_OUTPUT')}});agentStatus='complete';}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');const code=safeCode(e);failureCodes.push(code);if(RUNTIME_FAILURES.includes(code))stop=code;plans=pinned.briefs.map(fallbackPlan);}}
- if(!stop){try{const routed=await step('routing',withThink(buildLocalRoutingRequest(pinned.briefs,plans,model)),routingTimeout,text=>parseLocalRouting(text,plans));studyPlans=routed.studyPlans;for(const[k,c]of routed.confidences)confidences.set(k,c);decisionStatus='complete';}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');failureCodes.push(safeCode(e));}}
+ if(!stop){try{const room=left()-ROUTING_RESERVE_MS;if(room<MIN_STEP_MS)throw new ApiError('LOCAL_TIMEOUT');plans=await step('brief',withThink(pinned.localRequest),Math.min(briefTimeout,room),text=>{try{return parseBriefAgentOutput(text,pinned.briefs)}catch{throw new ApiError('LOCAL_INVALID_OUTPUT')}});agentStatus='complete';}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');const code=safeCode(e);failureCodes.push(code);if(RUNTIME_FAILURES.includes(code))stop=code;plans=pinned.briefs.map(fallbackPlan);}}
+ if(!stop){try{if(left()<MIN_STEP_MS)throw new ApiError('LOCAL_TIMEOUT');const routed=await step('routing',withThink(buildLocalRoutingRequest(pinned.briefs,plans,model)),Math.min(routingTimeout,left()),text=>parseLocalRouting(text,plans));studyPlans=routed.studyPlans;for(const[k,c]of routed.confidences)confidences.set(k,c);decisionStatus='complete';}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');failureCodes.push(safeCode(e));}}
  studyPlans??=unroutedPlans(plans);
  const base={kind:'studyBrief',mode:'local',digest:pinned.digest,briefs:pinned.briefs.map((b,i)=>({...b,claims:plans[i].claims})),studyPlans,agentStatus,decisionStatus,failureCodes:[...new Set(failureCodes)].slice(0,2),cleanup:'not_started',toolCalls:0};
  const confidenceList=studyPlans.flatMap(p=>p.routes.flatMap(r=>{const c=confidences.get(`${p.nctId}_${r.questionId}`);return c===undefined?[]:[{nctId:p.nctId,questionId:r.questionId,confidence:c}]}));
  const withTrace=(result,shown=steps)=>({...result,local:localTrace(result,{model,version:runtime.version??null,steps:shown,confidences:decisionStatus==='complete'?confidenceList:[]})});
  // Never discard completed local work over a bounds failure: fall back to the verified source excerpts without claims, as the OpenAI path does.
- try{return parseStudyBriefResult(withTrace(base))}catch{return parseStudyBriefResult(withTrace({...base,briefs:pinned.briefs.map(b=>({...b,claims:[]})),agentStatus:'failed',failureCodes:[...new Set([...base.failureCodes,'LOCAL_INVALID_OUTPUT'])].slice(0,2)},steps.map(s=>s.step==='brief'?{...s,status:'failed'}:s)))}
+ try{return parseStudyBriefResult(withTrace(base))}catch{}
+ const fallback={...base,briefs:pinned.briefs.map(b=>({...b,claims:[]})),agentStatus:'failed',failureCodes:[...new Set([...base.failureCodes,'LOCAL_INVALID_OUTPUT'])].slice(0,2)},failedSteps=steps.map(s=>s.step==='brief'?{...s,status:'failed'}:s);
+ try{return parseStudyBriefResult(withTrace(fallback,failedSteps))}catch{}
+ // Last resort: the verified excerpts and statuses with every display copy withheld.
+ const bare=withTrace(fallback,failedSteps);return parseStudyBriefResult({...bare,local:{...bare.local,steps:bare.local.steps.map(s=>({...s,request:withheld(s.request),output:s.output&&withheld(s.output)}))}});
 }
+// The contract refuses display text shaped like an API key (it could only come from public record text here); such a copy is withheld,
+// keeping its full size, rather than losing the whole result.
+const KEY_LIKE=/(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/;
+const withheld=body=>({text:'',bytes:Math.max(1,body.bytes),truncated:true});
 // The display copies of the local request bodies and outputs share whatever room the verified result leaves under the native frame limit.
 function localTrace(result,{model,version,steps,confidences}){
  const room=MAX_MESSAGE_BYTES-2048-utf8Bytes({...result,local:{model,version,steps:steps.map(s=>({step:s.step,status:s.status,durationMs:s.durationMs,request:{text:'',bytes:0,truncated:true},output:null})),confidences}});
  const parts=steps.flatMap((s,i)=>[{i,key:'output',value:s.output},{i,key:'request',value:s.request}]).filter(p=>p.value!==null);
  // Outputs first (they are short and show what the model answered), then requests, each capped at an equal share of what is left.
  let left=Math.max(0,room);const shown=steps.map(()=>({}));
- for(const[n,p]of parts.entries()){const share=Math.floor(left/(parts.length-n));const body=localTraceBody(p.value,Math.min(share,LOCAL_TRACE_BODY_MAX_BYTES));shown[p.i][p.key]=body;left-=Math.max(0,utf8Bytes(JSON.stringify(body.text))-2);}
+ for(const[n,p]of parts.entries()){const share=Math.floor(left/(parts.length-n));let body=localTraceBody(p.value,Math.min(share,LOCAL_TRACE_BODY_MAX_BYTES));if(KEY_LIKE.test(body.text))body=withheld(body);shown[p.i][p.key]=body;left-=Math.max(0,utf8Bytes(JSON.stringify(body.text))-2);}
  return{model,runtime:'ollama',version,steps:steps.map((s,i)=>({step:s.step,status:s.status,durationMs:s.durationMs,request:shown[i].request,output:shown[i].output??null})),confidences};
 }

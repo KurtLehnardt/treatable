@@ -4,7 +4,6 @@
 // daemon and its port are never contacted. Nothing here downloads a model or reads a credential.
 import{spawn,execFile}from'node:child_process';
 import{access,stat,readFile,statfs,mkdtemp,rm,realpath,constants}from'node:fs/promises';
-import{rmSync}from'node:fs';
 import net from'node:net';import os from'node:os';import path from'node:path';
 import{request as loopbackRequest}from'node:http';
 import{fileURLToPath}from'node:url';
@@ -45,13 +44,15 @@ const familyOf=v=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/.test(
 const paramsOf=v=>typeof v==='string'&&/^[0-9]{1,4}(?:\.[0-9]{1,3})?[KMBT]$/.test(v)?v:null;
 const quantOf=v=>typeof v==='string'&&/^[A-Za-z0-9_]{1,20}$/.test(v)?v:null;
 /** Installed models that can generate text: listed by the dedicated runtime, backed by local weights (checked in describe), with the completion capability. */
+// At most 40 listed models are inspected; a runtime that stops during the check fails it instead of being restarted.
 export async function listLocalModels(runtime,signal){
  const tags=await runtime.request('/api/tags',undefined,{signal,timeout:5000});const models=[];
- for(const item of(Array.isArray(tags?.models)?tags.models:[]).slice(0,64)){
+ for(const item of(Array.isArray(tags?.models)?tags.models:[]).slice(0,40)){
   const name=item?.name;if(!isLocalModelName(name)||item.remote_host||item.remote_model||!Number.isSafeInteger(item.size)||item.size<=0||models.some(m=>m.name===name))continue;
-  let info;try{info=await runtime.describe(name,signal);}catch(e){if(signal?.aborted)throw e;continue;}
+  if(runtime.running===false)throw new ApiError('LOCAL_RUNTIME_FAILED');
+  let info;try{info=await runtime.describe(name,signal);}catch(e){if(signal?.aborted||e?.code==='LOCAL_RUNTIME_FAILED'||e?.code==='LOCAL_TIMEOUT')throw e;continue;}
   if(!info.completion)continue;
-  models.push({name,sizeBytes:item.size,family:familyOf(item.details?.family),parameterSize:paramsOf(item.details?.parameter_size),quantization:quantOf(item.details?.quantization_level)});
+  models.push({name,sizeBytes:item.size,family:familyOf(item.details?.family),parameterSize:paramsOf(item.details?.parameter_size),quantization:quantOf(item.details?.quantization_level),...(Number.isSafeInteger(info.kvBytes)?{kvBytes:info.kvBytes}:{})});
   if(models.length>=32)break;
  }
  return models;
@@ -68,8 +69,22 @@ export async function machineProfile({platform=process.platform,arch=os.arch(),t
 }
 
 // ---------- recommendation ----------
-// Running memory estimate: the weights plus about 10% and 1 GB for the 16K-token context and compute buffers the brief uses.
-export function estimateMemory(sizeBytes){return Math.round(sizeBytes*1.1+1e9);}
+// Context the estimate allows for: the largest window a two-study brief normally needs.
+export const ESTIMATE_CONTEXT_TOKENS=24576;
+/** f16 key/value cache at ESTIMATE_CONTEXT_TOKENS from the runtime's model_info, or undefined when the architecture does not say enough.
+ * Hybrid models count only their full-attention layers; sliding-window models are counted as if a quarter of their layers kept a full cache. */
+export function kvCacheBytes(modelInfo){
+ if(!modelInfo||typeof modelInfo!=='object')return undefined;const arch=modelInfo['general.architecture'];if(typeof arch!=='string'||!/^[a-z0-9_]{1,40}$/.test(arch))return undefined;
+ const num=key=>{const v=modelInfo[`${arch}.${key}`];return Number.isSafeInteger(v)&&v>0?v:undefined;};
+ const layers=num('block_count'),kvHeads=num('attention.head_count_kv'),heads=num('attention.head_count'),width=num('embedding_length');
+ const key=num('attention.key_length')??(width&&heads?Math.round(width/heads):undefined),value=num('attention.value_length')??key;
+ if(!layers||!kvHeads||!key||!value)return undefined;
+ const interval=num('full_attention_interval'),full=interval?Math.ceil(layers/interval):num('attention.sliding_window')?Math.ceil(layers/4):layers;
+ return full*ESTIMATE_CONTEXT_TOKENS*kvHeads*(key+value)*2;
+}
+// Running memory estimate: the weights plus 5%, the key/value cache (or 15% of the weights when the architecture is not known), and
+// half a gigabyte of compute buffers.
+export function estimateMemory(sizeBytes,kvBytes){return Math.round(sizeBytes*1.05+(Number.isSafeInteger(kvBytes)&&kvBytes>=0?kvBytes:sizeBytes*0.15)+5e8);}
 // Comfortable leaves at least half of memory for macOS, Chrome and other apps; above 60% the model is not recommended at all.
 export const COMFORTABLE_SHARE=0.5,MAX_SHARE=0.6;
 export function memoryFit(estimate,memoryBytes){return estimate<=memoryBytes*COMFORTABLE_SHARE?'comfortable':estimate<=memoryBytes*MAX_SHARE?'tight':'too_large';}
@@ -86,7 +101,7 @@ const ram=bytes=>String(Math.max(1,Math.round(bytes/1024**3)));
 const TIER_COPY={strong:'good at structured output',good:'reasonably good at structured output',basic:'untested for structured output'};
 /** Ranks installed models for this machine and picks one, or suggests a model to pull. Pure: the same inputs always give the same answer. */
 export function recommend({machine,models,installed=true}){
- const mem=machine.memoryBytes,ranked=models.map(m=>{const estimatedMemoryBytes=estimateMemory(m.sizeBytes);return{...m,estimatedMemoryBytes,fit:memoryFit(estimatedMemoryBytes,mem),structured:structuredTier(m),recommended:false};});
+ const mem=machine.memoryBytes,ranked=models.map(({kvBytes,...m})=>{const estimatedMemoryBytes=estimateMemory(m.sizeBytes,kvBytes);return{...m,estimatedMemoryBytes,fit:memoryFit(estimatedMemoryBytes,mem),structured:structuredTier(m),recommended:false};});
  const order={comfortable:0,tight:1,too_large:2},tier={strong:0,good:1,basic:2};
  const best=ranked.filter(m=>m.fit!=='too_large').sort((a,b)=>order[a.fit]-order[b.fit]||tier[a.structured]-tier[b.structured]||paramsB(b.parameterSize)-paramsB(a.parameterSize)||a.name.length-b.name.length||(a.name<b.name?-1:a.name>b.name?1:0))[0];
  if(installed&&best){best.recommended=true;const reason=best.fit==='comfortable'?`${best.name} fits in ${ram(mem)} GB of memory with room for macOS and Chrome (about ${gb(best.estimatedMemoryBytes)} GB in use) and is ${TIER_COPY[best.structured]}.`:`${best.name} fits in ${ram(mem)} GB of memory but leaves little headroom (about ${gb(best.estimatedMemoryBytes)} GB in use); close other apps first. It is ${TIER_COPY[best.structured]}.`;return{models:ranked,recommendation:{kind:'installed',model:best.name,reason}};}
@@ -152,7 +167,7 @@ export class OllamaRuntime{
     response.on('error',()=>fail('LOCAL_RUNTIME_FAILED'));
     response.on('end',()=>{let value;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));}catch{fail(response.statusCode===200?'LOCAL_INVALID_OUTPUT':'LOCAL_RUNTIME_FAILED');return;}
      if(response.statusCode===404&&route!=='/api/version'){reject(new ApiError('LOCAL_MODEL_UNAVAILABLE'));return;}
-     if(response.statusCode<200||response.statusCode>=300){reject(new ApiError('LOCAL_RUNTIME_FAILED',response.statusCode));return;}resolve(value);});
+     if(response.statusCode<200||response.statusCode>=300){reject(new ApiError(route==='/api/chat'?'LOCAL_MODEL_FAILED':'LOCAL_RUNTIME_FAILED',response.statusCode));return;}resolve(value);});
    });
    request.on('error',()=>fail('LOCAL_RUNTIME_FAILED'));if(encoded)request.write(encoded);request.end();
   });
@@ -163,7 +178,7 @@ export class OllamaRuntime{
   if(!isLocalModelName(model))throw new ApiError('LOCAL_MODEL_UNAVAILABLE');if(this.info.has(model))return this.info.get(model);
   if(!await hasLocalWeights(this.modelsDir,model))throw new ApiError('LOCAL_MODEL_UNAVAILABLE');
   const show=await this.request('/api/show',{model},{signal,timeout:10000});
-  const caps=Array.isArray(show?.capabilities)?show.capabilities:[],info={completion:!show?.remote_host&&!show?.remote_model&&caps.includes('completion'),thinking:caps.includes('thinking')};
+  const caps=Array.isArray(show?.capabilities)?show.capabilities:[],info={completion:!show?.remote_host&&!show?.remote_model&&caps.includes('completion'),thinking:caps.includes('thinking'),kvBytes:kvCacheBytes(show?.model_info)};
   this.info.set(model,info);return info;
  }
  /** One non-streaming chat request. Remote answers are refused; a timeout is reported as LOCAL_TIMEOUT, a stop as CANCELLED. */
@@ -173,13 +188,16 @@ export class OllamaRuntime{
  }
  async stop(){
   const child=this.child,home=this.home,server=this.serverPid;this.child=undefined;this.port=undefined;this.home=undefined;this.serverPid=undefined;this.ready=false;this.info.clear();
-  if(child&&child.exitCode===null&&child.signalCode===null){const done=new Promise(r=>child.once('exit',r));try{child.stdin?.end();child.kill('SIGTERM');}catch{}const timer=setTimeout(()=>{try{child.kill('SIGKILL');}catch{}},1500);await Promise.race([done,new Promise(r=>setTimeout(r,2500))]);clearTimeout(timer);}
-  // The watchdog stops the runtime; this is a last resort if the runtime outlived it.
-  if(server)try{process.kill(server,0);await new Promise(r=>setTimeout(r,200));process.kill(server,'SIGKILL');}catch{}
+  // The watchdog stops the runtime's whole process group (SIGTERM, then SIGKILL after 1.5 s). Only if it has not finished after 4 s is the
+  // group killed from here, followed by the watchdog itself.
+  let exited=!child||child.exitCode!==null||child.signalCode!==null;
+  if(!exited){const done=new Promise(r=>child.once('exit',()=>{exited=true;r();}));try{child.stdin?.end();child.kill('SIGTERM');}catch{}await Promise.race([done,new Promise(r=>setTimeout(r,4000))]);}
+  if(!exited){try{if(server)process.kill(-server,'SIGKILL');}catch{}try{child.kill('SIGKILL');}catch{}}
   if(home)await rm(home,{recursive:true,force:true}).catch(()=>{});
  }
- /** Synchronous last resort for process exit: kill the runtime and remove its private HOME. */
- killNow(){const child=this.child,home=this.home,server=this.serverPid;this.child=undefined;this.home=undefined;this.serverPid=undefined;try{if(server)process.kill(server,'SIGKILL');}catch{}try{child?.kill('SIGKILL');}catch{}if(home)try{rmSync(home,{recursive:true,force:true});}catch{}}
+ /** For process exit: ask the watchdog to stop the runtime group. It also stops it on its own when this helper's pipe closes, and removes
+  * the private HOME, so the watchdog is deliberately left alive to finish that work. */
+ killNow(){const child=this.child;this.child=undefined;this.home=undefined;this.serverPid=undefined;try{child?.stdin?.end();child?.kill('SIGTERM');}catch{}}
 }
 /** Stand-in when Ollama is missing: every use reports LOCAL_NOT_INSTALLED. */
 export const MISSING_RUNTIME=Object.freeze({version:null,async ensure(){throw new ApiError('LOCAL_NOT_INSTALLED');},async describe(){throw new ApiError('LOCAL_NOT_INSTALLED');},async chat(){throw new ApiError('LOCAL_NOT_INSTALLED');},async request(){throw new ApiError('LOCAL_NOT_INSTALLED');},async stop(){},killNow(){}});

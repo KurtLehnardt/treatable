@@ -1,6 +1,6 @@
 import test from'node:test';import assert from'node:assert/strict';
 import{mkdtemp,mkdir,writeFile,readFile,rm,stat,chmod,realpath}from'node:fs/promises';import os from'node:os';import path from'node:path';import net from'node:net';import{spawn,spawnSync}from'node:child_process';
-import{findOllama,manifestPath,hasLocalWeights,listLocalModels,machineProfile,recommend,estimateMemory,memoryFit,structuredTier,OllamaRuntime,MISSING_RUNTIME,PULL_CANDIDATES}from'../local-runtime.mjs';
+import{findOllama,manifestPath,hasLocalWeights,listLocalModels,machineProfile,recommend,estimateMemory,kvCacheBytes,memoryFit,structuredTier,OllamaRuntime,MISSING_RUNTIME,PULL_CANDIDATES}from'../local-runtime.mjs';
 import{buildLocalBriefRequest,buildLocalRoutingRequest,parseLocalRouting,runLocalStudyBrief,LOCAL_MAX_CLAIMS}from'../local-brief.mjs';
 import{PreparedStudyBriefStore}from'../study-brief.mjs';
 import{parseApplyRequest,parseApplyReply,parseLocalModelsResult,parseStudyBriefResult,parsePreparedStudyBrief,localTraceBody,studyBriefEngine}from'../../shared/apply-contract.mjs';
@@ -49,9 +49,9 @@ test('machine profile: Apple Silicon unified memory, CPU brand, free disk; only 
 test('recommender: 8, 16, 32 and 64 GB machines; installed models first, then a verified pull suggestion; deterministic',()=>{
  const installed=MODELS.filter(m=>m.capabilities.includes('completion')&&!m.remote&&m.name!=='ghost:latest').map(m=>({name:m.name,sizeBytes:m.size,family:m.details.family,parameterSize:m.details.parameter_size??null,quantization:m.details.quantization_level??null}));
  const pick=(gb,models=installed,extra={})=>recommend({machine:{...MACHINE(gb*GiB),...extra},models});
- // 32 GB (the user's M1 Max): qwen3:32b is too large, gemma4 26B is a tight fit, qwen3.5:9b fits comfortably and is strongest at structured output.
+ // 32 GB (the user's M1 Max): qwen3:32b and the 16.8 GB gemma4 26B exceed 60% of memory once their working memory is counted; qwen3.5:9b fits comfortably and is strongest at structured output.
  const r32=pick(32);assert.equal(r32.recommendation.kind,'installed');assert.equal(r32.recommendation.model,'qwen3.5:9b');assert.match(r32.recommendation.reason,/fits in 32 GB of memory .*good at structured output/);
- assert.deepEqual(Object.fromEntries(r32.models.map(m=>[m.name,m.fit])),{'qwen3.5:9b':'comfortable','qwen3:32b':'too_large','qwen2.5:14b':'comfortable','gemma4:latest':'comfortable','batiai/gemma4-26b:q4':'tight'});
+ assert.deepEqual(Object.fromEntries(r32.models.map(m=>[m.name,m.fit])),{'qwen3.5:9b':'comfortable','qwen3:32b':'too_large','qwen2.5:14b':'comfortable','gemma4:latest':'comfortable','batiai/gemma4-26b:q4':'too_large'});
  assert.deepEqual(r32.models.filter(m=>m.recommended).map(m=>m.name),['qwen3.5:9b']);
  assert.equal(pick(16).recommendation.model,'qwen3.5:9b');assert.equal(pick(64).recommendation.model,'qwen3.5:9b');
  // Without the strong family the next best fitting model wins by tier, then size.
@@ -83,8 +83,8 @@ test('dedicated runtime: own ephemeral 127.0.0.1 port, minimal env with cloud di
   assert.equal(start.env.OLLAMA_HOST,`127.0.0.1:${rt.port}`);assert.equal(start.env.OLLAMA_NO_CLOUD,'1');assert.equal(start.env.OLLAMA_NOPRUNE,'1');assert.equal(start.env.OLLAMA_MODELS,dir);assert.equal(start.env.PATH,'/usr/bin:/bin');
   assert.notEqual(start.env.HOME,os.homedir(),'the runtime never sees the user HOME (keys, config)');assert.ok(start.env.HOME.startsWith(await realpath(os.tmpdir()))||start.env.HOME.startsWith(os.tmpdir()));
   for(const k of['OPENAI_API_KEY','HTTPS_PROXY','NODE_OPTIONS'])assert.ok(!start.envKeys.includes(k));
-  const pid=Number(await readFile(fake.pidFile,'utf8')),home=rt.home;assert.ok(alive(pid));
-  await rt.stop();assert.equal(alive(pid),false,'stopped');await assert.rejects(stat(home),'private HOME removed');
+  const pid=Number(await readFile(fake.pidFile,'utf8')),runner=Number(await readFile(fake.runnerPidFile,'utf8')),home=rt.home;assert.ok(alive(pid));assert.ok(alive(runner));
+  await rt.stop();assert.equal(alive(pid),false,'stopped');await poll(()=>!alive(runner),3000);await assert.rejects(stat(home),'private HOME removed');
   userDaemon.close();
  }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
@@ -182,7 +182,7 @@ test('stdio: local check and local brief never read the key or call OpenAI; cana
   const chats=ollamaLog.filter(x=>x.path==='/api/chat');assert.equal(chats.length,2);for(const c of chats)assert.deepEqual(Object.keys(c.body).sort(),['format','keep_alive','messages','model','options','stream','think']);
   assert.equal((await host.call({id:'again',type:'executeStudyBrief',payload:{token:prep.result.token,digest:prep.result.digest}})).code,'INVALID_APPLY_RECEIPT');
   // Chrome may SIGKILL the helper; the watchdog still stops the dedicated runtime because the helper's pipe closes.
-  const pid=Number(await readFile(fake.pidFile,'utf8')),runtimeHome=ollamaLog.find(x=>x.event==='start').env.HOME;assert.ok(alive(pid));host.child.kill('SIGKILL');await host.exit;host=undefined;await poll(()=>!alive(pid),5000);await poll(async()=>!(await stat(runtimeHome).catch(()=>false)),5000);
+  const pid=Number(await readFile(fake.pidFile,'utf8')),runner=Number(await readFile(fake.runnerPidFile,'utf8')),runtimeHome=ollamaLog.find(x=>x.event==='start').env.HOME;assert.ok(alive(pid));assert.ok(alive(runner));host.child.kill('SIGKILL');await host.exit;host=undefined;await poll(()=>!alive(pid),5000);await poll(()=>!alive(runner),5000);await poll(async()=>!(await stat(runtimeHome).catch(()=>false)),5000);
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
@@ -233,4 +233,41 @@ test('ranking against the fake runtime: ten studies in input order, per-study va
   await fake.set({rank:'slow',chatDelay:20000});const controller=new AbortController();setTimeout(()=>controller.abort(),400);await assert.rejects(runLocalRanking(rt,{profile:PROFILE,studies,model:'qwen3.5:9b'},{signal:controller.signal}),{code:'CANCELLED'});
   await assert.rejects(runLocalRanking(rt,{profile:{conditions:['x'],name:'PATIENT_CANARY'},studies,model:'qwen3.5:9b'}));
  }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
+});
+
+test('memory estimate uses the key/value cache from model_info when the architecture says enough',()=>{
+ const dense={'general.architecture':'qwen3','qwen3.block_count':64,'qwen3.attention.head_count':64,'qwen3.attention.head_count_kv':8,'qwen3.attention.key_length':128,'qwen3.attention.value_length':128,'qwen3.embedding_length':5120};
+ assert.equal(kvCacheBytes(dense),64*24576*8*256*2);
+ assert.equal(kvCacheBytes({'general.architecture':'qwen2','qwen2.block_count':48,'qwen2.attention.head_count':40,'qwen2.attention.head_count_kv':8,'qwen2.embedding_length':5120}),48*24576*8*256*2,'key length from width/heads');
+ assert.equal(kvCacheBytes({...dense,'qwen3.full_attention_interval':4}),16*24576*8*256*2,'hybrid: full-attention layers only');
+ assert.equal(kvCacheBytes({'general.architecture':'gemma4','gemma4.block_count':42,'gemma4.attention.head_count_kv':2,'gemma4.attention.key_length':512,'gemma4.attention.value_length':512,'gemma4.attention.sliding_window':512}),11*24576*2*1024*2,'sliding window: a quarter of the layers');
+ for(const unknown of[undefined,{},{'general.architecture':'x'},{'general.architecture':'qwen35','qwen35.block_count':32,'qwen35.attention.head_count_kv':null},{'general.architecture':'../x','../x.block_count':1}])assert.equal(kvCacheBytes(unknown),undefined);
+ assert.equal(estimateMemory(20e9,6.4e9),Math.round(20e9*1.05+6.4e9+5e8));assert.equal(estimateMemory(20e9),Math.round(20e9*1.05+3e9+5e8));
+ const r=recommend({machine:MACHINE(32*GiB),models:[{name:'qwen2.5:14b',sizeBytes:8988124069,family:'qwen2',parameterSize:'14.8B',quantization:'Q4_K_M',kvBytes:48*24576*8*256*2}]});
+ assert.equal(r.models[0].fit,'comfortable');assert.ok(!('kvBytes' in r.models[0]),'internal estimate input is not part of the result');parseLocalModelsResult({kind:'localModels',ollama:{status:'ready',version:'0.32.1'},machine:MACHINE(32*GiB),models:r.models,recommendation:r.recommendation});
+});
+
+test('local brief: a session budget bounds both steps, key-shaped public text never blocks the result, and a model that cannot run is LOCAL_MODEL_FAILED',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'treatable-local-budget-'));let rt;try{
+  const fake=await fakeOllama(root),dir=await modelsDir(root);rt=new OllamaRuntime({binary:fake.binary,modelsDir:dir});
+  let{s,pin}=await pinnedLocal();let r=await runLocalStudyBrief(rt,pin,{budgetMs:12000});assert.deepEqual(r.failureCodes,['LOCAL_TIMEOUT'],'too little budget for step 1 is reported, not attempted');assert.equal(r.local.steps.length,0);s.clear();
+  ({s,pin}=await pinnedLocal());r=await runLocalStudyBrief(rt,pin,{budgetMs:120000});assert.equal(r.decisionStatus,'complete');s.clear();
+  assert.throws(()=>parseApplyRequest({id:'x',type:'executeStudyBrief',payload:{token:'t'.repeat(43),digest:'a'.repeat(64),budgetMs:5000}}));assert.throws(()=>parseApplyRequest({id:'x',type:'executeStudyBrief',payload:{token:'t'.repeat(43),digest:'a'.repeat(64),budgetMs:1e9}}));parseApplyRequest({id:'x',type:'executeStudyBrief',payload:{token:'t'.repeat(43),digest:'a'.repeat(64),budgetMs:120000}});
+  // A sponsor-written record containing an API-key-shaped string: the display copies are withheld, the brief still validates.
+  const keyed=new PreparedStudyBriefStore({fetchRecord:async id=>{const raw=synthetic(id);raw.protocolSection.descriptionModule.briefSummary='Contact sk-ABCDEFGHIJKLMNOPQRSTUVWX for details.';return raw},buildLocalRequest:buildLocalBriefRequest}),kp=await keyed.prepare(['NCT99999990'],{engine:{provider:'local',model:'qwen3.5:9b'}});
+  r=await runLocalStudyBrief(rt,keyed.take({token:kp.token,digest:kp.digest}));parseStudyBriefResult(r);assert.equal(r.decisionStatus,'complete');assert.equal(r.local.steps[0].request.text,'');assert.equal(r.local.steps[0].request.truncated,true);keyed.clear();
+  await fake.set({chat:'oom'});({s,pin}=await pinnedLocal());r=await runLocalStudyBrief(rt,pin);assert.deepEqual(r.failureCodes,['LOCAL_MODEL_FAILED']);assert.equal(r.local.steps.length,1);s.clear();
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
+});
+
+test('ranking: prototype keys are never accepted as reasons',()=>{
+ for(const reasonId of['constructor','__proto__','toString','hasOwnProperty','valueOf'])assert.throws(()=>parseLocalRankOutput(JSON.stringify({score:50,reasonId})),{code:'LOCAL_INVALID_OUTPUT'},reasonId);
+ for(const reasonId of['constructor','toString'])assert.throws(()=>parseLocalRankingResult({provider:'local',model:'qwen3.5:9b',version:null,durationMs:1,studies:[{nctId:'NCT99999900',score:50,reasonId}]},['NCT99999900']),reasonId);
+});
+
+test('stdio: an Ollama too old for structured output is listed but nothing is recommended',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'treatable-local-old-'));const fake=await fakeOllama(root,{version:'0.4.7'}),dir=await modelsDir(root);const installed=await installHost('treatable-local-old-host-',['--ollama-path',fake.binary,'--ollama-models',dir]);let host;try{
+  host=startHost(installed);const check=await host.call({id:'check',type:'localModels',payload:{}});assert.equal(check.ok,true,check.code);assert.equal(check.result.ollama.version,'0.4.7');assert.equal(check.result.recommendation.kind,'none');assert.match(check.result.recommendation.reason,/too old/);assert.ok(check.result.models.length&&check.result.models.every(m=>!m.recommended));
+  host.child.stdin.end();await host.exit;host=undefined;
+ }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });

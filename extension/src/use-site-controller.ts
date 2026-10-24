@@ -5,7 +5,7 @@ import {SITE_FILTERS} from './site-filter-catalog';
 import {parseSiteSearchFilters} from './site-search';
 import type {OverlayFields,OverlayRestoreState,OverlayField,OverlayRecord,OverlaySnapshot,OverlayViewModel,OverlayStudy} from './overlay-types';
 import{DEFAULT_AVAILABILITY,type SiteAvailabilityOptions}from'./site-availability';
-import{DEFAULT_UI_PREFS,isDisplayMode,isTheme,isModelProvider,isLocalModelPref,parseUiPrefs,saveUiPrefs,uiPrefsArea,type UiPrefs,type ModelProvider}from'./ui-prefs';
+import{DEFAULT_UI_PREFS,isDisplayMode,isTheme,isModelProvider,isLocalModelPref,parseUiPrefs,saveUiPrefs,subscribeUiPrefs,uiPrefsArea,type UiPrefs,type ModelProvider}from'./ui-prefs';
 import{parsePageGuideEvent,type PageGuideEvent}from'./guide-protocol';
 import type{GuideHost}from'./use-guide';
 import{UserFacingSiteError}from'./site-contract';
@@ -19,6 +19,9 @@ export function useSiteController(initialPrefs:UiPrefs=DEFAULT_UI_PREFS):Overlay
  const start=parseUiPrefs(initialPrefs)??DEFAULT_UI_PREFS,prefs=useRef<UiPrefs>({...start});
  const[connected,setConnected]=useState(false),[ended,setEnded]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[fields,setFields]=useState<OverlayFields>({}),[catalog,setCatalog]=useState<readonly OverlayField[]>(SITE_FILTERS),[snapshot,setSnapshot]=useState<OverlaySnapshot>(),[records,setRecords]=useState<OverlayRecord[]>([]),[diagnostics,setDiagnostics]=useState(''),[displayMode,setDisplayModeState]=useState<'overlay'|'popup'|'sidebar'>(start.displayMode),[theme,setThemeState]=useState<'system'|'light'|'dark'>(start.theme),[provider,setProviderState]=useState<ModelProvider>(start.provider),[localModel,setLocalModelState]=useState<string|null>(start.localModel),[availability,setAvailabilityState]=useState({...DEFAULT_AVAILABILITY,loading:true,hidden:0,unverified:0,total:0}),[matchingOpen,setMatchingOpen]=useState(false),[restoreState,setRestoreState]=useState<OverlayRestoreState>({sequence:0,canReapply:false}),[collapsed,setCollapsedState]=useState(false),[study,setStudy]=useState<OverlayStudy>();
  const searchLease=useRef<PageMatchingLease>();
+ // Another Treatable page may save preferences. Keeping the latest stored record here means a later save from this page never writes back
+ // an older model choice; this page's own display layout is left as it is until the patient changes it here.
+ useEffect(()=>subscribeUiPrefs(next=>{prefs.current={...next};setProviderState(next.provider);setLocalModelState(next.localModel)}),[]);
  const guideListeners=useRef(new Set<(event:PageGuideEvent)=>void>());
  const client=useRef<SiteClient>(),revision=useRef(0),alive=useRef(true),snapshotRef=useRef<OverlaySnapshot>(),parentOrigin=useRef<string>();
  const end=()=>{searchLease.current?.stop(false);searchLease.current=undefined;try{window.parent.postMessage({type:'treatable.site.dismiss'},parentOrigin.current||'https://clinicaltrials.gov')}catch{}revision.current++;client.current?.disconnect();client.current=undefined;setConnected(false);setEnded(true);setMatchingOpen(false);setFields({});setDiagnostics('');setRecords([]);setCatalog([]);setSnapshot(undefined);snapshotRef.current=undefined;setStudy(undefined);setBusy(false);setError('')};

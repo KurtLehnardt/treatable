@@ -19,18 +19,18 @@ export function buildLocalRankRequest(profile,study,model){
 /** Strict: exactly {score, reasonId}, an integer score in range, a catalog reason, and a score consistent with that reason. */
 export function parseLocalRankOutput(text){
  if(typeof text!=='string'||utf8Bytes(text)>1024)throw new ApiError('LOCAL_INVALID_OUTPUT');let v;try{v=JSON.parse(text)}catch{throw new ApiError('LOCAL_INVALID_OUTPUT')}
- const bounds=isRecord(v)?RANK_REASON_SCORE_BOUNDS[v.reasonId]:undefined;
+ const bounds=isRecord(v)&&typeof v.reasonId==='string'&&Object.hasOwn(RANK_REASONS,v.reasonId)?RANK_REASON_SCORE_BOUNDS[v.reasonId]:undefined;
  if(!isRecord(v)||Object.keys(v).sort().join()!=='reasonId,score'||!Number.isInteger(v.score)||v.score<0||v.score>100||!bounds||v.score<bounds[0]||v.score>bounds[1])throw new ApiError('LOCAL_INVALID_OUTPUT');
  return{score:v.score,reasonId:v.reasonId};
 }
-const STOP=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_TIMEOUT'];
+const STOP=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_FAILED','LOCAL_TIMEOUT'];
 /** Ranks 1–10 public studies with the local model. Per-study output failures are reported per study; a runtime-level failure (missing
  * Ollama, runtime or model, or a model too slow for the per-study timeout) stops the batch and marks the remaining studies with it. */
 export async function runLocalRanking(runtime,{profile,studies,model},{signal,concurrency=1,studyTimeout=RANK_STUDY_TIMEOUT_MS,totalTimeout=RANK_TOTAL_TIMEOUT_MS,now=()=>performance.now(),onStudy=()=>{}}={}){
  parseRankingProfile(profile);parseRankingStudies(studies);if(!isLocalModelName(model))throw new ApiError('LOCAL_MODEL_UNAVAILABLE');
  const started=now(),deadline=AbortSignal.timeout(totalTimeout),combined=signal?AbortSignal.any([signal,deadline]):deadline,results=new Array(studies.length);let stop,next=0,thinking=false;
  try{await runtime.ensure(combined);const info=await runtime.describe(model,combined);if(!info.completion)throw new ApiError('LOCAL_MODEL_UNAVAILABLE');thinking=info.thinking===true;}
- catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');stop=STOP.includes(e?.code)?e.code:'LOCAL_RUNTIME_FAILED';}
+ catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');stop=deadline.aborted?'LOCAL_TIMEOUT':STOP.includes(e?.code)?e.code:'LOCAL_RUNTIME_FAILED';}
  async function worker(){
   while(next<studies.length){const i=next++,study=studies[i];
    if(stop){results[i]={nctId:study.nctId,failure:stop};continue;}

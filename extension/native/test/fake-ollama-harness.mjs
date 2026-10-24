@@ -23,8 +23,8 @@ export async function modelsDir(root,names=ON_DISK,{remote=['mirror:latest'],bad
  return dir;
 }
 export async function fakeOllama(root,config={}){
- const configPath=path.join(root,'fake-ollama.json'),binary=path.join(root,'bin','ollama'),log=path.join(root,'ollama.log'),pidFile=path.join(root,'ollama.pid');
- await mkdir(path.dirname(binary),{recursive:true});await writeFile(configPath,JSON.stringify({log,pidFile,models:MODELS,...config}));
+ const configPath=path.join(root,'fake-ollama.json'),binary=path.join(root,'bin','ollama'),log=path.join(root,'ollama.log'),pidFile=path.join(root,'ollama.pid'),runnerPidFile=path.join(root,'runner.pid');
+ await mkdir(path.dirname(binary),{recursive:true});await writeFile(configPath,JSON.stringify({log,pidFile,runnerPidFile,models:MODELS,...config}));
  await writeFile(binary,`#!${process.execPath}\nglobalThis.__FAKE_OLLAMA_CONFIG=${JSON.stringify(configPath)};import(${JSON.stringify(fakeModule)});\n`,{mode:0o755});
- return{binary,configPath,log,pidFile,set:async patch=>writeFile(configPath,JSON.stringify({log,pidFile,models:MODELS,...config,...patch}))};
+ return{binary,configPath,log,pidFile,runnerPidFile,set:async patch=>writeFile(configPath,JSON.stringify({log,pidFile,runnerPidFile,models:MODELS,...config,...patch}))};
 }

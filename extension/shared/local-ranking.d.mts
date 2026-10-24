@@ -1,5 +1,5 @@
 export type RankReasonId='condition_match'|'related_condition'|'symptom_focus'|'broad_population'|'different_condition'|'healthy_volunteers'|'insufficient_information';
-export type RankFailure='LOCAL_NOT_INSTALLED'|'LOCAL_RUNTIME_FAILED'|'LOCAL_MODEL_UNAVAILABLE'|'LOCAL_TIMEOUT'|'LOCAL_INVALID_OUTPUT';
+export type RankFailure='LOCAL_NOT_INSTALLED'|'LOCAL_RUNTIME_FAILED'|'LOCAL_MODEL_UNAVAILABLE'|'LOCAL_MODEL_FAILED'|'LOCAL_TIMEOUT'|'LOCAL_INVALID_OUTPUT';
 /** Minimized ranking profile. Only `conditions` reaches a local model; the optional fields drive deterministic checks outside it. */
 export interface RankingProfile{conditions:string[];ageBand?:string;sex?:'female'|'male'|'other'|'prefer_not_to_say';state?:string}
 export interface RankingStudy{nctId:string;title:string;conditions:string[];summary?:string|null;criteria?:string|null}

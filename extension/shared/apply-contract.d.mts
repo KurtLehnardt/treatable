@@ -26,7 +26,7 @@ export interface PreparedStudyBrief{kind:'preparedStudyBrief';token:string;diges
 export interface StudyQuestionRoute{questionId:ApplyQuestionId;route:'answered_by_record'|'ask_patient'|'ask_coordinator';evidenceIds:string[]}
 export interface StudyBriefPlan{nctId:string;briefItemIds:string[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];flagIds:ApplyFlagId[];routes:StudyQuestionRoute[];prioritizedQuestionIds:ApplyQuestionId[]}
 export interface StudyBriefResult{kind:'studyBrief';mode:'live'|'test'|'local';digest:string;briefs:PublicStudyBrief[];studyPlans:StudyBriefPlan[];agentStatus:'complete'|'failed';decisionStatus:'complete'|'failed';failureCodes:string[];cleanup:'deleted'|'failed'|'not_started';toolCalls:number;apiTrace?:StudyBriefTrace;local?:LocalStudyBriefTrace}
-export type StudyBriefRequest={id:string}&({type:'prepareStudyBrief';payload:{nctIds:string[];provider?:StudyBriefProvider;model?:string}}|{type:'executeStudyBrief';payload:{token:string;digest:string}}|{type:'revokeStudyBrief';payload:{token?:string}});
+export type StudyBriefRequest={id:string}&({type:'prepareStudyBrief';payload:{nctIds:string[];provider?:StudyBriefProvider;model?:string}}|{type:'executeStudyBrief';payload:{token:string;digest:string;budgetMs?:number}}|{type:'revokeStudyBrief';payload:{token?:string}});
 export const STUDY_BRIEF_REQUEST_TYPES:readonly string[];export const STUDY_BRIEF_MAX_BYTES:number;export const PURPOSE_DISPLAY_MAX_CHARS:number;
 export function briefNctIds(v:unknown):string[];
 export function parseStudyBriefRequest(v:unknown):StudyBriefRequest;

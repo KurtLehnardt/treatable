@@ -338,3 +338,19 @@ test('overlay frame is created already laid out for the saved display mode and t
   controller.dispose();
  }
 });
+
+test('a model choice saved by another Treatable page is kept when this page later saves a display change',async()=>{
+ const area=fakeArea({[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'openai',localModel:null}}),listeners:Array<(changes:any,area:string)=>void>=[];
+ (area as any).onChanged={addListener:(f:any)=>listeners.push(f),removeListener:(f:any)=>listeners.splice(listeners.indexOf(f),1)};
+ const parent={postMessage(){}},win=new EventTarget() as any,doc=new EventTarget() as any,port=new FakePort();win.parent=parent;doc.visibilityState='visible';rendered=[];
+ Object.defineProperty(globalThis,'window',{configurable:true,value:win});Object.defineProperty(globalThis,'document',{configurable:true,value:doc});
+ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime:{connect:()=>port},storage:{local:area,onChanged:(area as any).onChanged}}});
+ captureSiteActivations(win);let renderer!:ReactTestRenderer;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe,{prefs:await loadUiPrefs(area)}),{createNodeMock:()=>({focus(){}})})});
+ const other={displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b'};area.store.set(UI_PREFS_KEY,other);
+ act(()=>listeners.forEach(f=>f({[UI_PREFS_KEY]:{newValue:other}},'local')));
+ assert.equal(latest.provider,'local');assert.equal(latest.localModel,'qwen3.5:9b');
+ act(()=>latest.setTheme('dark'));
+ assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark'},'the other page\'s Local choice is not reverted');
+ act(()=>renderer.unmount());
+});

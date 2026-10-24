@@ -6,7 +6,9 @@ import{normalizeApplyRecord,normalizeStudyBrief,studyPurposeText}from'../shared/
 import{FAILURE_CODE,failureCopy,nativeDisconnectCode}from'./failures';import{studyPageNctId}from'./apply-page';import{isSupportedSite}from'./sites';import{fetchPublicStudyJson}from'./site-background';
 export const APPLY_PORT='treatable-apply-v1';export const APPLY_NATIVE_TIMEOUT_MS=150000;
 /** A local brief runs on this device's own hardware: runtime start, two local model requests and their bounded timeouts. */
-export const LOCAL_NATIVE_TIMEOUT_MS=270000;const ID=/^[A-Za-z0-9_-]{1,80}$/;
+export const LOCAL_NATIVE_TIMEOUT_MS=270000;
+/** A local brief is not started with less than this much of the session left. */
+export const LOCAL_MIN_BUDGET_MS=45000;const ID=/^[A-Za-z0-9_-]{1,80}$/;
 type Source={key:string;nctId?:string;nctIds:string[]};type Prepared={token:string;digest:string;expiresAt:number;nctIds:string[];brief:boolean;used:boolean;local:boolean};
 export interface ApplySiteAccess{overlaySender:(sender:any)=>boolean;snapshot?:(tabId:number)=>Promise<any>;publicStudyTitles?:(nctIds:string[])=>{nctId:string;title?:string}[]}
 export function installApplyBroker(api:any,site:ApplySiteAccess,options:{fetchStudyJson?:(nctId:string)=>Promise<unknown>;now?:()=>number}={}){
@@ -47,9 +49,13 @@ export function installApplyBroker(api:any,site:ApplySiteAccess,options:{fetchSt
    let ids=prepared?.nctIds??(initial.nctId?[initial.nctId]:[]);const brief=request.type.endsWith('StudyBrief');
    if(request.type==='prepareStudyBrief'){try{ids=selected(request.payload.nctIds)}catch{post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}prepared=undefined;}
    if(request.type==='prepareApply'){if(!initial.nctId||request.payload.nctId!==initial.nctId){post({reply:failure(request.id,'NOT_STUDY_PAGE')});return}ids=[initial.nctId];prepared=undefined;}
-   if(request.type==='executeApply'||request.type==='executeStudyBrief'){const p=prepared;if(!p||p.used||p.brief!==brief||p.token!==request.payload.token||p.digest!==request.payload.digest){post({reply:failure(request.id,'INVALID_APPLY_RECEIPT')});return}if(p.expiresAt<=now()){prepared=undefined;post({reply:failure(request.id,'APPLY_EXPIRED')});return}p.used=true;ids=p.nctIds;}
+   if(request.type==='executeApply'||request.type==='executeStudyBrief'){const p=prepared;if(!p||p.used||p.brief!==brief||p.token!==request.payload.token||p.digest!==request.payload.digest){post({reply:failure(request.id,'INVALID_APPLY_RECEIPT')});return}if(p.expiresAt<=now()){prepared=undefined;post({reply:failure(request.id,'APPLY_EXPIRED')});return}
+    // A local brief gets the time left in this session (less a margin) as its budget, so its result arrives before the session ends.
+    // The budget is always set here; anything the frame sent is replaced. An OpenAI brief carries no budget.
+    if(request.type==='executeStudyBrief'){const room=expiresAt-now()-5000;if(p.local&&room<LOCAL_MIN_BUDGET_MS){post({reply:failure(request.id,'LOCAL_SESSION_TOO_SHORT')});return}try{request=parseApplyRequest({id:request.id,type:'executeStudyBrief',payload:{token:request.payload.token,digest:request.payload.digest,...(p.local?{budgetMs:Math.min(LOCAL_NATIVE_TIMEOUT_MS-5000,Math.floor(room))}:{})}})}catch{end();return}}
+    p.used=true;ids=p.nctIds;}
    if(request.type==='revokeApply'||request.type==='revokeStudyBrief'){const p=prepared;prepared=undefined;if(!p||!native){post({reply:{id:request.id,type:'result',ok:true}});return}request={id:request.id,type:p.brief?'revokeStudyBrief':'revokeApply',payload:{token:p.token}};}
-   const wait=setTimeout(()=>{settle(request.id,failure(request.id,'NATIVE_TIMEOUT'));end()},request.type==='executeStudyBrief'&&prepared?.local?LOCAL_NATIVE_TIMEOUT_MS:APPLY_NATIVE_TIMEOUT_MS);pending.set(request.id,{request,nctIds:ids,timer:wait,lastSequence:0});let n:any;try{n=connection();n.postMessage(request)}catch(error){if(n&&native===n){native=undefined;try{n.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}
+   const wait=setTimeout(()=>{settle(request.id,failure(request.id,'NATIVE_TIMEOUT'));end()},request.type==='executeStudyBrief'&&prepared?.local?Math.min(LOCAL_NATIVE_TIMEOUT_MS,Math.max(1000,expiresAt-now())):APPLY_NATIVE_TIMEOUT_MS);pending.set(request.id,{request,nctIds:ids,timer:wait,lastSequence:0});let n:any;try{n=connection();n.postMessage(request)}catch(error){if(n&&native===n){native=undefined;try{n.disconnect()}catch{}}settle(request.id,failure(request.id,nativeDisconnectCode(error instanceof Error?error.message:'')))}
   })().catch(()=>end(true))});port.onDisconnect.addListener(()=>end());
  });api.tabs.onUpdated.addListener((tabId:number,change:any)=>{if(change?.url)endTab(tabId,change.url)});api.tabs.onRemoved.addListener((tabId:number)=>endTab(tabId));return{endTab,sessionCount:()=>sessions.size};
 }

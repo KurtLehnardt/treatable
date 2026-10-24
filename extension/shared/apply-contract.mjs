@@ -116,7 +116,8 @@ export function briefNctIds(v){if(!Array.isArray(v)||v.length<1||v.length>2||new
 export function parseStudyBriefRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid study brief operation');const p=v.payload;
  if(v.type==='prepareStudyBrief'){if(!exactKeys(p,['nctIds','provider','model']))throw Error('Invalid public study selection');briefNctIds(p.nctIds);studyBriefEngine(p);}
- else if(v.type==='executeStudyBrief'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid study brief receipt');}
+ // budgetMs is added only by the browser broker for a local brief: the time left in its session, so the helper finishes within it.
+ else if(v.type==='executeStudyBrief'){if(!exactKeys(p,['token','digest','budgetMs'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest)||p.budgetMs!==undefined&&(!Number.isSafeInteger(p.budgetMs)||p.budgetMs<10000||p.budgetMs>300000))throw Error('Invalid study brief receipt');}
  else if(v.type==='revokeStudyBrief'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid study brief revocation');}
  else throw Error('Unsupported study brief operation');return v;
 }

@@ -68,10 +68,10 @@ test('canary: a local study brief runs through the real broker, native helper an
 
 /* Broker: the engine must be echoed exactly, a local result must come from a local preparation, and the model check carries no input. */
 const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))};
-function broker(){
+function broker(clock:()=>number=()=>Date.UTC(2026,9,24,15,15)){
  const connect=new Events(),scripts:any[]=[],natives:any[]=[],origin='chrome-extension://test',url='https://clinicaltrials.gov/study/NCT07254806';
  const api:any={runtime:{id:'test',lastError:undefined,getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:new Events(),connectNative:()=>{const n={sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v))},disconnect(){this.closed=true}};natives.push(n);return n}},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url}),update:async()=>{},sendMessage:async(_:number,m:any)=>({ok:true,result:['snapshot','availability','clearAvailability','restore'].includes(m.type)?{generation:'doc-1',url,nctIds:[],diagnostic:'x',supported:false}:{}}),onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async()=>({id:2,tabs:[{id:9}]})}};
- const site=installSiteAssistant(api,{lookupPublicStatus:async()=>'RECRUITING'});installApplyBroker(api,site,{fetchStudyJson:async()=>rawStudy(),now:()=>Date.UTC(2026,9,24,15,15)});
+ const site=installSiteAssistant(api,{lookupPublicStatus:async()=>'RECRUITING'});installApplyBroker(api,site,{fetchStudyJson:async()=>rawStudy(),now:clock});
  const frame={id:'test',tab:{id:1,url},frameId:2,documentId:'frame-doc',url:origin+'/overlay.html'};
  const port=(name:string)=>{const p={name,sender:frame,sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v))},disconnect(){if(this.closed)return;this.closed=true;this.onDisconnect.emit()}};connect.emit(p);return p};
  return{natives,async open(){await site.launch({id:1,url});const o=port('treatable.site.overlay.v1');o.onMessage.emit({type:'site.authenticate',capability:scripts.at(-1).args[0].capability});await flush();const p=port(APPLY_PORT);await flush();return p},
@@ -98,7 +98,7 @@ test('broker: a local preparation must echo the requested engine, and only a loc
  await b.send(p,{id:'p2',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],provider:'local',model:'qwen3.5:9b'}});await b.reply(n,{id:'p2',type:'result',ok:true,result:preparedBrief({provider:'local',model:'gemma4:latest'})});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH','a different model is refused');
  await b.send(p,{id:'p3',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});await b.reply(n,{id:'p3',type:'result',ok:true,result:preparedBrief(engine)});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH','a local preparation cannot answer an OpenAI request');
  await b.send(p,{id:'p4',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],provider:'local',model:'qwen3.5:9b'}});await b.reply(n,{id:'p4',type:'result',ok:true,result:preparedBrief(engine)});assert.equal(replies(p).at(-1).ok,true);
- await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});await b.reply(n,{id:'run',type:'trace',ok:true,trace:{sequence:1,stage:'local.runtime.start'}});assert.equal(replies(p).at(-1).trace.stage,'local.runtime.start');
+ await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST,budgetMs:300000}});assert.deepEqual(n.sent.at(-1).payload,{token:TOKEN,digest:DIGEST,budgetMs:265000},'the broker sets the local budget from its own session, replacing the frame value');await b.reply(n,{id:'run',type:'trace',ok:true,trace:{sequence:1,stage:'local.runtime.start'}});assert.equal(replies(p).at(-1).trace.stage,'local.runtime.start');
  await b.reply(n,{id:'run',type:'result',ok:true,result:localResult()});assert.equal(replies(p).at(-1).result.mode,'local');
  b=broker();p=await b.open();await b.send(p,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],provider:'local',model:'qwen3.5:9b'}});n=b.natives[0];await b.reply(n,{id:'p',type:'result',ok:true,result:preparedBrief(engine)});
  await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});const{local:_,...live}=localResult();await b.reply(n,{id:'run',type:'result',ok:true,result:{...live,mode:'live',cleanup:'deleted',toolCalls:1}});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH','an OpenAI result cannot settle a local run');
@@ -140,4 +140,12 @@ test('study brief view: a local result says which model ran on this device, that
  assert.match(html,/Local model: qwen3\.5:9b via Ollama 0\.32\.1 on this device; nothing was sent to OpenAI\./);assert.match(html,/Starting the private Ollama runtime on this device/);
  assert.match(html,/Model-reported, not calibrated/);assert.match(html,/0\.62/);assert.match(html,/Local request body/);assert.match(html,/Model output/);assert.doesNotMatch(html,/Provider session deletion|public-record tool lookups/);
  const openaiView=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm,engine:{provider:'openai',localModel:null},result:undefined,activity:[]}}));assert.match(openaiView,/using OpenAI Agents and Decisions/);assert.doesNotMatch(openaiView,/Ollama/);
+});
+
+test('broker: a local brief is not started without enough session left, and an OpenAI brief never carries a budget',async()=>{
+ let t=Date.UTC(2026,9,24,15,15);const b=broker(()=>t),p=await b.open();
+ await b.send(p,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],provider:'local',model:'qwen3.5:9b'}});const n=b.natives[0];await b.reply(n,{id:'p',type:'result',ok:true,result:{...preparedBrief({provider:'local',model:'qwen3.5:9b'}),expiresAt:t+300000}});
+ t+=260000;const sent=n.sent.length;await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'LOCAL_SESSION_TOO_SHORT');assert.equal(n.sent.length,sent,'nothing reached the helper');
+ const o=broker(),q=await o.open();await o.send(q,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});const m=o.natives[0];await o.reply(m,{id:'p',type:'result',ok:true,result:preparedBrief()});
+ await o.send(q,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST,budgetMs:200000}});assert.deepEqual(m.sent.at(-1).payload,{token:TOKEN,digest:DIGEST});
 });

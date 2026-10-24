@@ -4,7 +4,7 @@
 // body, pid and the environment the runtime was started with, so tests can check what reached the "local model".
 // Config: {log, pidFile, version, models:[{name,size,details,capabilities,remote}], start:'normal'|'exit'|'hang'|'badVersion',
 //          chat:'valid'|'invalid'|'slow'|'wrongShape'|'routingInvalid', chatDelay, confidence}
-import http from 'node:http';import{readFileSync,appendFileSync,writeFileSync}from'node:fs';
+import http from 'node:http';import{readFileSync,appendFileSync,writeFileSync}from'node:fs';import{spawn}from'node:child_process';
 // Start behavior uses the config at launch; request handling re-reads it, so a test can change answers without restarting.
 const load=()=>JSON.parse(readFileSync(globalThis.__FAKE_OLLAMA_CONFIG,'utf8'));let config=load();
 const log=entry=>{if(config.log)appendFileSync(config.log,JSON.stringify({pid:process.pid,...entry})+'\n');};
@@ -12,6 +12,8 @@ const [command]=process.argv.slice(2);
 if(command==='--version'){process.stdout.write(`ollama version is ${config.version??'0.99.0'}\n`);process.exit(0);}
 if(command!=='serve')process.exit(2);
 if(config.pidFile)writeFileSync(config.pidFile,String(process.pid));
+// Like Ollama's model runners: a child process in the same process group that this fake never stops itself, so only a group kill ends it.
+if(config.runnerPidFile){const runner=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});runner.unref();writeFileSync(config.runnerPidFile,String(runner.pid));}
 log({event:'start',argv:process.argv.slice(2),env:Object.fromEntries(Object.entries(process.env).filter(([k])=>k.startsWith('OLLAMA_')||['HOME','PATH','TMPDIR'].includes(k))),envKeys:Object.keys(process.env).sort()});
 if(config.start==='exit')process.exit(1);
 if(config.start==='hang'){setInterval(()=>{},1000);}
@@ -28,9 +30,10 @@ else{
   const body=raw?JSON.parse(raw):undefined;log({event:'request',method:req.method,path:req.url,body});
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(typeof value==='string'?value:JSON.stringify(value));};
   if(req.url==='/api/version')return send(200,{version:config.start==='badVersion'?'not a version!':config.version??'0.99.0'});
+  if(req.url==='/api/chat'&&config.chat==='oom')return send(500,{error:'model requires more system memory than is available'});
   if(req.url==='/api/tags')return send(200,{models:(config.models??[]).map(m=>({name:m.name,model:m.name,size:m.size,details:m.details??{},...(m.remote?{remote_host:'https://ollama.com:443',remote_model:m.name}:{})}))});
   const model=(config.models??[]).find(m=>m.name===body?.model);
-  if(req.url==='/api/show'){if(!model)return send(404,{error:`model '${body?.model}' not found`});return send(200,{capabilities:model.capabilities??['completion'],details:model.details??{},...(model.remote?{remote_host:'https://ollama.com:443'}:{})});}
+  if(req.url==='/api/show'){if(!model)return send(404,{error:`model '${body?.model}' not found`});return send(200,{capabilities:model.capabilities??['completion'],details:model.details??{},...(model.modelInfo?{model_info:model.modelInfo}:{}),...(model.remote?{remote_host:'https://ollama.com:443'}:{})});}
   if(req.url==='/api/chat'){
    if(!model)return send(404,{error:`model '${body?.model}' not found`});
    if(body?.format?.properties?.score){const mode=config.rank??'valid',record=JSON.parse(body.messages.at(-1).content),n=Number(record.nctId.slice(-1));
