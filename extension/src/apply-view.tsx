@@ -34,7 +34,7 @@ export function ApplyView({vm}:{vm:ApplyController}){
      <label>Your ZIP code <span className="optional">Optional · finds the nearest site</span><input {...f} inputMode="numeric" value={vm.patient.zip} maxLength={10} placeholder="Five digits" onChange={e=>vm.edit('zip',e.target.value)}/></label>
      {vm.zipNote&&<p className="fine" role="status">{vm.zipNote}</p>}
      <fieldset className="apply-answers"><legend>Short answers for the study team <span className="optional">Optional</span></legend><p className="fine">Only what you type here goes in the email. Leave anything blank that you would rather discuss on the phone.</p>
-      {plan.prescreenIds.map(id=><label key={id}>{APPLY_PRESCREEN_TEMPLATES[id]}<input {...f} value={vm.patient.answers[id]??''} maxLength={160} onChange={e=>vm.answer(id,e.target.value)}/></label>)}</fieldset>
+      {plan.answerIds.map(id=><label key={id}>{APPLY_PRESCREEN_TEMPLATES[id]}<input {...f} value={vm.patient.answers[id]??''} maxLength={160} onChange={e=>vm.answer(id,e.target.value)}/></label>)}</fieldset>
     </form>
     {plan.missing.length>0&&<ul className="apply-missing" role="status" aria-label="Still needed">{plan.missing.map(m=><li key={m}>{m}</li>)}</ul>}
    </section>
