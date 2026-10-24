@@ -1,18 +1,22 @@
 // Test-only fake OpenAI for spawned native hosts, loaded through a per-test --import hook (see host-harness.mjs) that sets
 // globalThis.__FAKE_OPENAI after this module patches https.request. Config is read lazily at call time. Never touches the network.
-// Logs one JSON line per request: pid, method, path, whether a Bearer sk- header was present (never its value), argv, env keys, body.
+// Also answers ClinicalTrials.gov record GETs (liveCatalog) with a small fictional public record; govSummary overrides its summary text.
+// Logs one JSON line per request: pid, host, method, path, whether a Bearer sk- header was present (never its value), argv, env keys, body.
 import https from 'node:https';import{EventEmitter}from'node:events';import{PassThrough}from'node:stream';import{appendFileSync}from'node:fs';
 const cfg=()=>({delay:5,agent:'normal',session:'sess_fake',eventsDelay:0,...globalThis.__FAKE_OPENAI});
-// Optionally shortens only the 5-minute consent timer, so expiry can be observed while a request is in flight.
-const originalSetTimeout=globalThis.setTimeout;globalThis.setTimeout=(f,d,...a)=>originalSetTimeout(f,d===300000&&cfg().ttl?cfg().ttl:d,...a);
+// Optionally shortens only the 5-minute consent/snapshot timers (the live token's is the rest of its snapshot's window), so expiry can be
+// observed while a request is in flight.
+const originalSetTimeout=globalThis.setTimeout;globalThis.setTimeout=(f,d,...a)=>originalSetTimeout(f,d>=290000&&d<=300000&&cfg().ttl?cfg().ttl:d,...a);
 const wait=(ms,signal)=>new Promise((resolve,reject)=>{if(signal?.aborted)return reject(new Error('aborted'));const t=originalSetTimeout(resolve,ms);signal?.addEventListener('abort',()=>{clearTimeout(t);reject(new Error('aborted'));},{once:true});});
 let ids=[],posted=0,release=()=>{};
+const govRecord=(nctId,summary='Public summary of a fictional study.')=>({hasResults:false,protocolSection:{identificationModule:{nctId,briefTitle:`Fictional public study ${nctId}`},statusModule:{overallStatus:'RECRUITING',lastUpdatePostDateStruct:{date:'2026-10-01'}},conditionsModule:{conditions:['Fictional condition']},descriptionModule:{briefSummary:summary},eligibilityModule:{eligibilityCriteria:'Public criteria',minimumAge:'18 Years',maximumAge:'N/A',sex:'ALL',healthyVolunteers:false},contactsLocationsModule:{locations:[{country:'United States'}]}}});
 https.request=(options,callback)=>{const req=new EventEmitter(),signal=options.signal;let raw='',response;req.write=c=>{raw+=c;};
  signal?.addEventListener('abort',()=>{req.emit('error',new Error('aborted'));response?.destroy(new Error('aborted'));},{once:true});
  req.end=()=>setImmediate(async()=>{const c=cfg(),{method,path}=options,body=raw?JSON.parse(raw):undefined;
-  if(c.log)appendFileSync(c.log,JSON.stringify({pid:process.pid,t:Date.now(),method,path,auth:String(options.headers?.Authorization).startsWith('Bearer sk-'),argv:process.argv.slice(1),envKeys:Object.keys(process.env).sort(),body})+'\n');
+  if(c.log)appendFileSync(c.log,JSON.stringify({pid:process.pid,t:Date.now(),host:options.hostname,method,path,auth:String(options.headers?.Authorization).startsWith('Bearer sk-'),argv:process.argv.slice(1),envKeys:Object.keys(process.env).sort(),body})+'\n');
   const reply=(status,data)=>{response=new PassThrough();response.statusCode=status;response.headers={'content-type':'application/json'};callback(response);response.end(JSON.stringify(data));};
-  try{await wait(method==='POST'&&path.endsWith('/events')?c.eventsDelay:c.delay,signal);
+  try{if(options.hostname==='clinicaltrials.gov'){await wait(c.govDelay??0,signal);const nctId=path.split('/').at(-1);return reply(200,govRecord(nctId,c.govSummary));}
+   await wait(method==='POST'&&path.endsWith('/events')?c.eventsDelay:c.delay,signal);
    if(path==='/v1/decisions')return reply(200,{answers:body.questions.map(q=>({type:'score',name:q.name,score:2,confidence:.8,probabilities:q.levels.map((l,i)=>({value:i,label:l.label,probability:i===2?1:0}))}))});
    if(method==='POST'&&path==='/v1/agents/sessions'){ids=JSON.parse(body.input).nctIds;posted=0;const all=new Promise(r=>release=r);response=new PassThrough();response.statusCode=200;response.headers={'content-type':'text/event-stream'};callback(response);
     const sse=e=>response.write(`data: ${JSON.stringify(e)}\n\n`);sse({type:'agent.session.created',session:{id:c.session}});if(c.agent==='hang')return;
