@@ -574,11 +574,14 @@ export function createOpenAISender(options: SenderOptions): SenderHandle {
   async function retryDelay(response: Omit<OpenAIResponse, 'attempt'>): Promise<number | undefined> {
     if (response.status === 429) {
       try {
+        // JSON.parse yields plain data, so reading two known fields needs no deeper validation;
+        // extra or deeply nested provider fields are ignored.
         const parsed: unknown = JSON.parse(utf8Decode(response.body as Uint8Array));
-        const error = isJsonObject(parsed, 4) ? parsed.error : undefined;
-        if (isJsonObject(error, 3)) {
-          if (typeof error.code === 'string' && NON_RETRYABLE_429_CODES.includes(error.code)) return undefined;
-          if (error.type === 'insufficient_quota') return undefined;
+        const error = typeof parsed === 'object' && parsed !== null ? (parsed as { error?: unknown }).error : undefined;
+        if (typeof error === 'object' && error !== null) {
+          const { code, type } = error as { code?: unknown; type?: unknown };
+          if (typeof code === 'string' && NON_RETRYABLE_429_CODES.includes(code)) return undefined;
+          if (type === 'insufficient_quota') return undefined;
         }
       } catch {
         // An unreadable 429 body is treated as a temporary rate limit.
@@ -723,9 +726,11 @@ export function createOpenAISender(options: SenderOptions): SenderHandle {
       if (response.status >= 200 && response.status < 300) {
         try {
           const ack: unknown = JSON.parse(utf8Decode(response.body as Uint8Array));
-          // Extra provider fields are ignored (additive changes are backwards-compatible).
-          if (isJsonObject(ack, 4) && ack.id === sessionId && ack.object === 'agent.session.deleted' && ack.deleted === true) {
-            sessionDeleted = true;
+          // Extra provider fields, however nested, are ignored (additive changes are
+          // backwards-compatible); only the three documented fields are read.
+          if (typeof ack === 'object' && ack !== null && !Array.isArray(ack)) {
+            const { id, object, deleted } = ack as { id?: unknown; object?: unknown; deleted?: unknown };
+            if (id === sessionId && object === 'agent.session.deleted' && deleted === true) sessionDeleted = true;
           }
         } catch {
           // An unreadable acknowledgement does not confirm deletion.

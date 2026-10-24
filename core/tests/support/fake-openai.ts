@@ -99,7 +99,7 @@ export class FakeOpenAITransport implements Transport {
     }
     if (request.method === 'DELETE' && path === sessionPath) {
       const status = this.options.deleteStatus ?? 200;
-      return status === 200 ? json(200, { id: FAKE_SESSION_ID, object: 'agent.session.deleted', deleted: true, extra: 'ignored' }) : json(status, { error: { code: 'conflict_error' } });
+      return status === 200 ? json(200, { id: FAKE_SESSION_ID, object: 'agent.session.deleted', deleted: true, added_later: { nested: { deeper: { deepest: ['ignored'] } } } }) : json(status, { error: { code: 'conflict_error' } });
     }
     return json(404, { error: { type: 'not_found_error' } });
   };

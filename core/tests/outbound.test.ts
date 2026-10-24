@@ -297,6 +297,7 @@ test('the delivery policy: no retry after quota or billing 429s, a long Retry-Af
   const cases: [string, (body: string, attempt: number) => { status: number; headers?: Record<string, string>; body?: string }, number][] = [
     ['credit balance', () => ({ status: 429, body: '{"error":{"type":"insufficient_quota","code":"credit_balance_exhausted"}}' }), 1],
     ['project spend limit', () => ({ status: 429, body: '{"error":{"type":"rate_limit_error","code":"project_spend_limit_exceeded"}}' }), 1],
+    ['quota code with deeply nested extra fields', () => ({ status: 429, body: '{"error":{"type":"rate_limit_error","code":"usage_limit_exceeded","details":{"a":{"b":{"c":{"d":[1]}}}}}}' }), 1],
     ['insufficient quota type', () => ({ status: 429, body: '{"error":{"type":"insufficient_quota","code":"something_new"}}' }), 1],
     ['long Retry-After', () => ({ status: 429, headers: { 'retry-after': String(MAX_RETRY_AFTER_MS / 1000 + 1) }, body: '{"error":{"type":"rate_limit_error","code":"rate_limit_exceeded"}}' }), 1],
     ['bad request', () => ({ status: 400, body: '{"error":{"type":"invalid_request_error"}}' }), 1],
