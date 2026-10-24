@@ -325,3 +325,30 @@ test('critic fixes: multi-region patient is unspecified; partial failures are su
   const crlf = new Response(new ReadableStream({start(c) { c.enqueue(new TextEncoder().encode('data: {"type":"agent.session.turn.output_text.done","text":"{}"}\r\n\r\ndata: {"type":"agent.session.turn.completed","turn":{"subagent_id":null}}')); c.close(); }}));
   assert.equal((await readAgentStream(crlf)).text, '{}');
 });
+
+test('one study failing with 429 twice keeps every other refined score; Retry-After is honored and bounded', async () => {
+  const q = 'lumbar degenerative disc disease';
+  const p = profileOf(q);
+  const kept = screenCandidates(retrieveCandidates(studies, q, 20), p).filter(s => !s.excluded);
+  assert.ok(kept.length >= 3);
+  const targetId = kept[1].study.id;
+  const sleeps: number[] = [];
+  const m = mockFetch(({init}) => String(init.body).includes(targetId) ? new Response('', {status: 429, headers: {'retry-after': '999'}}) : json(decisionJson()));
+  const provider = new OpenAIProvider({apiKey: FAKE_KEY, consented: true, fetch: m.fn, sleep: async ms => { sleeps.push(ms); }});
+  const result = await runPipeline({studies, profile: p, provider});
+  assert.equal(result.mode, 'refined');
+  assert.match(result.failure!, /could not score 1 of/);
+  const all = [...result.studies, ...result.nearMiss];
+  const bad = all.find(s => s.screen.study.id === targetId);
+  assert.ok(bad && !bad.refined && bad.breakdown.final <= 79);
+  assert.ok(all.filter(s => s.screen.study.id !== targetId && s.refined).length >= 2);
+  assert.ok(sleeps.length >= 1 && sleeps.every(ms => ms <= 8000));
+});
+
+test('an auth failure still aborts globally', async () => {
+  const p = profileOf('lumbar degenerative disc disease');
+  const m = mockFetch((_, n) => n === 1 ? json(decisionJson()) : new Response('', {status: 403}));
+  const result = await runPipeline({studies, profile: p, provider: new OpenAIProvider({apiKey: FAKE_KEY, consented: true, fetch: m.fn, sleep: noSleep}), concurrency: 1});
+  assert.equal(result.mode, 'unrefined');
+  assert.match(result.failure!, /403/);
+});

@@ -61,6 +61,14 @@ export interface OpenAIOptions {
 
 const RETRYABLE = new Set<FailureKind>(['rate_limited', 'timeout', 'offline', 'server']);
 
+/** Honor Retry-After (seconds), bounded so one slow study cannot stall the list. */
+export const MAX_RETRY_AFTER_MS = 8000;
+function parseRetryAfter(value: string | null | undefined): number | undefined {
+  const seconds = Number(value);
+  if (!value || !Number.isFinite(seconds) || seconds < 0) return undefined;
+  return Math.min(Math.round(seconds * 1000), MAX_RETRY_AFTER_MS);
+}
+
 function classifyStatus(status: number): FailureKind {
   if (status === 401) return 'unauthorized';
   if (status === 403) return 'forbidden';
@@ -94,8 +102,9 @@ export class OpenAIProvider implements ScoringProvider {
   /** One attempt plus at most one retry with backoff, for transient failures only. */
   private async request(path: string, init: RequestInit, timeoutMs: number, signal?: AbortSignal, retry = true): Promise<Response> {
     let lastError: ProviderError | undefined;
+    let retryAfterMs: number | undefined;
     for (let attempt = 0; attempt < (retry ? 2 : 1); attempt++) {
-      if (attempt > 0) await this.sleep(lastError?.kind === 'rate_limited' ? 2000 : 800);
+      if (attempt > 0) await this.sleep(retryAfterMs ?? (lastError?.kind === 'rate_limited' ? 2000 : 800));
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -105,6 +114,7 @@ export class OpenAIProvider implements ScoringProvider {
         const response = await this.doFetch(`${OPENAI_ORIGIN}${path}`, {...init, signal: controller.signal});
         if (response.ok) return response;
         lastError = new ProviderError(classifyStatus(response.status));
+        retryAfterMs = parseRetryAfter(response.headers?.get?.('retry-after'));
       } catch (error) {
         if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
         lastError = new ProviderError(controller.signal.aborted ? 'timeout' : 'offline');

@@ -32,7 +32,7 @@ export interface PipelineResult {
   corpusCount: number;
 }
 
-const GLOBAL_FAILURES = new Set(['missing_key', 'consent', 'unauthorized', 'forbidden', 'rate_limited', 'timeout', 'offline', 'server', 'bad_request']);
+const GLOBAL_FAILURES = new Set(['missing_key', 'consent', 'unauthorized', 'forbidden']);
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -87,7 +87,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
   input.signal?.addEventListener('abort', abort, {once: true});
   let globalFailure: string | undefined;
   try {
-    const scored = await mapLimit(kept, input.concurrency ?? (provider.id === 'local' ? 1 : 5), async (screen, i): Promise<ScoredStudy> => {
+    const scored = await mapLimit(kept, input.concurrency ?? (provider.id === 'local' ? 1 : 3), async (screen, i): Promise<ScoredStudy> => {
       const evidence = buildEvidence(input.profile, screen);
       if (i >= provider.scoreLimit || controller.signal.aborted) return {screen, evidence, breakdown: unrefinedScore(screen), refined: false, note: i >= provider.scoreLimit ? `Not scored by ${provider.label}: only the top ${provider.scoreLimit} are refined.` : undefined};
       try {
