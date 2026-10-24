@@ -32,7 +32,7 @@ export function normalizeApplyRecord(raw,fetchedAt,maxBytes=APPLY_RECORD_MAX_BYT
 // Source excerpts are quotations of sanitized official fields, not generated medical claims.
 export function normalizeStudyBrief(raw,fetchedAt){
  const p=obj(obj(raw).protocolSection),nctId=applyNctId(obj(p.identificationModule).nctId),sourceUrl=`https://clinicaltrials.gov/study/${nctId}`,items=[],unknowns=[];
- const add=(category,label,field,value,max=900)=>{const valueText=text(value,max);if(valueText&&items.length<36)items.push({id:`e${items.length+1}`,category,label,field:`protocolSection.${field}`,text:valueText,sourceUrl});};
+ const add=(category,label,field,value,max=900)=>{let valueText=text(value,max);if(valueText){let bounded='',bytes=0;for(const char of valueText){const size=new TextEncoder().encode(char).length;if(bytes+size>2100)break;bounded+=char;bytes+=size}valueText=bounded.trim()}if(valueText&&items.length<36)items.push({id:`e${items.length+1}`,category,label,field:`protocolSection.${field}`,text:valueText,sourceUrl});};
  const d=obj(p.descriptionModule),ds=obj(p.designModule),di=obj(ds.designInfo),st=obj(p.statusModule),el=obj(p.eligibilityModule),ai=obj(p.armsInterventionsModule);
  add('overview','Study purpose','descriptionModule.briefSummary',d.briefSummary,1800);
  // Split on paragraph/sentence boundaries so timeline and sham/crossover evidence remain exact source excerpts.
