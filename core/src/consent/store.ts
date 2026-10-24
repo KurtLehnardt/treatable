@@ -19,9 +19,9 @@
  *     session's current record set); take() requires the current subject digest to equal the pinned
  *     one, and a mismatch clears the preparation;
  *   - the preparation names the operations it authorizes (score, agent, or both);
- *   - preparation also pins the delivery pins, the SHA-256 digests of the exact serialized request
- *     bodies the dispatcher may send (see ConsentPins). They are covered by the consent digest, so a
- *     receipt binds the exact bytes allowed on the wire, not only the preview shown to the user;
+ *   - the preparation also pins the SHA-256 of every exact byte string the dispatcher may send for
+ *     it (ConsentPins, computed by outbound.ts computeRequestPins). The consent digest covers the
+ *     pins, so a receipt binds the bytes allowed on the wire, not only the JSON values shown;
  *   - the digest is SHA-256 over the RFC 8785 canonical JSON of
  *     { operations, pins, policyVersion, preview, subjectDigest }, computed through the injected port;
  *   - time, tokens, and hashing come from injected ports; expiry uses the monotonic clock;
@@ -29,16 +29,20 @@
  *     ended by timing out, and INVALID_CONSENT_RECEIPT otherwise (the extension always reported
  *     CONSENT_EXPIRED there).
  *
- * Deliberate strengthenings of the reviewed reference (real.mjs kept the preparation alive in both
- * cases, which closed no guessing window and left a preparation usable after a destructive request):
- *   - take() clears the preparation when the token or the digest does not match. The token is 256
- *     random bits, so a holder with the real receipt cannot mistype into a mismatch, while unlimited
- *     second guesses within the window are what a receipt guesser needs;
- *   - revoke() with a mismatched token clears the preparation and still errors, because revoking is
- *     a destructive request and fails closed.
- * Operations the preparation still keeps after a failed take() (an invalid policy receipt, an
- * unauthorized, unknown, or already used operation) are holder mistakes that prove nothing about
- * the receipt, so the remaining authorized operation stays usable.
+ * Clearing rules (a deliberate divergence from real.mjs and host.mjs at 48c569e, which kept the
+ * preparation after a wrong token, digest, or operation in take() and after a mismatched token in
+ * revoke()):
+ *   - every take() that fails while a preparation is active clears it: an invalid policy receipt, a
+ *     wrong token, a wrong digest, an operation that is unknown, not authorized, or already used, and
+ *     a changed subject. Expiry clears it as before. Only a take() with no active preparation has
+ *     nothing to clear. This makes "any invalid request clears the preparation" hold for receipts
+ *     too: a guesser gets one try per preparation, and a replayed or confused receipt ends the
+ *     consent instead of leaving it usable. The cost is that a host mistake such as executing the
+ *     same operation twice also discards the other authorized operation; the user prepares again;
+ *   - revoke() always clears. With a token that is not a string or does not match the active
+ *     preparation it still reports INVALID_CONSENT_RECEIPT, so the host learns its token was stale,
+ *     but the preparation is gone either way, because a revoke expresses the user's withdrawal and
+ *     must fail closed.
  * Errors are CoreError codes only and never include tokens, digests, or payload content.
  */
 import { base64UrlEncode, constantTimeEqual, isHex64, utf8ByteLength, utf8Encode } from '../bytes.ts';
@@ -72,13 +76,13 @@ export interface ConsentStoreOptions {
 }
 
 /**
- * SHA-256 hex digests of the exact serialized request bodies the dispatcher may send for this
- * preparation: one per Decisions body in preview order, one for the Agents create body (null when
- * the preview has none), and one per tool result object in preview order. The user reviews the
- * preview bytes directly; the pins add no data of their own, they only bind the preview to the
- * exact serialization the dispatcher will put on the wire. take() hands the pins to the dispatcher,
- * whose send capability re-serializes the frozen bodies and compares digests immediately before
- * every send (MAJOR-1 in plan/A1a-critic-1.md).
+ * SHA-256 hex digests of the exact byte strings the dispatcher may send for this preparation: one
+ * per Decisions body in preview order, one for the Agents create body (null when the preview has
+ * none), and one per tool result output string in preview order. Each byte string is the canonical
+ * serialization of the corresponding preview object, so the pins add no data of their own; they
+ * bind the consent to the serialization that goes on the wire. take() hands the pins to the
+ * dispatcher, whose send capability serializes the frozen body again and compares its SHA-256 with
+ * the pin immediately before every send.
  */
 export interface ConsentPins {
   readonly decisionsRequests: readonly string[];
@@ -309,28 +313,30 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
   }
 
   function take(input: TakeInput): PinnedConsent {
-    parsePolicyReceipt(input.policyReceipt, 'INVALID_CONSENT_RECEIPT');
     const current = active;
-    if (!current) throw new CoreError(endedByExpiry ? 'CONSENT_EXPIRED' : 'INVALID_CONSENT_RECEIPT');
-    if (current.expiresMonotonic <= now('monotonic')) {
-      reset(true);
-      throw new CoreError('CONSENT_EXPIRED');
+    // Every failure while a preparation is active clears it (see the clearing rules in the header).
+    function reject(code: 'INVALID_CONSENT_RECEIPT' | 'CONSENT_EXPIRED'): never {
+      if (current !== undefined && active === current) reset(code === 'CONSENT_EXPIRED');
+      throw new CoreError(code);
     }
+    let receiptOk = true;
+    try {
+      parsePolicyReceipt(input.policyReceipt, 'INVALID_CONSENT_RECEIPT');
+    } catch {
+      receiptOk = false;
+    }
+    if (!receiptOk) reject('INVALID_CONSENT_RECEIPT');
+    if (!current) throw new CoreError(endedByExpiry ? 'CONSENT_EXPIRED' : 'INVALID_CONSENT_RECEIPT');
+    if (current.expiresMonotonic <= now('monotonic')) reject('CONSENT_EXPIRED');
     const tokenOk = typeof input.token === 'string' && constantTimeEqual(input.token, current.token);
     const digestOk = typeof input.digest === 'string' && constantTimeEqual(input.digest, current.digest);
-    if (!tokenOk || !digestOk) {
-      // An unknown receipt clears the preparation (real.mjs kept it alive): a wrong token or digest
-      // cannot be used for further guesses within this window.
-      clear();
-      throw new CoreError('INVALID_CONSENT_RECEIPT');
-    }
+    if (!tokenOk || !digestOk) reject('INVALID_CONSENT_RECEIPT');
     const operation = input.operation;
     if (!isConsentOperation(operation) || !current.operations.has(operation) || current.used.has(operation)) {
-      throw new CoreError('INVALID_CONSENT_RECEIPT');
+      reject('INVALID_CONSENT_RECEIPT');
     }
     if (input.subjectDigest === undefined || !constantTimeEqual(input.subjectDigest, current.subjectDigest)) {
-      clear();
-      throw new CoreError('INVALID_CONSENT_RECEIPT');
+      reject('INVALID_CONSENT_RECEIPT');
     }
     current.used.add(operation);
     return {
@@ -343,16 +349,11 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
   }
 
   function revoke(token?: unknown): void {
-    if (token !== undefined) {
-      if (typeof token !== 'string') throw new CoreError('INVALID_CONSENT_RECEIPT');
-      if (active && !constantTimeEqual(token, active.token)) {
-        // Revoking is destructive, so a mismatched token fails closed: the preparation is cleared
-        // anyway (real.mjs kept it alive).
-        clear();
-        throw new CoreError('INVALID_CONSENT_RECEIPT');
-      }
-    }
+    // A revoke always clears; a token that is not a string or names another preparation is still
+    // reported (see the clearing rules in the header).
+    const mismatch = token !== undefined && (typeof token !== 'string' || (active !== undefined && !constantTimeEqual(token, active.token)));
     clear();
+    if (mismatch) throw new CoreError('INVALID_CONSENT_RECEIPT');
   }
 
   return {
