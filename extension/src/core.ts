@@ -9,7 +9,10 @@ export interface ZipData {zips:Record<string,{city:string;state:string;lat:numbe
 export interface PageSource {url:string;title:string;text:string;nctId?:string;kind:'clinicaltrials'}
 export type Screen=ReturnType<typeof screenStudy>;
 export interface Match {study:Study;screen:Screen;relevance:number}
-export function safeWebUrl(value:string):string|undefined{try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)&&!u.username&&!u.password?u.href:undefined}catch{return undefined}}
+/** HTTPS-only, credential-free absolute URL, or undefined. */
+export function safeWebUrl(value:string):string|undefined{try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:undefined}catch{return undefined}}
+/** Link target for study records: HTTPS on the exact trusted ClinicalTrials.gov origins only. */
+export function trialUrl(value:string):string|undefined{const url=safeWebUrl(value);return url&&isSupportedSite(url)?url:undefined}
 export function parsePageSource(value:unknown):PageSource{
  if(!record(value))throw new Error('Page could not be read.');exactKeys(value,['url','title','text','nctId','kind']);
  const rawUrl=boundedText(value.url,'Page address',2048,{empty:false}),url=safeWebUrl(rawUrl);if(!url||!isSupportedSite(url))throw new Error('Open an HTTPS ClinicalTrials.gov page. Other sites are not supported in this release.');
