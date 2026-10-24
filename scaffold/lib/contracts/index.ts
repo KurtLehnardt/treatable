@@ -26,4 +26,5 @@ export * from "./opportunityMap";
 export * from "./modelRouting";
 export * from "./patientProfile";
 export * from "./study";
-export * from "./studyMatch";
+export type { StudyCheck, StudyMatch, StudySearchResult, StudyStreamEvent } from "./studyMatch";
+export { BUCKET_LABELS } from "./studyMatch";
