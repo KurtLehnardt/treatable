@@ -12,3 +12,5 @@ export class MessageDecoder{
  end(){if(this.buffer.length&&!this.failed){this.failed=true;this.buffer=Buffer.alloc(0);this.onError(new Error('Incomplete native message'));}}
 }
 export function replyId(raw){return validId(raw?.id)?raw.id:'invalid';}
+// A reply that cannot be framed (too large, unserializable) is replaced by a small fixed error that never echoes the original value.
+export function encodeReply(value,error='The native helper could not complete this request.'){try{return{frame:encodeMessage(value),ok:true};}catch{return{frame:encodeMessage({id:replyId(value),type:'result',ok:false,code:'INTERNAL_ERROR',error}),ok:false};}}
