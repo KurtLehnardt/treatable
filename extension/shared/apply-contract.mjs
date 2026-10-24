@@ -129,11 +129,66 @@ export function parsePreparedStudyBrief(v){
  briefNctIds(v.records.map(r=>parseApplyRecord(r).nctId));if(v.briefs.length!==v.records.length||v.briefs.some((b,i)=>parsePublicStudyBrief(b).nctId!==v.records[i].nctId)||utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Mismatched study briefs');return v;
 }
 export function parseStudyBriefResult(v){
- if(!exactKeys(v,['kind','mode','digest','briefs','studyPlans','agentStatus','decisionStatus','failureCodes','cleanup','toolCalls'])||v.kind!=='studyBrief'||!['live','test'].includes(v.mode)||typeof v.digest!=='string'||!HASH.test(v.digest)||!['complete','failed'].includes(v.agentStatus)||!['complete','failed'].includes(v.decisionStatus)||!['deleted','failed','not_started'].includes(v.cleanup)||!Number.isInteger(v.toolCalls)||v.toolCalls<0||v.toolCalls>6||!Array.isArray(v.failureCodes)||v.failureCodes.length>2||v.failureCodes.some(c=>typeof c!=='string'||! /^[A-Z_]{1,40}$/.test(c))||!Array.isArray(v.briefs)||!Array.isArray(v.studyPlans))throw Error('Invalid study brief result');
+ if(!exactKeys(v,['kind','mode','digest','briefs','studyPlans','agentStatus','decisionStatus','failureCodes','cleanup','toolCalls','apiTrace'])||v.kind!=='studyBrief'||!['live','test'].includes(v.mode)||typeof v.digest!=='string'||!HASH.test(v.digest)||!['complete','failed'].includes(v.agentStatus)||!['complete','failed'].includes(v.decisionStatus)||!['deleted','failed','not_started'].includes(v.cleanup)||!Number.isInteger(v.toolCalls)||v.toolCalls<0||v.toolCalls>6||!Array.isArray(v.failureCodes)||v.failureCodes.length>2||v.failureCodes.some(c=>typeof c!=='string'||! /^[A-Z_]{1,40}$/.test(c))||!Array.isArray(v.briefs)||!Array.isArray(v.studyPlans))throw Error('Invalid study brief result');
  briefNctIds(v.briefs.map(b=>parsePublicStudyBrief(b).nctId));if(v.studyPlans.length!==v.briefs.length)throw Error('Invalid study plans');
  for(const [i,p] of v.studyPlans.entries()){
   const b=v.briefs[i],ids=new Set(b.items.map(x=>x.id));if(!exactKeys(p,['nctId','briefItemIds','questionIds','prescreenIds','flagIds','routes','prioritizedQuestionIds'])||p.nctId!==b.nctId||!Array.isArray(p.briefItemIds)||p.briefItemIds.length>12||new Set(p.briefItemIds).size!==p.briefItemIds.length||p.briefItemIds.some(id=>!ids.has(id))||!templateIdList(p.questionIds,APPLY_QUESTION_TEMPLATES,1,8)||!templateIdList(p.prescreenIds,APPLY_PRESCREEN_TEMPLATES,0,8)||!templateIdList(p.flagIds,APPLY_FLAG_TEMPLATES,0,4)||!Array.isArray(p.routes)||p.routes.length!==p.questionIds.length)throw Error('Invalid source-linked plan');
   const seen=new Set();for(const r of p.routes){if(!exactKeys(r,['questionId','route','evidenceIds'])||!p.questionIds.includes(r.questionId)||seen.has(r.questionId)||!STUDY_BRIEF_ROUTES.includes(r.route)||!Array.isArray(r.evidenceIds)||r.evidenceIds.length>3||new Set(r.evidenceIds).size!==r.evidenceIds.length||r.evidenceIds.some(id=>!ids.has(id))||r.route==='answered_by_record'&&!r.evidenceIds.length)throw Error('Invalid question route');seen.add(r.questionId);}
   if(!Array.isArray(p.prioritizedQuestionIds)||p.prioritizedQuestionIds.length>3||new Set(p.prioritizedQuestionIds).size!==p.prioritizedQuestionIds.length||p.prioritizedQuestionIds.some(id=>!p.routes.some(r=>r.questionId===id&&r.route==='ask_coordinator')))throw Error('Invalid question priority');
- }if(utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Study brief too large');return v;
+ }if(v.apiTrace!==undefined)parseStudyBriefTrace(v.apiTrace,v);
+ if(utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Study brief too large');return v;
+}
+
+// Display-only record of the OpenAI calls behind one study brief, shown under "How this was generated". Request bodies are the objects the
+// native helper hands to its transport (pretty-printed); headers, credentials and provider session IDs are never part of it. In memory only.
+export const STUDY_BRIEF_TOOL_NAME='get_public_selected_study';
+export const STUDY_BRIEF_TRACE_BODY_MAX_BYTES=64*1024;
+export const STUDY_BRIEF_TRACE_MAX_TOOL_CALLS=6;
+export const STUDY_BRIEF_TRACE_MAX_DECISIONS=16;
+// The shape of an OpenAI API key; a body that contains one is refused rather than displayed.
+const KEY_LIKE=/(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/;
+// Size of text once it sits inside a JSON reply: quoted, with quotes and line breaks escaped (the two enclosing quotes excluded).
+const jsonCost=text=>utf8Bytes(JSON.stringify(text))-2;
+export function traceBodyCost(body){return jsonCost(JSON.stringify(body,null,2));}
+/** Pretty-prints one request body for display. A body whose reply cost exceeds maxCost is cut at a line (or character) boundary and flagged truncated;
+ * `bytes` is always the full pretty-printed size. This only shortens the display copy; the API request itself is never changed. */
+export function traceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){
+ const full=JSON.stringify(body,null,2),bytes=utf8Bytes(full),cap=Math.max(0,Math.min(Math.floor(maxCost),STUDY_BRIEF_TRACE_BODY_MAX_BYTES));
+ if(jsonCost(full)<=cap)return{text:full,bytes,truncated:false};
+ let text='',cost=0;
+ for(const [i,line] of full.split('\n').entries()){
+  const c=jsonCost(line)+(i?2:0);
+  if(cost+c<=cap){text+=(i?'\n':'')+line;cost+=c;continue}
+  // The next line does not fit whole: keep as many of its characters (never half of one) as the remaining room allows.
+  let used=cost+(i?2:0),part='';if(used<cap)for(const ch of line){const w=jsonCost(ch);if(used+w>cap)break;part+=ch;used+=w}
+  text+=(i&&part?'\n':'')+part;break;
+ }
+ return{text,bytes,truncated:true};
+}
+function traceBodyOk(b){
+ if(!exactKeys(b,['text','bytes','truncated'])||typeof b.text!=='string'||!Number.isSafeInteger(b.bytes)||typeof b.truncated!=='boolean')return false;
+ const shown=utf8Bytes(b.text);if(shown>STUDY_BRIEF_TRACE_BODY_MAX_BYTES||KEY_LIKE.test(b.text))return false;
+ if(b.truncated)return b.bytes>shown;
+ if(b.bytes!==shown)return false;try{return isRecord(JSON.parse(b.text))}catch{return false}
+}
+function traceToolCallOk(c){
+ if(!exactKeys(c,['tool','outcome','arguments','summary'])||c.tool!==STUDY_BRIEF_TOOL_NAME||!str(c.summary,300,false)||KEY_LIKE.test(c.summary))return false;
+ if(c.outcome==='returned')return exactKeys(c.arguments,['nctId'])&&typeof c.arguments.nctId==='string'&&NCT.test(c.arguments.nctId);
+ return c.outcome==='rejected'&&c.arguments===null;
+}
+const unit=n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=1;
+function traceDecisionOk(d){
+ if(!exactKeys(d,['nctId','questionId','choice','route','confidence','probabilities'])||typeof d.nctId!=='string'||!NCT.test(d.nctId)||typeof d.questionId!=='string'||!Object.hasOwn(APPLY_QUESTION_TEMPLATES,d.questionId))return false;
+ // The final route is the model's choice, except that an uncited "answered by the record" is downgraded to "ask the study team".
+ if(!STUDY_BRIEF_ROUTES.includes(d.choice)||!(d.route===d.choice||d.choice==='answered_by_record'&&d.route==='ask_coordinator')||!unit(d.confidence)||!exactKeys(d.probabilities,STUDY_BRIEF_ROUTES))return false;
+ let sum=0;for(const route of STUDY_BRIEF_ROUTES){if(!unit(d.probabilities[route]))return false;sum+=d.probabilities[route]}
+ return Math.abs(sum-1)<=.002;
+}
+export function parseStudyBriefTrace(t,result){
+ if(!exactKeys(t,['agentsRequest','decisionsRequest','toolCalls','decisions'])||!traceBodyOk(t.agentsRequest)||!traceBodyOk(t.decisionsRequest)||!Array.isArray(t.toolCalls)||t.toolCalls.length>STUDY_BRIEF_TRACE_MAX_TOOL_CALLS||!t.toolCalls.every(traceToolCallOk)||!Array.isArray(t.decisions)||t.decisions.length>STUDY_BRIEF_TRACE_MAX_DECISIONS||!t.decisions.every(traceDecisionOk))throw Error('Invalid API trace');
+ // One Decisions entry per question route, in plan order, with the same final route; none when classification failed.
+ const routes=result.studyPlans.flatMap(p=>p.routes.map(r=>({nctId:p.nctId,...r})));
+ if(result.decisionStatus==='failed'?t.decisions.length!==0:t.decisions.length!==routes.length||t.decisions.some((d,i)=>d.nctId!==routes[i].nctId||d.questionId!==routes[i].questionId||d.route!==routes[i].route))throw Error('Mismatched Decisions trace');
+ const ids=result.briefs.map(b=>b.nctId);if(t.toolCalls.some(c=>c.arguments&&!ids.includes(c.arguments.nctId)))throw Error('Mismatched tool call trace');
+ return t;
 }

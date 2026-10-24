@@ -24,7 +24,7 @@ export interface PublicStudyBrief{nctId:string;sourceUrl:string;fetchedAt:number
 export interface PreparedStudyBrief{kind:'preparedStudyBrief';token:string;digest:string;expiresAt:number;records:ApplyRecord[];briefs:PublicStudyBrief[]}
 export interface StudyQuestionRoute{questionId:ApplyQuestionId;route:'answered_by_record'|'ask_patient'|'ask_coordinator';evidenceIds:string[]}
 export interface StudyBriefPlan{nctId:string;briefItemIds:string[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];flagIds:ApplyFlagId[];routes:StudyQuestionRoute[];prioritizedQuestionIds:ApplyQuestionId[]}
-export interface StudyBriefResult{kind:'studyBrief';mode:'live'|'test';digest:string;briefs:PublicStudyBrief[];studyPlans:StudyBriefPlan[];agentStatus:'complete'|'failed';decisionStatus:'complete'|'failed';failureCodes:string[];cleanup:'deleted'|'failed'|'not_started';toolCalls:number}
+export interface StudyBriefResult{kind:'studyBrief';mode:'live'|'test';digest:string;briefs:PublicStudyBrief[];studyPlans:StudyBriefPlan[];agentStatus:'complete'|'failed';decisionStatus:'complete'|'failed';failureCodes:string[];cleanup:'deleted'|'failed'|'not_started';toolCalls:number;apiTrace?:StudyBriefTrace}
 export type StudyBriefRequest={id:string}&({type:'prepareStudyBrief';payload:{nctIds:string[]}}|{type:'executeStudyBrief';payload:{token:string;digest:string}}|{type:'revokeStudyBrief';payload:{token?:string}});
 export const STUDY_BRIEF_REQUEST_TYPES:readonly string[];export const STUDY_BRIEF_MAX_BYTES:number;export const PURPOSE_DISPLAY_MAX_CHARS:number;
 export function briefNctIds(v:unknown):string[];
@@ -34,3 +34,14 @@ export function parsePreparedStudyBrief(v:unknown):PreparedStudyBrief;
 export function parseStudyBriefResult(v:unknown):StudyBriefResult;
 
 export interface StudyBriefClaim{id:string;category:StudySourceCategory;text:string;evidenceIds:string[];sourceQuotes:string[]}
+
+export type StudyBriefRoute='answered_by_record'|'ask_patient'|'ask_coordinator';
+/** One request body for display: pretty-printed JSON, its full size in bytes, and whether `text` was cut to fit the reply. */
+export interface StudyBriefTraceBody{text:string;bytes:number;truncated:boolean}
+export interface StudyBriefToolCallTrace{tool:string;outcome:'returned'|'rejected';arguments:{nctId:string}|null;summary:string}
+export interface StudyBriefDecisionTrace{nctId:string;questionId:ApplyQuestionId;choice:StudyBriefRoute;route:StudyBriefRoute;confidence:number;probabilities:Record<StudyBriefRoute,number>}
+export interface StudyBriefTrace{agentsRequest:StudyBriefTraceBody;decisionsRequest:StudyBriefTraceBody;toolCalls:StudyBriefToolCallTrace[];decisions:StudyBriefDecisionTrace[]}
+export const STUDY_BRIEF_ROUTES:readonly StudyBriefRoute[];export const STUDY_BRIEF_TOOL_NAME:string;export const STUDY_BRIEF_TRACE_BODY_MAX_BYTES:number;export const STUDY_BRIEF_TRACE_MAX_TOOL_CALLS:number;export const STUDY_BRIEF_TRACE_MAX_DECISIONS:number;
+export function traceBody(body:unknown,maxCost?:number):StudyBriefTraceBody;
+export function traceBodyCost(body:unknown):number;
+export function parseStudyBriefTrace(t:unknown,result:Pick<StudyBriefResult,'briefs'|'studyPlans'|'decisionStatus'>):StudyBriefTrace;

@@ -3,7 +3,7 @@ import {PRIVATE_TEXT_FIELD} from './patient-form';
 import {failureCopy} from './failures';
 import {trialUrl} from './core';
 import {siteLocationStatus} from './local-distance';
-import {APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type PublicStudyBrief,type StudySourceItem,type ApplySite} from '../shared/apply-contract.mjs';
+import {APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,STUDY_BRIEF_ROUTES,type PublicStudyBrief,type StudySourceItem,type ApplySite,type StudyBriefResult,type StudyBriefRoute,type StudyBriefTraceBody,type StudyBriefDecisionTrace} from '../shared/apply-contract.mjs';
 import type {ApplyController} from './use-apply';
 import {hasDetails,useYourDetails} from './your-details';
 import {contactHref,validEmail,type PlanContact,type CallContact} from './apply-plan';
@@ -15,6 +15,50 @@ const miles=(d?:number)=>d===undefined?'':d<1?'less than 1 mile away':`about ${M
 const ACTIVITY_LABELS:Record<string,string>={'agent.request':'Agent request sent','agent.session.created':'Agent session started','agent.tool.request':'Reading selected public study evidence','agent.tool.result':'Public study evidence returned','agent.complete':'Agent review completed','agent.cleanup.deleted':'Provider session deletion acknowledged','agent.cleanup.failed':'Provider session deletion unconfirmed','decisions.request':'Question classification requested','decisions.complete':'Question classification completed',cancelled:'Analysis cancelled',failed:'Analysis failed'};
 const context=(item?:StudySourceItem)=>item?(item as StudySourceItem&{context?:string}).context:undefined;
 const ROUTE_LABELS={answered_by_record:'Answered in the record',ask_patient:'Your input may help',ask_coordinator:'Ask the study team'};
+/** Percentages in tenths that add up to exactly 100 (largest remainder), so the three displayed shares always sum to 100%. */
+export function probabilityShares(p:Record<StudyBriefRoute,number>):Record<StudyBriefRoute,string>{
+ const total=STUDY_BRIEF_ROUTES.reduce((n,r)=>n+p[r],0)||1,raw=STUDY_BRIEF_ROUTES.map(r=>p[r]/total*1000),tenths=raw.map(Math.floor);
+ let left=1000-tenths.reduce((n,v)=>n+v,0);
+ for(const i of raw.map((v,i)=>i).sort((a,b)=>(raw[b]-Math.floor(raw[b]))-(raw[a]-Math.floor(raw[a]))||a-b)){if(left<=0)break;tenths[i]++;left--}
+ return Object.fromEntries(STUDY_BRIEF_ROUTES.map((r,i)=>[r,`${(tenths[i]/10).toFixed(1)}%`])) as Record<StudyBriefRoute,string>;
+}
+const utf8Length=(text:string)=>new TextEncoder().encode(text).length;
+/** One exact request body: collapsible, scrollable and copyable. A body cut to fit the reply says so; the API call itself was not shortened. */
+function ApiBody({title,body,which,note,vm}:{title:string;body:StudyBriefTraceBody;which:'agents'|'decisions';note?:string;vm:ApplyController}){
+ const copy=vm.traceCopy?.key===which?vm.traceCopy.state:undefined;
+ return <details className="trace-body"><summary>{title} <span className="fine">{`(${body.bytes} bytes)`}</span></summary>
+  {note&&<p className="fine">{note}</p>}
+  {body.truncated&&<p className="notice" role="note">{`truncated for display (${utf8Length(body.text)} of ${body.bytes} bytes)`}. The request itself was not shortened.</p>}
+  <pre className="trace-json" tabIndex={0} role="region" aria-label={title}>{body.text}</pre>
+  <div className="apply-actions"><button type="button" onClick={()=>vm.copyTrace(which)}>{body.truncated?'Copy the part shown':'Copy JSON'}</button></div>
+  {copy==='copied'&&<p role="status" className="fine">Copied.</p>}{copy==='failed'&&<p role="status" className="fine">Copying was unavailable. Select the text and copy it.</p>}
+ </details>;
+}
+function Decision({d}:{d:StudyBriefDecisionTrace}){
+ const shares=probabilityShares(d.probabilities);
+ return <li className="trace-decision"><p><span className="study-id">{d.nctId}</span> {APPLY_QUESTION_TEMPLATES[d.questionId]}</p>
+  <p>Chosen route: <strong>{ROUTE_LABELS[d.route]}</strong> <code>{d.route}</code> {`· confidence ${Math.round(d.confidence*100)}%`}</p>
+  {d.choice!==d.route&&<p className="fine">{`Decisions chose “${ROUTE_LABELS[d.choice]}”, but no cited record text supports that, so it is shown as “${ROUTE_LABELS[d.route]}”.`}</p>}
+  <ul className="trace-probabilities" aria-label="Probability of each choice">{STUDY_BRIEF_ROUTES.map(route=><li key={route} className="trace-probability"><span>{ROUTE_LABELS[route]} <code>{route}</code></span><span className="trace-bar" aria-hidden="true"><span style={{width:shares[route]}}/></span><strong>{shares[route]}</strong></li>)}</ul></li>;
+}
+/** What was sent to OpenAI and what came back, for the generated brief: both request bodies, the Agents tool calls and the Decisions output. */
+function ApiTrace({result,vm}:{result:StudyBriefResult;vm:ApplyController}){
+ const trace=result.apiTrace;
+ return <>{result.mode==='test'&&<p className="notice" role="note"><strong>Test run.</strong> A mocked adapter produced this result; nothing below was sent to OpenAI.</p>}
+  <p>{result.toolCalls} public-record tool lookups. {result.agentStatus==='complete'?'The Agent read every selected study through the public-evidence tool.':'The Agent review did not complete.'}</p>
+  {trace?<>
+   <p className="fine">{`These are the request bodies the helper ${result.mode==='test'?'built for a mocked adapter':'sent to OpenAI'}, formatted with line breaks for reading. They hold public study data only. Request headers and credentials are not included and never leave the helper.`}</p>
+   <h4>Agents API</h4>
+   <ApiBody title="Agents API request body" body={trace.agentsRequest} which="agents" vm={vm} note={result.agentStatus==='failed'?'The Agents call did not complete; see the failure code above.':undefined}/>
+   <h5>Agents tool calls</h5>
+   {trace.toolCalls.length?<ol className="trace-tools">{trace.toolCalls.map((call,i)=><li key={i}><code>{`${call.tool}(${call.arguments?JSON.stringify(call.arguments):'arguments not shown'})`}</code><span>{call.summary}</span></li>)}</ol>:<p>The Agent made no tool calls.</p>}
+   <h4>Decisions API</h4>
+   <ApiBody title="Decisions API request body" body={trace.decisionsRequest} which="decisions" vm={vm} note={result.decisionStatus==='failed'?'The Decisions call did not complete; see the failure code above.':undefined}/>
+  </>:<p className="fine">The request bodies were not returned. The installed native helper is older than this extension; reinstall it to see them.</p>}
+  <h4>Decisions output</h4>
+  {trace?.decisions.length?<ol className="trace-decisions">{trace.decisions.map(d=><Decision key={d.nctId+d.questionId} d={d}/>)}</ol>:<ul>{result.studyPlans.flatMap(p=>p.routes.map(route=><li key={p.nctId+route.questionId}>{p.nctId} · {APPLY_QUESTION_TEMPLATES[route.questionId]} — {ROUTE_LABELS[route.route]}</li>))}</ul>}
+  <p>{result.cleanup==='deleted'?'Provider session deletion acknowledged.':result.cleanup==='failed'?'Provider session deletion could not be confirmed.':'No provider session was started.'}</p></>;
+}
 function Failure({code}:{code:string}){return <p className="notice apply-failure" role="status">{failureCopy(code)} <code>{code}</code></p>}
 function Contact({c,label}:{c:PlanContact;label:string}){return <div className="apply-contact"><span className="eyebrow">{label}</span><strong>{c.name||'Study contact'}</strong>{c.phone&&<span>Phone: {c.phone}{c.phoneExt?` ext. ${c.phoneExt}`:''}</span>}{c.email&&<span>Email: {c.email}</span>}</div>}
 /** Visible number plus a Call link (tel:) and a Copy number fallback, only when the record's number checks out. */
@@ -62,7 +106,7 @@ export function ApplyView({vm}:{vm:ApplyController}){
  {record&&plan&&<><div className="apply-study"><h3>{record.title}</h3><span className="study-id">{record.nctId}</span><p className="fine">Public record fetched {new Date(record.fetchedAt).toLocaleString()} · {statusLabel(record.overallStatus)}{trialUrl(record.sourceUrl)&&<> · <a href={trialUrl(record.sourceUrl)} target="_blank" rel="noopener noreferrer">Open the official record</a></>}</p></div>
  <section className="brief-generate" aria-label="Generate a public-study brief"><p>Build a source-backed participation brief and three priority questions using OpenAI Agents and Decisions. This sends only the selected public study records and question topics. Your name, contact details and answers below are excluded.</p><button type="button" className="primary apply-big" disabled={vm.agentBusy||!vm.selectedIds.length} onClick={vm.requestReview}>{vm.agentBusy?'Generating your study brief…':vm.result?'Generate the brief again':'Generate study brief'}</button>{vm.agentCode&&<Failure code={vm.agentCode}/>}
  {vm.result&&<div role="status" className="brief-status"><p>Agents: {vm.result.agentStatus==='complete'?'public study review complete':'review unavailable'} · Decisions: {vm.result.decisionStatus==='complete'?'questions classified':'classification unavailable'}{vm.result.mode==='test'?' · test adapter, not a live API call':''}.</p>{vm.result.failureCodes.map(code=><Failure key={code} code={code}/>)}</div>}
- {(vm.analysisInput||vm.activity.length>0||vm.result)&&<details className="brief-how"><summary>How this was generated</summary><p>Requested task: read the selected official study records, organize source-backed participation facts, and classify and prioritize questions. Personal details and email drafts are excluded.</p>{vm.analysisInput&&<><h4>Public input</h4><p>Study IDs: {vm.analysisInput.nctIds.join(', ')}</p><p className="fine">Source item IDs: {vm.analysisInput.sourceItemIds.join(', ')}</p></>}{vm.activity.length>0?<ol>{vm.activity.map((event,i)=><li key={i}>{ACTIVITY_LABELS[event.stage]??event.stage}{event.nctId?` · ${event.nctId}`:''}</li>)}</ol>:<p>No streamed activity events were received.</p>}{vm.result&&<><p>{vm.result.toolCalls} public-record tool lookups. {vm.result.agentStatus==='complete'?'The Agent read every selected study through the public-evidence tool.':'The Agent review did not complete.'}</p><h4>Decisions output</h4><ul>{vm.result.studyPlans.flatMap(p=>p.routes.map(route=><li key={p.nctId+route.questionId}>{p.nctId} · {APPLY_QUESTION_TEMPLATES[route.questionId]} — {ROUTE_LABELS[route.route]}</li>))}</ul><p>{vm.result.cleanup==='deleted'?'Provider session deletion acknowledged.':vm.result.cleanup==='failed'?'Provider session deletion could not be confirmed.':'No provider session was started.'}</p></>}</details>}
+ {(vm.analysisInput||vm.activity.length>0||vm.result)&&<details className="brief-how"><summary>How this was generated</summary><p>Requested task: read the selected official study records, organize source-backed participation facts, and classify and prioritize questions. Personal details and email drafts are excluded.</p>{vm.analysisInput&&<><h4>Public input</h4><p>Study IDs: {vm.analysisInput.nctIds.join(', ')}</p><p className="fine">Source item IDs: {vm.analysisInput.sourceItemIds.join(', ')}</p></>}{vm.activity.length>0?<ol>{vm.activity.map((event,i)=><li key={i}>{ACTIVITY_LABELS[event.stage]??event.stage}{event.nctId?` · ${event.nctId}`:''}</li>)}</ol>:<p>No streamed activity events were received.</p>}{vm.result&&<ApiTrace result={vm.result} vm={vm}/>}</details>}
  </section>
  {vm.brief&&<StudyFacts brief={vm.brief} purpose={vm.purpose}/>}
  <section className="apply-step" aria-labelledby="brief-questions"><h3 id="brief-questions">Three questions to start with</h3><p className="fine">{studyPlan?'Prioritized from the public record.':'Standard questions while a generated brief is unavailable.'}</p><ol className="apply-questions">{questions.map(id=>{const route=studyPlan?.routes.find(r=>r.questionId===id),items=route?.evidenceIds.flatMap(key=>{const item=vm.brief?.items.find(i=>i.id===key);return item?[item]:[]})??[];return <li key={id}><p>{APPLY_QUESTION_TEMPLATES[id]}</p>{route&&<span className="brief-route">{ROUTE_LABELS[route.route]}</span>}{items.length>0&&<Evidence nctId={vm.nctId} items={items}/>}</li>})}</ol></section>

@@ -1,4 +1,5 @@
 import{normalizeApplyRecord}from'../shared/apply-record.mjs';
+import{traceBody,STUDY_BRIEF_TOOL_NAME,type StudyBriefTrace,type StudyBriefDecisionTrace}from'../shared/apply-contract.mjs';
 /** API v2-shaped public record modeled on NCT07254806 (lumbar disc study), with one deliberately mistyped site email domain. */
 export function rawStudy(overrides:{status?:any;contacts?:any;sites?:any[]}={}){
  const sites=overrides.sites??[
@@ -18,3 +19,15 @@ export const patient=():import('../src/apply-plan').ApplyPatient=>({name:'Morgan
 export const TOKEN='T'.repeat(43),DIGEST='d'.repeat(64);
 export function preparedFixture(expiresAt=Date.UTC(2026,9,24,15,20)){return{kind:'preparedApply' as const,token:TOKEN,digest:DIGEST,expiresAt,nctId:'NCT07254806',record:record(),preview:{agentsRequest:{model:'gpt-test',input:[{role:'user',content:'Review public study NCT07254806 using get_public_trial_evidence.'}],tools:[{type:'function',name:'get_public_trial_evidence'}]},toolResults:(['overview','eligibility','design','locations_contacts'] as const).map(section=>({section,output:`Public ${section} text for NCT07254806`}))}}}
 export function agentFixture(overrides:Record<string,unknown>={}){return{kind:'applyAgent' as const,mode:'live' as const,nctId:'NCT07254806',digest:DIGEST,questionIds:['placebo','crossover','imaging','next_steps'] as any,prescreenIds:['affected_area','recent_imaging','prior_treatments'] as any,flagIds:['near_completion'] as any,sectionsRead:['overview','eligibility','locations_contacts'] as any,toolCalls:3,cleanup:'deleted' as const,...overrides}}
+/** Display trace of a study brief run: both request bodies, one tool call per study and three Decisions answers per study (all routed to the study team). */
+export function briefTraceFixture(ids:string[],over:Partial<StudyBriefTrace>={}):StudyBriefTrace{
+ const decisions:StudyBriefDecisionTrace[]=ids.flatMap(nctId=>[
+  {nctId,questionId:'visits' as const,choice:'ask_coordinator' as const,route:'ask_coordinator' as const,confidence:.83,probabilities:{answered_by_record:.05,ask_patient:.12,ask_coordinator:.83}},
+  {nctId,questionId:'crossover' as const,choice:'answered_by_record' as const,route:'ask_coordinator' as const,confidence:.55,probabilities:{answered_by_record:.6,ask_patient:.1,ask_coordinator:.3}},
+  {nctId,questionId:'costs' as const,choice:'ask_coordinator' as const,route:'ask_coordinator' as const,confidence:.4,probabilities:{answered_by_record:.0004,ask_patient:.4998,ask_coordinator:.4998}}]);
+ return{
+  agentsRequest:traceBody({environment:{type:'none'},agent:{model:'gpt-6-astra',tools:[{type:'function',name:STUDY_BRIEF_TOOL_NAME}]},input:JSON.stringify({publicOnly:true,selectedStudyIds:ids}),stream:true}),
+  decisionsRequest:traceBody({model:'gpt-6-luna',questions:decisions.map(d=>({type:'choice',name:`${d.nctId}_${d.questionId}`}))}),
+  toolCalls:ids.map(nctId=>({tool:STUDY_BRIEF_TOOL_NAME,outcome:'returned' as const,arguments:{nctId},summary:`Returned 12 public source items for ${nctId} (overview 2, timeline 4, design 6), 3100 bytes from the pinned ClinicalTrials.gov record.`})),
+  decisions,...over};
+}

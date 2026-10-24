@@ -1,17 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import TestRenderer,{act} from 'react-test-renderer';
-import {ApplyView} from '../src/apply-view';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';
+import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';
 import {normalizeApplyRecord,normalizeStudyBrief,studyPurposeText,PURPOSE_MAX_EXCERPTS} from '../shared/apply-record.mjs';import type {StudyBriefResult,PreparedStudyBrief} from '../shared/apply-contract.mjs';
 const IDS=['NCT99999990','NCT99999991'],NOW=Date.UTC(2026,9,24,15),EXPIRES=NOW+300000,TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
 let PURPOSE='A synthetic controlled study.',DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.';
 function raw(id:string){return{protocolSection:{identificationModule:{nctId:id,briefTitle:id===IDS[0]?'First synthetic study':'Second synthetic study',orgStudyIdInfo:{id:'SYNTHETIC-ONLY'}},descriptionModule:{briefSummary:PURPOSE,detailedDescription:DETAIL},designModule:{designInfo:{allocation:'RANDOMIZED',maskingInfo:{masking:'SINGLE'}}},statusModule:{overallStatus:'RECRUITING',primaryCompletionDateStruct:{date:'2026-12-31',type:'ESTIMATED'},startDateStruct:{date:'2026-01-01',type:'ACTUAL'}},eligibilityModule:{},contactsLocationsModule:{centralContacts:[{name:'Study coordinator',email:id===IDS[0]?'one@example.org':'two@example.org',phone:'303-555-0100'}],locations:[{facility:'Synthetic Clinic',city:'Example City',state:'Colorado',country:'United States',status:'RECRUITING',contacts:[]}]}}}}
 const records=(ids=IDS)=>ids.map(id=>normalizeApplyRecord(raw(id),NOW));const briefs=(ids=IDS)=>ids.map(id=>normalizeStudyBrief(raw(id),NOW));
 function prepared(ids=IDS):PreparedStudyBrief{return{kind:'preparedStudyBrief',token:TOKEN,digest:DIGEST,expiresAt:EXPIRES,records:records(ids),briefs:briefs(ids)}}
-function result(ids=IDS):StudyBriefResult{return{kind:'studyBrief',mode:'test',digest:DIGEST,briefs:briefs(ids).map(b=>{const item=b.items.find(i=>i.text==='Two treatments are spaced 4 weeks apart.')!;return{...b,claims:[{id:'claim1',category:'timeline',text:item.text,evidenceIds:[item.id],sourceQuotes:[item.text]}]}}),studyPlans:ids.map(nctId=>({nctId,briefItemIds:briefs([nctId])[0].items.slice(0,1).map(i=>i.id),questionIds:['visits','crossover','costs'],prescreenIds:['diagnosis_details','prior_treatments'],flagIds:[],routes:[{questionId:'visits',route:'ask_coordinator',evidenceIds:[]},{questionId:'crossover',route:'ask_coordinator',evidenceIds:[]},{questionId:'costs',route:'ask_coordinator',evidenceIds:[]}],prioritizedQuestionIds:['visits','crossover','costs']})),agentStatus:'complete',decisionStatus:'complete',failureCodes:[],cleanup:'deleted',toolCalls:ids.length}}
+function result(ids=IDS,trace:{none?:boolean;live?:boolean;cut?:boolean}={}):StudyBriefResult{return{kind:'studyBrief',mode:trace.live?'live':'test',digest:DIGEST,briefs:briefs(ids).map(b=>{const item=b.items.find(i=>i.text==='Two treatments are spaced 4 weeks apart.')!;return{...b,claims:[{id:'claim1',category:'timeline',text:item.text,evidenceIds:[item.id],sourceQuotes:[item.text]}]}}),studyPlans:ids.map(nctId=>({nctId,briefItemIds:briefs([nctId])[0].items.slice(0,1).map(i=>i.id),questionIds:['visits','crossover','costs'],prescreenIds:['diagnosis_details','prior_treatments'],flagIds:[],routes:[{questionId:'visits',route:'ask_coordinator',evidenceIds:[]},{questionId:'crossover',route:'ask_coordinator',evidenceIds:[]},{questionId:'costs',route:'ask_coordinator',evidenceIds:[]}],prioritizedQuestionIds:['visits','crossover','costs']})),agentStatus:'complete',decisionStatus:'complete',failureCodes:[],cleanup:'deleted',toolCalls:ids.length,...(trace.none?{}:{apiTrace:briefTraceFixture(ids,trace.cut?{decisionsRequest:traceBody({questions:Array.from({length:40},(_,i)=>({name:`q${i}`,instructions:'x'.repeat(40)}))},300)}:{})})}}
 const flush=async()=>{for(let i=0;i<20;i++)await new Promise<void>(r=>queueMicrotask(r))};
 class Events{listeners:((v:any)=>void)[]=[];addListener=(f:(v:any)=>void)=>this.listeners.push(f);emit=(v?:any)=>this.listeners.forEach(f=>f(v))}
 class Port{sent:any[]=[];closed=false;onMessage=new Events();onDisconnect=new Events();constructor(private handler:(v:any,p:Port)=>void){queueMicrotask(()=>this.onMessage.emit({kind:'applyReady',nctId:IDS[0],nctIds:IDS,expiresAt:EXPIRES,studies:records().map(r=>({nctId:r.nctId,title:r.title}))}))}postMessage(v:any){this.sent.push(structuredClone(v));this.handler(v,this)}reply(reply:any){queueMicrotask(()=>this.onMessage.emit({reply}))}disconnect(){this.closed=true}}
-function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true;
- const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});const send=()=>p.reply({id:request.id,type:'result',ok:true,result:result(ids)});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
+function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown;noTrace?:boolean;live?:boolean;cutTrace?:boolean}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true;
+ const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});const send=()=>p.reply({id:request.id,type:'result',ok:true,result:result(ids,{none:options.noTrace,live:options.live,cut:options.cutTrace})});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
  const env:ApplyEnv={runtime,loadZips:async()=>({zips:{'84101':{city:'Example',state:'UT',lat:40.7,lon:-111.9}}}),userActivated:()=>active,today:()=>new Date(NOW),now:()=>clock,copyText:value=>{attempts.push(value);if(options.failCopy)return Promise.reject(Error('clipboard denied'));copies.push(value);return Promise.resolve()},download:(name,text,type)=>downloads.push({name,text,type}),openMailto:url=>{opened.push(url)}};return{env,runtime,ports,copies,attempts,opened,downloads,held,heldRecords,setClock:(v:number)=>{clock=v},setActive:(v:boolean)=>{active=v}};
 }
 function mount(h:ReturnType<typeof harness>){const ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})};let renderer!:TestRenderer.ReactTestRenderer;act(()=>{renderer=TestRenderer.create(React.createElement(Probe))});return{ref,renderer,unmount:()=>act(()=>renderer.unmount())}}
@@ -119,3 +119,90 @@ test('a purpose longer than the model payload allows is still displayed whole fr
 test('a malformed local purpose list is refused instead of shown',async()=>{for(const purposes of [['one','two'],[7],'text']){const{vm}=await purposeHtml('A synthetic controlled study.',{purposes});assert.equal(vm.record,undefined);assert.equal(vm.recordCode,'INVALID_NATIVE_REPLY');}});
 
 test('a long study description is not shortened either',async()=>{const description=`Participants complete clinic visits every 4 weeks, ${'with assessments of symptoms and function '.repeat(30)}until week 52.`;assert.ok(description.length>1000&&description.length<1400);DETAIL=description;try{const h=harness(),m=mount(h);try{await act(flush);const page=html(m.ref.vm!);assert.ok(page.includes(description));assert.ok(!page.includes('\u2026'));}finally{m.unmount()}}finally{DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.'}});
+
+// --- API trace under "How this was generated" ---
+const hostText=(m:ReturnType<typeof mount>)=>renderedText(m.renderer.root);
+const res=(m:ReturnType<typeof mount>)=>m.ref.vm!.result as StudyBriefResult|undefined;
+const nodesWith=(m:ReturnType<typeof mount>,className:string)=>m.renderer.root.findAllByProps({className});
+async function generate(m:ReturnType<typeof mount>){await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()})}
+
+test('How this was generated shows both exact request bodies, the Agents tool calls and per-question Decisions probabilities',async()=>{
+ const h=harness(),m=mount(h);
+ try{
+  await generate(m);const trace=res(m)!.apiTrace!;assert.ok(trace);
+  const bodies=nodesWith(m,'trace-json');assert.equal(bodies.length,2);
+  assert.equal(renderedText(bodies[0]),trace.agentsRequest.text);assert.equal(renderedText(bodies[1]),trace.decisionsRequest.text);
+  assert.match(trace.agentsRequest.text,/"get_public_selected_study"/);assert.match(trace.decisionsRequest.text,/NCT99999990_visits/);
+  const text=hostText(m);for(const phrase of['Agents API request body','Decisions API request body','Agents tool calls','Decisions output','Chosen route:'])assert.ok(text.includes(phrase),phrase);
+  const tools=renderedText(nodesWith(m,'trace-tools')[0]);assert.match(tools,/get_public_selected_study\(\{"nctId":"NCT99999990"\}\)/);assert.match(tools,/Returned 12 public source items for NCT99999990/);
+  const decisions=nodesWith(m,'trace-decision');assert.equal(decisions.length,3);
+  const first=renderedText(decisions[0]);assert.match(first,/Chosen route:\s*Ask the study team/);assert.match(first,/confidence 83%/);
+  for(const route of STUDY_BRIEF_ROUTES)assert.ok(first.includes(route),`${route} probability row`);
+  assert.match(renderedText(decisions[1]),/Decisions chose “Answered in the record”, but no cited record text supports that, so it is shown as “Ask the study team”/);
+  // the three displayed shares of every question add up to exactly 100%
+  for(const d of decisions){const shares=nodesWith({renderer:{root:d}} as any,'trace-probability').map(row=>row.findByType('strong').children.join(''));assert.equal(shares.length,3);assert.ok(shares.every(v=>/^\d+\.\d%$/.test(v)));assert.equal(shares.reduce((n,v)=>n+Math.round(parseFloat(v)*10),0),1000)}
+  assert.equal(renderedText(decisions[0]).includes('83.0%'),true);assert.equal(renderedText(decisions[1]).includes('60.0%'),true);
+ }finally{m.unmount()}
+});
+
+test('displayed probability shares always add up to exactly 100% and follow the underlying values',()=>{
+ const tenths=(p:Record<string,number>)=>Object.values(probabilityShares(p as any)).map(v=>Math.round(parseFloat(v)*10));
+ assert.deepEqual(tenths({answered_by_record:.05,ask_patient:.12,ask_coordinator:.83}),[50,120,830]);
+ assert.deepEqual(tenths({answered_by_record:1/3,ask_patient:1/3,ask_coordinator:1/3}).reduce((a,b)=>a+b,0),1000);
+ assert.deepEqual(tenths({answered_by_record:.0004,ask_patient:.4998,ask_coordinator:.4998}),[0,500,500]);
+ assert.deepEqual(tenths({answered_by_record:1,ask_patient:0,ask_coordinator:0}),[1000,0,0]);
+ let seed=7;const random=()=>(seed=(seed*16807)%2147483647)/2147483647;
+ for(let i=0;i<500;i++){const a=random(),b=random(),c=random(),sum=a+b+c;assert.equal(tenths({answered_by_record:a/sum,ask_patient:b/sum,ask_coordinator:c/sum}).reduce((n,v)=>n+v,0),1000)}
+});
+
+test('Copy JSON copies exactly the displayed body and reports the outcome',async()=>{
+ const h=harness(),m=mount(h);
+ try{
+  await generate(m);const trace=res(m)!.apiTrace!;
+  await act(async()=>{m.ref.vm!.copyTrace('agents');await flush()});assert.equal(h.copies[0],trace.agentsRequest.text);assert.equal(m.ref.vm!.traceCopy?.state,'copied');assert.match(hostText(m),/Copied\./);
+  await act(async()=>{m.ref.vm!.copyTrace('decisions');await flush()});assert.equal(h.copies[1],trace.decisionsRequest.text);assert.equal(m.ref.vm!.traceCopy?.key,'decisions');
+  await act(async()=>{m.renderer.root.findAllByType('button').find(n=>renderedText(n)==='Copy JSON')!.props.onClick();await flush()});assert.equal(h.copies.length,3);
+ }finally{m.unmount()}
+});
+
+test('an oversized body is shown cut with a clear note, and the other body stays whole',async()=>{
+ const h=harness({cutTrace:true}),m=mount(h);
+ try{
+  await generate(m);const trace=res(m)!.apiTrace!,shown=new TextEncoder().encode(trace.decisionsRequest.text).length;
+  assert.equal(trace.decisionsRequest.truncated,true);assert.ok(shown<trace.decisionsRequest.bytes);
+  const text=hostText(m);assert.ok(text.includes(`truncated for display (${shown} of ${trace.decisionsRequest.bytes} bytes)`));
+  assert.equal((text.match(/truncated for display/g)??[]).length,1);assert.ok(text.includes('Copy the part shown'));
+  assert.equal(m.ref.vm!.agentCode,undefined,'a cut display copy never fails the run');assert.equal(res(m)?.decisionStatus,'complete');
+ }finally{m.unmount()}
+});
+
+test('test runs say nothing was sent to OpenAI; live runs say the bodies were sent',async()=>{
+ const test1=harness(),a=mount(test1);
+ try{await generate(a);const text=hostText(a);assert.match(text,/Test run\./);assert.match(text,/nothing below was sent to OpenAI/);assert.match(text,/test adapter, not a live API call/);assert.match(text,/the request bodies the helper built for a mocked adapter/)}finally{a.unmount()}
+ const live=harness({live:true}),b=mount(live);
+ try{await generate(b);const text=hostText(b);assert.doesNotMatch(text,/Test run\.|test adapter/);assert.match(text,/the request bodies the helper sent to OpenAI/);assert.match(text,/Request headers and credentials are not included/)}finally{b.unmount()}
+});
+
+test('a result from an older helper without request details explains the reinstall and keeps the route list',async()=>{
+ const h=harness({noTrace:true}),m=mount(h);
+ try{
+  await generate(m);const text=hostText(m);
+  assert.equal(res(m)?.apiTrace,undefined);assert.match(text,/reinstall it to see them/);assert.ok(!text.includes('Agents API request body'));assert.equal(nodesWith(m,'trace-json').length,0);
+  assert.match(text,/Decisions output/);assert.match(text,/Ask the study team/);
+  await act(async()=>{m.ref.vm!.copyTrace('agents');await flush()});assert.equal(h.copies.length,0,'nothing to copy without a trace');
+ }finally{m.unmount()}
+});
+
+test('request details stay in memory only: ending, reselecting studies or a new run clears them, and no header or key text exists',async()=>{
+ const h=harness(),m=mount(h);
+ try{
+  await generate(m);assert.ok(hostText(m).includes('Agents API request body'));
+  const everything=JSON.stringify([res(m),h.ports[0].sent,hostText(m)]);
+  assert.doesNotMatch(everything,/Authorization|Bearer|OpenAI-Beta|Content-Type|sk-[A-Za-z0-9_-]{10,}/);
+  await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush()});assert.equal(res(m),undefined);assert.ok(!hostText(m).includes('Agents API request body'));
+  await generate2(m);assert.ok(res(m)?.apiTrace);
+  await act(async()=>{m.ref.vm!.end();await flush()});assert.equal(res(m),undefined);assert.equal(m.ref.vm!.traceCopy,undefined);
+  const after=hostText(m);assert.ok(!after.includes('get_public_selected_study')&&!after.includes('Agents API request body'));
+ }finally{m.unmount()}
+});
+async function generate2(m:ReturnType<typeof mount>){await act(async()=>{m.ref.vm!.requestReview();await flush()})}
