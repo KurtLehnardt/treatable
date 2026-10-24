@@ -1,6 +1,6 @@
 import {getDemoFixture,decisionsPayload,agentPayload,demoToolResults,SCORING_LEVELS as LEVELS} from '../shared/demo-fixtures.mjs';
 export {decisionsPayload,agentPayload} from '../shared/demo-fixtures.mjs';
-import {QUESTION_TEMPLATES,CAUTION_TEMPLATES,exactKeys,isRecord,parseDemoResult} from '../shared/demo-contract.mjs';
+import {QUESTION_TEMPLATES,CAUTION_TEMPLATES,CLEANUP_FAILURE_CODES,exactKeys,isRecord,parseDemoResult} from '../shared/demo-contract.mjs';
 import {ApiError} from './transport.mjs';
 import{parseRealResult}from '../shared/real-contract.mjs';
 const providerId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(v);
@@ -9,6 +9,7 @@ export const MAX_TOOL_ARGUMENT_BYTES=4096;
 export const TOOL_ARGUMENT_ERROR='Rejected: get_public_trial_evidence accepts exactly one argument, nctId, set to one of the NCT IDs supplied for this task. No evidence was returned.';
 // The Agents API types function_call arguments as `unknown`: accept a parsed object or a small JSON string, with exactly the schema's keys.
 export function toolArgumentNctId(raw,allowedIds){let value=raw;if(typeof raw==='string'){if(Buffer.byteLength(raw)>MAX_TOOL_ARGUMENT_BYTES)return undefined;try{value=JSON.parse(raw);}catch{return undefined;}}if(!isRecord(value))return undefined;const keys=Object.keys(value);if(keys.length!==1||keys[0]!=='nctId'||typeof value.nctId!=='string'||!allowedIds.includes(value.nctId))return undefined;return value.nctId;}
+const cleanupFailure=error=>({cleanupCode:CLEANUP_FAILURE_CODES.includes(error?.code)?error.code:'CLEANUP_ERROR',...(Number.isInteger(error?.status)&&error.status>=100&&error.status<=599?{httpStatus:error.status}:{})});
 const FATAL_EVENTS=['error','agent.session.error','environment.failed','agent.session.environment.failed'];
 export function fixtureFor(payload){const fixture=getDemoFixture(payload.fixtureId);const selected=payload.studyIds??fixture.studies.map(x=>x.id);if(selected.some(id=>!fixture.studies.some(s=>s.id===id)))throw new ApiError('INVALID_FIXTURE_STUDIES');return{...fixture,studies:fixture.studies.filter(s=>selected.includes(s.id))};}
 export function scoreValues(raw,fixture){if(!Array.isArray(raw?.answers)||raw.answers.length!==fixture.studies.length)throw new ApiError('INVALID_DECISIONS_OUTPUT');const used=new Set();const scores=raw.answers.map(a=>{if(!a||a.type!=='score'||!fixture.studies.some(s=>s.id===a.name)||used.has(a.name)||!Number.isFinite(a.score)||a.score<0||a.score>3||!Number.isFinite(a.confidence)||a.confidence<0||a.confidence>1||!Array.isArray(a.probabilities)||a.probabilities.length!==4)throw new ApiError('INVALID_DECISIONS_OUTPUT');used.add(a.name);let sum=0,mean=0;const seen=new Set();for(const p of a.probabilities){if(!Number.isInteger(p.value)||p.value<0||p.value>3||seen.has(p.value)||p.label!==LEVELS[p.value].label||!Number.isFinite(p.probability)||p.probability<0||p.probability>1)throw new ApiError('INVALID_DECISIONS_OUTPUT');seen.add(p.value);sum+=p.probability;mean+=p.value*p.probability;}if(Math.abs(sum-1)>0.002||Math.abs(mean-a.score)>0.02)throw new ApiError('INVALID_DECISIONS_OUTPUT');return{nctId:a.name,index:Math.round(a.score/3*100),confidence:a.confidence};});return scores;}
@@ -41,8 +42,9 @@ export async function runAgentContext(transport,fixture,requestBody,toolResults,
   if(sessionId){const budget=AbortSignal.timeout(5500),deadline=Date.now()+5500;const options=limit=>({signal:budget,timeout:Math.max(1,Math.min(limit,deadline-Date.now()))});
    // Acceptance of cancellation is not terminal completion. Never reuse the aborted work signal.
    if(!completed){try{await transport.request('POST',`/v1/agents/sessions/${sessionId}/events`,{events:[{type:'agent.session.input.cancel'}]},options(1000));}catch{}}
-   for(let attempt=0;attempt<2&&Date.now()<deadline;attempt++){try{const ack=await transport.request('DELETE',`/v1/agents/sessions/${sessionId}`,undefined,options(1500));if(!exactKeys(ack,['id','deleted','object'])||ack.id!==sessionId||ack.deleted!==true||ack.object!=='agent.session.deleted')throw new ApiError('INVALID_DELETE_ACK');cleanup='deleted';break;}catch{if(attempt===0&&Date.now()<deadline){try{await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,options(500));}catch{}}}}
-   onTrace({stage:cleanup==='deleted'?'agent.cleanup.deleted':'agent.cleanup.failed',sessionId});}else{onTrace({stage:'agent.cleanup.failed'});}
+   let cleanupAttempts=0,lastCleanupFailure;
+   for(let attempt=0;attempt<2&&Date.now()<deadline;attempt++){try{cleanupAttempts++;const ack=await transport.request('DELETE',`/v1/agents/sessions/${sessionId}`,undefined,options(1500));if(!exactKeys(ack,['id','deleted','object'])||ack.id!==sessionId||ack.deleted!==true||ack.object!=='agent.session.deleted')throw new ApiError('INVALID_DELETE_ACK');cleanup='deleted';break;}catch(error){lastCleanupFailure=cleanupFailure(error);if(attempt===0&&Date.now()<deadline){try{await transport.request('GET',`/v1/agents/sessions/${sessionId}`,undefined,options(500));}catch{}}}}
+   onTrace({stage:cleanup==='deleted'?'agent.cleanup.deleted':'agent.cleanup.failed',cleanupAttempts,...(cleanup==='failed'?(lastCleanupFailure??{cleanupCode:'CLEANUP_ERROR'}):{})});}else{onTrace({stage:'agent.cleanup.failed',cleanupCode:'MISSING_SESSION_ID',cleanupAttempts:0});}
  }
  return wrapResult({mode:transport.mode,...plan,toolCalls,cleanup});
 }
