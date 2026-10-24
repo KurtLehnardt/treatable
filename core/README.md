@@ -2,7 +2,7 @@
 
 Research information, not medical advice.
 
-`core/` is the runtime-neutral TypeScript core that every Treatable app runs: the desktop helper (Node, task A6a) and the mobile app (Hermes). It owns the host <-> core protocol, request and output validation, session state, and the consent-receipt machinery. Platform UIs only send protocol messages and show what comes back; they never build OpenAI payloads and never decide whether a payload may be sent.
+`core/` is the runtime-neutral TypeScript core that every Treatable app runs: the desktop helper (Node, task A6a) and the mobile app (Hermes). It owns the host <-> core protocol, request and output validation, session state, the consent-receipt machinery, deterministic local screening, and the outbound transport gate. Platform UIs only send protocol messages and show what comes back; they never build OpenAI payloads and never decide whether a payload may be sent.
 
 ## Layout
 
@@ -13,6 +13,10 @@ Research information, not medical advice.
 | `src/session.ts` | In-memory session: prepared consent, running operations, seen request IDs, pinned subject digest, typed slots. `wipe()` drops everything. |
 | `src/consent/` | Prepared-consent store (pinned preview, SHA-256 digest through the port, five-minute one-use tokens, invalidation) and the policy receipt. |
 | `src/preview.ts` | Deterministic builders for the exact outbound preview. |
+| `src/screening.ts` | Deterministic local screening (task A1b): age, sex, status, and staleness checks; haversine distance to the nearest located site (informational, never an exclusion); typed session slot for study records (at most 1000). |
+| `src/zip.ts` | Offline ZIP-to-centroid lookup (task A1b): bundled table loaded through the Loader port and pinned by SHA-256, cached per session; it never leaves the device. |
+| `src/transport-gate.ts` | The outbound transport gate (task A1b): the only request builder plus an independent guard, so no caller and no host-supplied port can widen the endpoint allowlist, the `api.openai.com` origin pin, the body cap, or the header rules. |
+| `data/zip-centroids.v1.json` | The bundled ZIP centroid table (41,488 entries; CC BY 4.0, GeoNames), byte-identical to the scaffold source and pinned by SHA-256 in `src/zip.ts`. |
 | `src/ports.ts` | Port interfaces: Transport, Sha256, TokenSource, Clock, Loader. |
 | `src/bytes.ts`, `src/json.ts`, `src/cancel.ts`, `src/resources.ts` | Neutral helpers: UTF-8 without host encoders, canonical JSON (RFC 8785 ordering), cancellation, bounded resource loading. |
 | `node/ports.node.ts` | Node reference implementations of the ports. Never imported by `src/`. |
@@ -24,7 +28,7 @@ Research information, not medical advice.
 
 Everything with an effect goes through a port that the host injects. Each port's contract is documented in `src/ports.ts`; the core treats port results as untrusted and validates them.
 
-- **Transport**: `request({ method, url, headers, body: Uint8Array, signal }) -> { status, headers, body: Uint8Array | AsyncIterable<Uint8Array> }`. HTTPS with certificate validation, no redirects. The core reads bodies with its own byte cap. Endpoint allowlist, host pinning, and request caps around this port are task A1b.
+- **Transport**: `request({ method, url, headers, body: Uint8Array, signal }) -> { status, headers, body: Uint8Array | AsyncIterable<Uint8Array> }`. HTTPS with certificate validation, no redirects. The core reads bodies with its own byte cap. The endpoint allowlist, the `api.openai.com` origin pin, the request body cap, and the header rules are enforced by `src/transport-gate.ts` (task A1b) in core code the port cannot replace: the guard re-validates every request, rebuilds it frozen with a fresh body copy, and a rejected request never reaches the port.
 - **Sha256**: `digestHex(bytes) -> hex` (sync or async).
 - **TokenSource**: `randomBytes(n)` from the operating system's cryptographic generator.
 - **Clock**: `now()` (wall time for display), `monotonic()` (expiry decisions), `schedule(ms, fn) -> cancel`.
@@ -38,7 +42,7 @@ Everything with an effect goes through a port that the host injects. Each port's
 | --- | --- | --- |
 | `status` | host -> core | implemented |
 | `searchTrials` | host -> core | `NOT_IMPLEMENTED` until task A2 (live ClinicalTrials.gov client and record-set subject) |
-| `screenLocal` | host -> core | `NOT_IMPLEMENTED` until task A1b (deterministic screening) |
+| `screenLocal` | host -> core | implemented (task A1b); screens the study records in the session, which task A2's `searchTrials` supplies |
 | `prepareReal` | host -> core | consent gate implemented; `NOT_IMPLEMENTED` until tasks A2 and A4 supply the preview pipeline |
 | `executeReal` | host -> core | consent gate and credential gating implemented; `NOT_IMPLEMENTED` until task A4 supplies the provider pipeline |
 | `revokeReal` | host -> core | implemented |

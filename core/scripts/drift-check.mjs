@@ -24,10 +24,10 @@ import { fileURLToPath } from 'node:url';
 
 export const BASE_COMMIT = '48c569e';
 
-// Git blob IDs at 48c569e. "ported" files were ported by task A1a; "pending" files are reviewed,
-// security-critical sources that later tasks port (A1b, A4, A6a, A6b); "reference" files informed
-// the design without code being copied. Every entry is checked, because any change in them needs a
-// review before the next re-base.
+// Git blob IDs at 48c569e. "ported" files were ported by tasks A1a and A1b; "pending" files are
+// reviewed, security-critical sources that later tasks port (A4, A6a, A6b); "reference" files
+// informed the design without code being copied. Every entry is checked, because any change in them
+// needs a review before the next re-base.
 export const PORTED_SOURCES = [
   { path: 'extension/native/real.mjs', blob: '699f0e29e7498543ada36646d4ad5af918be3bd1', status: 'ported (A1a): PreparedRealStore, publicStudy field set, request texts, corpus integrity checks' },
   { path: 'extension/shared/real-contract.mjs', blob: '3ff2614b3ac040d5657f73554b331a299716c20d', status: 'ported (A1a): policy receipt, TTL, packet, execute/revoke, result and prepared-reply contracts' },
@@ -38,11 +38,16 @@ export const PORTED_SOURCES = [
   { path: 'extension/native/host.mjs', blob: 'a73405c5f9077b8e17796d7a6bff6b78065abd88', status: 'ported (A1a): request dispatch, BUSY, cancel, revoke, invalidation; pending (A6a): process lifecycle' },
   { path: 'extension/native/core.mjs', blob: 'df85cfa98f10e3860ffd98c34d2a1010436373bf', status: 'ported (A1a): ID pattern and reply ID; pending (A6a): stdio framing' },
   { path: 'extension/src/validation.ts', blob: '66536a8c6f8b7889cda8facbefafa5462a167e9e', status: 'ported (A1a): boundedText rules, request ID, message budget' },
-  { path: 'extension/native/transport.mjs', blob: '5f1471cf4bceb1b2ca4dd95b714f131ebbd7cdc0', status: 'pending (A1b, A4): endpoint allowlist, host pin, body and response caps, error mapping' },
+  { path: 'scaffold/lib/eligibility/hardFilters.ts', blob: '75abf15f0709d92d3af7cdca5d925c582a635dc2', status: 'ported (A1b): screenStudy pipeline, ageInYears, status and sex rules, haversine distance -> src/screening.ts' },
+  { path: 'scaffold/data/us-zip-centroids.json', blob: '7aad1e742e4b1fa16301075d1a8bbfca50353a9d', status: 'ported (A1b): bundled byte-identical as core/data/zip-centroids.v1.json, pinned by sha256' },
+  { path: 'extension/src/core.ts', blob: 'c16e69c1ee1ab460731f256aa82cbf0cd7dbd231', status: 'ported (A1b): resolveZip and the ZIP-table handling -> src/zip.ts; nearestSite -> src/screening.ts' },
+  { path: 'extension/native/transport.mjs', blob: '5f1471cf4bceb1b2ca4dd95b714f131ebbd7cdc0', status: 'ported (A1b): outbound request invariants (endpoint allowlist, host pin, body cap, header and beta rules) -> src/transport-gate.ts; pending (A4): response caps and error mapping' },
   { path: 'extension/native/provider.mjs', blob: '4d7c2726620d2301ecdace8ba770fc1abd035f17', status: 'pending (A4): Decisions and Agents runners, cleanup' },
   { path: 'extension/native/credentials.mjs', blob: '06bdbd02238b7f4822efa70c65d52d1ed35e49b9', status: 'reference (A6b): credential boundary' },
   { path: 'extension/native/test/real.test.mjs', blob: '63b58728bc069ed88ebb9048817c868f893a554d', status: 'ported (A1a): consent and contract tests; pending (A4, A6a): HTTPS and stdio tests' },
   { path: 'extension/native/test/core.test.mjs', blob: 'a19066611e6619b37a824c051f96fcdbdae3c93c', status: 'ported (A1a): request validation tests; pending (A4, A6a): provider and framing tests' },
+  { path: 'scaffold/lib/studies/__tests__/clinical.test.ts', blob: '20261bbf9d3f2bb57689bb3dfdb1dc58c37c29bb', status: 'ported (A1b): screening cases (age, distance, sex, status, staleness) and offline-ZIP cases -> tests/screening.test.ts, tests/zip.test.ts' },
+  { path: 'extension/tests/core.test.ts', blob: 'cbdf6e6292179baad01e57ecdc6691772fb56858', status: 'ported (A1b): resolveZip corpus cases (leading zeros, ZIP+4, unknown ZIP) -> tests/zip.test.ts' },
 ];
 
 function parseArgs(argv) {
