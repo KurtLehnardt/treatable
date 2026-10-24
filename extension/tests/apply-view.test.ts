@@ -241,3 +241,16 @@ test('the intro tour points at the right Treatable controls on a study page and 
   assert.equal(clicks,1*6,'only the six Next presses made by the test; the tour clicked no Treatable control');
  }finally{await settle(8);env.teardown()}
 });
+
+test('the brief status line is plain: study review and question sorting, with no API names',async()=>{
+ const h=harness(),m=mount(h);
+ try{
+  await generate(m);
+  const status=renderedText(nodesWith(m,'brief-status')[0]).replace(/\s+/g,' ');
+  assert.ok(status.includes('Study review complete · Questions sorted'),status);
+  assert.doesNotMatch(status,/Agents|Decisions/);
+  const failed=html({...m.ref.vm!,result:{...res(m)!,agentStatus:'failed',decisionStatus:'failed'}} as ApplyController).replaceAll('<!-- -->','');
+  assert.ok(failed.includes('Study review unavailable · Question sorting unavailable'));
+  assert.doesNotMatch(failed.slice(failed.indexOf('brief-status')),/Agents:|Decisions:/);
+ }finally{m.unmount()}
+});

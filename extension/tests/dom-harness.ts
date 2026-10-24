@@ -33,11 +33,23 @@ export function installDom(html = '<!doctype html><html><head></head><body></bod
   define('navigator', win.navigator);
   define('location', win.location);
   define('history', win.history);
+  // Timers started through the global setTimeout (sweetalert2 restores focus 100 ms after a dialog closes) read
+  // DOM globals when they fire. They are cancelled at teardown so that none runs after the globals are gone.
+  const hostSetTimeout = globalThis.setTimeout;
+  const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+  define('setTimeout', ((handler: unknown, delay?: number, ...args: unknown[]) => {
+    if (typeof handler !== 'function') return (hostSetTimeout as any)(handler, delay, ...args);
+    const timer = hostSetTimeout(() => { pendingTimers.delete(timer); handler(...args); }, delay);
+    pendingTimers.add(timer);
+    return timer;
+  }) as unknown as typeof setTimeout);
   return {
     dom,
     window: win,
     document: win.document,
     teardown() {
+      for (const timer of pendingTimers) clearTimeout(timer);
+      pendingTimers.clear();
       for (const [name, descriptor] of backup) {
         if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as any)[name];
       }
