@@ -1,0 +1,2944 @@
+{
+  "records": [
+    {
+      "id": "NCT07254806",
+      "fetchedAt": 1792848225175,
+      "sha256": "266c2d2997eefe8af16fb6c64e24cc001f495192bb0c02c7ca41b73f1ce1c5b9",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT07254806",
+            "orgStudyIdInfo": {
+              "id": "DGX-A02"
+            },
+            "organization": {
+              "fullName": "DiscGenics, Inc.",
+              "class": "INDUSTRY"
+            },
+            "briefTitle": "A Study to Evaluate the Effectiveness of IDCT (Intradiscal Cell Therapy) in Subjects With One Level, Symptomatic Mild to Moderate Lumbar Degenerative Disc Disease",
+            "officialTitle": "A Prospective, Randomized, Double-Blinded, Sham-Controlled, Multicenter Study to Evaluate the Safety and Efficacy of IDCT in Subjects With Single-Level, Symptomatic Mild to Moderate Lumbar Intervertebral Disc Degeneration",
+            "acronym": "IDCT"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2026-10",
+            "overallStatus": "RECRUITING",
+            "startDateStruct": {
+              "date": "2025-12-23",
+              "type": "ACTUAL"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2027-11-24",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2028-11-24",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2025-11-17",
+            "studyFirstSubmitQcDate": "2025-11-20",
+            "studyFirstPostDateStruct": {
+              "date": "2025-11-28",
+              "type": "ACTUAL"
+            },
+            "lastUpdateSubmitDate": "2026-10-14",
+            "lastUpdatePostDateStruct": {
+              "date": "2026-10-15",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "SPONSOR"
+            },
+            "leadSponsor": {
+              "name": "DiscGenics, Inc.",
+              "class": "INDUSTRY"
+            }
+          },
+          "oversightModule": {
+            "oversightHasDmc": true,
+            "isFdaRegulatedDrug": true,
+            "isFdaRegulatedDevice": false
+          },
+          "descriptionModule": {
+            "briefSummary": "This is a Phase III, randomized, double-blinded, Sham-controlled, multi-center study in subjects with single-level, symptomatic lumbar (L3- S1) intervertebral disc degeneration. The study will have a 52-week primary period followed by 52 week Follow-up Period (total of 104 weeks).\n\nThe study protocol will be approved by the Institutional Review Board (IRB) or Independent Ethics Committee (IEC), and the study will be conducted in accordance with Good Clinical Practice (GCP). All subjects will provide written informed consent prior to Screening.\n\nApproximately 162 subjects will be enrolled in the study. Up to 45 days prior to treatment, subjects will be screened for study inclusion, which includes obtaining baseline MRI and X-ray imaging. Imaging results for subjects initially eligible for study participation will be sent to a central imaging vendor for review and confirmation of eligibility, including the number of levels with degeneration. Subjects meeting all inclusion/exclusion criteria will be assigned to the corresponding treatment arm group and subsequently randomized to IDCT or Sham.\n\nRandomization will occur approximately 7 to 14 days prior to the scheduled treatment administration date.\n\nOverall, 162 subjects will be enrolled and randomized to IDCT or Sham in a 2:1 ratio.\n\n* IDCT (n=108)\n* Sham (n=54)",
+            "detailedDescription": "Adult subjects with a diagnosis of single-level, mild to moderate, symptomatic lumbar (L3-S1) intervertebral disc degeneration that give consent and meet all the inclusion criteria and none of the exclusion criteria will be enrolled in this study. The disease, single-level disc will be known as the 'target disc' and will be either L3/L4, L4/L5, or L5/S1."
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Degenerative Disc Disease"
+            ],
+            "keywords": [
+              "DDD",
+              "low back pain",
+              "degenerative disc disease"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE3"
+            ],
+            "designInfo": {
+              "allocation": "RANDOMIZED",
+              "interventionModel": "PARALLEL",
+              "primaryPurpose": "TREATMENT",
+              "maskingInfo": {
+                "masking": "DOUBLE",
+                "maskingDescription": "All parties in this trial will be blinded with the exception of the unblinded injecting sub-investigator and their team.",
+                "whoMasked": [
+                  "PARTICIPANT",
+                  "INVESTIGATOR"
+                ]
+              }
+            },
+            "enrollmentInfo": {
+              "count": 162,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "IDCT (n=108); Intradiscal injection of IDCT in a single target disc",
+                "type": "EXPERIMENTAL",
+                "description": "1 mL intradiscal injection of 9,000,000 cells/mL",
+                "interventionNames": [
+                  "Biological: IDCT (rebonuputemcel)"
+                ]
+              },
+              {
+                "label": "Sham (n=54);",
+                "type": "SHAM_COMPARATOR",
+                "description": "Needle insertion up to the annulus of a single target disc.",
+                "interventionNames": [
+                  "Other: Sham (No Treatment)"
+                ]
+              }
+            ],
+            "interventions": [
+              {
+                "type": "BIOLOGICAL",
+                "name": "IDCT (rebonuputemcel)",
+                "description": "Single intradiscal injection of 1 mL of 9,000,000 cells/mL IDCT in a single target disc.",
+                "armGroupLabels": [
+                  "IDCT (n=108); Intradiscal injection of IDCT in a single target disc"
+                ]
+              },
+              {
+                "type": "OTHER",
+                "name": "Sham (No Treatment)",
+                "description": "Single Sham needle insertion up to the annulus of a single target disc.",
+                "armGroupLabels": [
+                  "Sham (n=54);"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Visual Analogue Scale (VAS) for low back pain",
+                "description": "VAS is a sliding visual scale of 0 being \"no pain\" and 100 being \"worst pain Imaginable' to assess changesfrom baseline in low back pain compared to Sham",
+                "timeFrame": "Week 52"
+              },
+              {
+                "measure": "Oswestry Disability Index (ODI)",
+                "description": "ODI is a 10-item questionnaire used to measure functional disability in people with low back pain. It is a self-administered tool that assesses how back pain affects daily activities like walking, sleeping, and personal hygiene, with scores ranging from 0% (no disability) to 100% (maximum disability).",
+                "timeFrame": "Week 52"
+              },
+              {
+                "measure": "Adverse Events",
+                "description": "Incidence of grade 2 (moderate) or greater AEs and SAEs",
+                "timeFrame": "Day 1 to Week 52 in each treatment group."
+              },
+              {
+                "measure": "Adverse events of special interest",
+                "description": "Incidence of Adverse Events of Special Interest (AESI) to include any symptomatic injury of the target disc including annular tear, disc herniation/extrusion/prolapse as well as discitis.",
+                "timeFrame": "Day 1 to Week 52 in each treatment group"
+              }
+            ],
+            "secondaryOutcomes": [
+              {
+                "measure": "Visual Analogue Scale (VAS)",
+                "description": "VAS is a sliding visual scale of 0 being \"no pain\" and 100 being \"worst pain Imaginable' to assess changes from baseline in low back pain",
+                "timeFrame": "Week 4, 12 and 26, 78 and 104"
+              },
+              {
+                "measure": "Oswestry Disability Index (ODI)",
+                "description": "ODI is a 10-item questionnaire used to measure functional disability in people with low back pain. It is a self-administered tool that assesses how back pain affects daily activities like walking, sleeping, and personal hygiene, with scores ranging from 0% (no disability) to 100% (maximum disability).",
+                "timeFrame": "Week 4, 12 and 26, 78 and 105"
+              },
+              {
+                "measure": "EQ-5D",
+                "description": "EQ-5D is a validated too consisting of a set of questions covering five dimensions, with each dimension having a different severity level.\n\n1. Mobility: Ranging from \"no problems walking about\" to \"confined to bed\". Self-care: Ranging from \"no problems with self-care\" to \"unable to wash or dress myself\".\n2. Usual activities: Ranging from \"no problems doing my usual activities\" to \"unable to do my usual activities\" (e.g., work, study, housework).\n3. Pain/discomfort: Ranging from \"no pain or discomfort\" to \"extreme pain or discomfort\".\n4. Anxiety/depression: Ranging from \"not anxious or depressed\" to \"extremely anxious or depressed\".\n5. Visual Analog Scale (EQ VAS): A scale (typically 0-100) where respondents mark their overall health from \"worst imaginable\" to \"best imaginable\".",
+                "timeFrame": "Enrollment through Week 104"
+              },
+              {
+                "measure": "Disc Volume",
+                "description": "MRI assessment of Disc Volume though Week 104",
+                "timeFrame": "Day 1 to Week 104"
+              },
+              {
+                "measure": "Pain Medication Use",
+                "description": "Concomitant pain medication use for low back pain related to the target disc",
+                "timeFrame": "Enrollment to Week 104"
+              },
+              {
+                "measure": "Concomitant Therapy",
+                "description": "Concomitant medical therapy for low back pain (physical therapy, acupuncture, chiropractic manipulation, massage, and at-home, medically supervised exercise program etc.) use for low back pain",
+                "timeFrame": "Enrollment to Week 104"
+              },
+              {
+                "measure": "Treatment Failure Rate",
+                "description": "Treatment failure rate (defined as an invasive non-surgical or surgical intervention) directly related to the target disc.",
+                "timeFrame": "Enrollment to week 104"
+              },
+              {
+                "measure": "Adverse Events",
+                "description": "The incidence of grade 2 (moderate) or greater AEs and SAEs",
+                "timeFrame": "Enrollment to Week 104"
+              },
+              {
+                "measure": "Adverse Events of Special Interest (AESI)",
+                "description": "The incidence of Adverse Events of Special Interest (AESI) observed defined as any one of the followings symptomatic injury of the target disc including annular tear, disc, herniation/extrusion/prolapse or any case of discitis.",
+                "timeFrame": "Enrollment to Week 104"
+              }
+            ],
+            "otherOutcomes": [
+              {
+                "measure": "MRI Based evaluations",
+                "description": "MRI Evaluation of the lumbar spine will be reported as an aggregate in one report to assess of disc height, Modified Pfirrmann grade, Modic changes, annular tears/fissures, endplate integrity, herniation, and any additional noteworthy observations at 12, 26, 52, 78, and 104.",
+                "timeFrame": "Enrollment through Week 104"
+              },
+              {
+                "measure": "X-ray evaluation of the lumbar spine",
+                "description": "X-ray evaluation of flexion/extension will be assessed and measure in degrees of angles.",
+                "timeFrame": "Screening through Week 104"
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria:\n\n1. Has a diagnosis of mild to moderate, symptomatic, single-level degenerative disc disease (DDD) from L3-S1.\n2. Has a target disc that meets Modified Pfirrmann Grade 3-7, as determined by a central radiologist.\n3. Is ≥18 and ≤75 years of age, skeletally mature, and has a body mass index (BMI) ≥18 kg/m2 and ≤38 kg/m2 at Screening.\n4. Has been experiencing chronic low back pain for at least 6 months prior to Screening.\n5. Has had low back pain that is unresponsive to at least 3 months of conservative care (nonoperative treatment) to include at least one non-pharmacological intervention which may include physical therapy, acupuncture, chiropractic manipulation, massage, and at home medically supervised exercise program and two pharmacological interventions which may include NSAIDs, acetaminophen, duloxetine, and/or injectable therapy.\n6. Has pre-treatment low back pain score of 45 to 90 on VAS (Visual Analogue Scale) for low back pain at Screening and Day 1.\n7. Has pre-treatment ODI score of 35 to 90 at Screening and Day 1.\n8. Is willing to voluntarily sign the informed consent form and agrees to the release of previous medical history for purposes of this study (i.e., HIPAA authorization) at Screening.\n9. Is physically and mentally able to comply with the protocol, able to understand and complete the required forms, and willing and able to adhere to the requirements of the protocol in the opinion of the Investigator.\n10. Female-born subjects of childbearing potential must agree to and comply with using highly effective methods of birth control for the duration of the study (e.g., oral contraceptive, implant, injectable, indwelling intrauterine device, sexual abstinence, condoms, or a vasectomized partner).-\n\n    Exclusion Criteria:\n\n    Physical/ Medical History Exclusion Criteria\n11. Has low back pain that in the Investigator's opinion is predominately myofascial in nature.\n12. Has constant, unchanging low back pain that is not improved in any spinal position.\n13. Has radiculopathy resulting from nerve compression.\n14. Has non-radicular unilateral or bilateral leg pain with intensity greater than 50% of the intensity of the low-back pain, as measured by VAS.\n15. Leg pain that is of radicular origin, i.e., due to stimulation of nerve roots or dorsal root ganglion of a spinal nerve by compressive forces.\n16. Has frequent leg pain that extends below the knee.\n17. Has severe unilateral or bilateral osteoarthritis of the knee or hip.\n18. Severe spinal arthritis\n19. Has cauda equina syndrome.\n20. Has had previous lumbar spine surgery.\n21. Has had previous disc invasive treatment procedures (i.e., intradiscal electrothermal therapy, intradiscal radiofrequency thermocoagulation) or intradiscal injections (i.e., injection of corticosteroids, methylene blue, dextrose, or glucosamine and chondroitin sulfate) or diagnostic discography at L3-S1 within the 3 months prior to Screening.\n22. Subjects who have had basivertebral nerve ablation at L3-S1.\n23. Has clinical suspicion of facet pain as the primary pain generator.\n24. Has current infection at the planned procedure site, active systemic infection, or current or prior history of lumbar spinal infection (i.e., discitis, septic arthritis, epidural abscess).\n25. Has a history of fibromyalgia.\n26. Has tested positive for Hepatitis B virus (HBV), Hepatitis C virus (HCV), or Human Immunodeficiency Virus (HIV).\n27. Has presence of an active malignancy or tumor, or a prior history of malignancy within the last five years (except for basal cell carcinoma of the skin).\n28. Has presence or prior history of a spinal malignancy.\n29. Has significant systemic disease, such as unstable angina or autoimmune disease, such as rheumatoid arthritis. Has a history of congenital or acquired coagulopathy or thrombocytopenia.\n\n31\\. Is currently taking anticoagulant, antiplatelet, or thrombolytic medications (except for aspirin or nonsteroidal anti-inflammatory drugs \\[NSAIDS\\]) and at the Investigator's medical discernment and discretion is unable to withhold medications for the time required per site standard or care, prior to the IDCT injection or is taking antineoplastic medications.\n\n32\\. Is at higher risk for post-surgical infection (e.g., taking immunosuppressants), has a severe infection or a history of serious infection.\n\n33\\. Has concomitant conditions requiring daily oral steroid usage for more than 30 days in the preceding 90 days before Screening.\n\n34\\. Is taking opioids greater than 20 MME per day on an intermittent (as needed) basis OR is taking 20 MME or greater daily for more than 3 months prior to Screening\n\n35\\. Has a history of unexplained, easy, or persistent bruising or bleeding, bleeding from the gums, or bleeding problems experienced in previous surgical procedures.\n\n36\\. Has a history of hypersensitivity or anaphylactic reaction to bovine products, sodium hyaluronate/ hyaluronan/ hyaluronic acid, gentamicin, amphotericin b, dimethyl sulfoxide (DMSO), crustaceous/ shellfish, or porcine products.\n\n37\\. Has an uncontrolled psychiatric condition or substance/alcohol abuse that would potentially interfere with the subject's participation in the study within 2 years prior to Screening in the opinion of the Investigator.\n\n38\\. Has positive serum pregnancy test or nursing at time of Screening or has plans to become pregnant within the planned length of the study (2 years).\n\n39\\. Has a body habitus that precludes adequate fluoroscopic visualization for the procedure or the procedure is physically impossible.\n\n40\\. Has or requires an implantable electronic defibrillator, pacemaker, or has other contraindication to MRI scanning or cannot tolerate MRI scanning. Subjects who are expected to require a defibrillator or pacemaker, as determined by the Investigator should be excluded.\n\n41\\. Has participated in another clinical study within the 6 months prior to Screening.\n\n42\\. Has been a recipient or plans to be a recipient during trial participation of stem cell product to treat the lumbar spine.\n\n43\\. Has participated in a prior IDCT clinical study.\n\n44\\. Has pending litigation against a health care professional, except where required by the insurer as a condition of coverage.\n\n45\\. A person who would not be available for the entire planned length of the trial.\n\n46\\. Has active or pending worker's compensation claims. 47. In the Investigators opinion, the subject is not suitable for participation in the clinical trial.\n\nImaging Exclusion Criteria:\n\n48\\. Three discs (L3-S1) that have a Modified Pfirrmann Grade 4-7.\n\n49\\. Has evidence of prior lumbar vertebral body fracture at L3-S1.\n\n50\\. Has scoliosis with curvature \\> 10 degrees.\n\n51\\. Has congenital spinal irregularities such as segmentation.\n\n52\\. Has an acute fracture of the spine at the time of enrollment in the study. Clinically compromised vertebral bodies within L3-S1 due to current or past trauma, e.g., sustained pathological fracture or multiple fractures of vertebrae.\n\n53\\. Has evidence of dynamic instability on lumbar flexion extension per screening radiographs as indicated by \\>4.5 mm of translational motion at L3-S1; \\>15° of angular motion at L3/-L4; \\>20° of angular motion at L4-L/5; or \\>25° angular motion at L5/-S1.\n\n54\\. Has Grade 2 or higher spondylolisthesis at L3-S1, as assessed by Meyerding classification.\n\n55\\. Has lumbar spondylitis or other undifferentiated spondyloarthropathy.\n\n56\\. Has Modic Type III Changes at L3-S1.\n\n57\\. Has radiographic evidence or suspicion of a full thickness annular tear at L3-S1.\n\n58\\. Has evidence of abnormal disc morphology defined as an extrusion or sequestration according to Fardon classification at L3- S1.\n\n59\\. Has herniation \\> 3 mm in AP dimension that is associated with nerve root compression.",
+            "healthyVolunteers": false,
+            "sex": "ALL",
+            "minimumAge": "18 Years",
+            "maximumAge": "75 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ]
+          },
+          "contactsLocationsModule": {
+            "overallOfficials": [
+              {
+                "name": "Lisa Flood",
+                "affiliation": "DiscGenics, Inc.",
+                "role": "STUDY_DIRECTOR"
+              }
+            ],
+            "locations": [
+              {
+                "facility": "Alabama Clinical Therapeutics",
+                "status": "RECRUITING",
+                "city": "Birmingham",
+                "state": "Alabama",
+                "zip": "35235",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Bailey Luster",
+                    "role": "CONTACT",
+                    "phone": "205-833-2228",
+                    "email": "bailey.murphy@actstudy.net"
+                  },
+                  {
+                    "name": "Brad 205-833-2228, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 33.52066,
+                  "lon": -86.80249
+                }
+              },
+              {
+                "facility": "Mayo Clinic (AZ)",
+                "status": "RECRUITING",
+                "city": "Phoenix",
+                "state": "Arizona",
+                "zip": "85054",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Debbie Ryan",
+                    "role": "CONTACT",
+                    "phone": "480-342-1208",
+                    "email": "Ryan.Debra29@mayo.edu"
+                  },
+                  {
+                    "name": "John Freeman, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 33.44838,
+                  "lon": -112.07404
+                }
+              },
+              {
+                "facility": "HonorHealth",
+                "status": "RECRUITING",
+                "city": "Scottsdale",
+                "state": "Arizona",
+                "zip": "85251",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Helen Riahi",
+                    "role": "CONTACT",
+                    "phone": "602-258-2863",
+                    "email": "hriahi@honorhealth.com"
+                  },
+                  {
+                    "name": "Luis Tumialan, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 33.50921,
+                  "lon": -111.89903
+                }
+              },
+              {
+                "facility": "University of Arkansas for Medical Sciences",
+                "status": "RECRUITING",
+                "city": "Little Rock",
+                "state": "Arkansas",
+                "zip": "72205",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Lisa Richardson",
+                    "role": "CONTACT",
+                    "phone": "501-526-7664",
+                    "email": "Lrichardson3@uams.edu"
+                  },
+                  {
+                    "name": "Erica Petersen, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 34.74648,
+                  "lon": -92.28959
+                }
+              },
+              {
+                "facility": "Solaris Research Institute",
+                "status": "RECRUITING",
+                "city": "San Diego",
+                "state": "California",
+                "zip": "92111",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Michelle Yi",
+                    "role": "CONTACT",
+                    "phone": "858-251-6420",
+                    "email": "myi@solarisresearchinstitute.com"
+                  },
+                  {
+                    "name": "Krishnan Chakravarthy, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 32.71571,
+                  "lon": -117.16472
+                }
+              },
+              {
+                "facility": "Source Healthcare",
+                "status": "RECRUITING",
+                "city": "Santa Monica",
+                "state": "California",
+                "zip": "90403",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Nidhi Thati",
+                    "role": "CONTACT",
+                    "phone": "310-574-2777",
+                    "email": "nidhi@sourcehealthcare.com"
+                  },
+                  {
+                    "name": "Timothy Davis, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 34.01949,
+                  "lon": -118.49138
+                }
+              },
+              {
+                "facility": "Pain Management and Injury Relief",
+                "status": "RECRUITING",
+                "city": "Thousand Oaks",
+                "state": "California",
+                "zip": "91320",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Yvonne Avila",
+                    "role": "CONTACT",
+                    "phone": "877-972-7576",
+                    "email": "yvonne.avila@sclamanagement.com"
+                  },
+                  {
+                    "name": "Alexander Hersel, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 34.17056,
+                  "lon": -118.83759
+                }
+              },
+              {
+                "facility": "International Spine, Pain and Performance Center",
+                "status": "RECRUITING",
+                "city": "Washington D.C.",
+                "state": "District of Columbia",
+                "zip": "20006",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Sydney Sheridan",
+                    "role": "CONTACT",
+                    "phone": "202-808-8295",
+                    "email": "ssheridan@isppcenter.com"
+                  },
+                  {
+                    "name": "Mehul Desai, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 38.89511,
+                  "lon": -77.03637
+                }
+              },
+              {
+                "facility": "Mayo Clinic (FL)",
+                "status": "RECRUITING",
+                "city": "Jacksonville",
+                "state": "Florida",
+                "zip": "32224",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Katie Siebenlar",
+                    "role": "CONTACT",
+                    "phone": "904-953-4915",
+                    "email": "siebenaler.katie@mayo.edu"
+                  },
+                  {
+                    "name": "Wenchun Qu, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 30.33218,
+                  "lon": -81.65565
+                }
+              },
+              {
+                "facility": "University of Miami Health System",
+                "status": "RECRUITING",
+                "city": "Miami",
+                "state": "Florida",
+                "zip": "33136",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Yamilet Nieves Nieves",
+                    "role": "CONTACT",
+                    "phone": "305-243-3048",
+                    "email": "yxn176@med.miami.edu"
+                  },
+                  {
+                    "name": "Barth Green, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 25.77427,
+                  "lon": -80.19366
+                }
+              },
+              {
+                "facility": "Conquest Research",
+                "status": "RECRUITING",
+                "city": "Orlando",
+                "state": "Florida",
+                "zip": "32832",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Kendra Tandeski",
+                    "role": "CONTACT",
+                    "phone": "689-488-9112",
+                    "email": "kendra.tandeski@conquestresearch.com"
+                  },
+                  {
+                    "name": "Gilbert Mbeo, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 28.53834,
+                  "lon": -81.37924
+                }
+              },
+              {
+                "facility": "Vantage Clinical Trials",
+                "status": "RECRUITING",
+                "city": "St. Petersburg",
+                "state": "Florida",
+                "zip": "33709",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Civahn Robinson",
+                    "role": "CONTACT",
+                    "phone": "727-471-6226",
+                    "email": "crobinson@vantagetrials.com"
+                  },
+                  {
+                    "name": "Robert Guirguis, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 27.77086,
+                  "lon": -82.67927
+                }
+              },
+              {
+                "facility": "Vantage Clinical Trials",
+                "status": "RECRUITING",
+                "city": "Tampa",
+                "state": "Florida",
+                "zip": "33709",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Yiset Sanchez",
+                    "role": "CONTACT",
+                    "phone": "813-549-5262",
+                    "email": "ysanchez@vantagetrials.com"
+                  },
+                  {
+                    "name": "Jorge Leal, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 27.94752,
+                  "lon": -82.45843
+                }
+              },
+              {
+                "facility": "Injury Care Family Care Research",
+                "status": "TERMINATED",
+                "city": "Boise",
+                "state": "Idaho",
+                "zip": "83709",
+                "country": "United States",
+                "geoPoint": {
+                  "lat": 43.6135,
+                  "lon": -116.20345
+                }
+              },
+              {
+                "facility": "Axis Spine Center",
+                "status": "RECRUITING",
+                "city": "Post Falls",
+                "state": "Idaho",
+                "zip": "83854",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Study Coordinator",
+                    "role": "CONTACT",
+                    "phone": "208-457-4208",
+                    "email": "elisa.maples@nwsh.com"
+                  },
+                  {
+                    "role": "CONTACT",
+                    "email": "Katelyn.Chemodurow@NWSH.com"
+                  },
+                  {
+                    "name": "Jessica Jameson, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 47.71796,
+                  "lon": -116.95159
+                }
+              },
+              {
+                "facility": "Rush University Medical Center",
+                "status": "RECRUITING",
+                "city": "Chicago",
+                "state": "Illinois",
+                "zip": "60612",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Reehan Malhance",
+                    "role": "CONTACT",
+                    "phone": "312.942.0512",
+                    "email": "Reehan_T_Malhance@rush.edu"
+                  },
+                  {
+                    "name": "John O'Toole, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 41.85003,
+                  "lon": -87.65005
+                }
+              },
+              {
+                "facility": "Indiana Spine Group",
+                "status": "RECRUITING",
+                "city": "Carmel",
+                "state": "Indiana",
+                "zip": "46032",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Sheetal Vinayek",
+                    "role": "CONTACT",
+                    "phone": "317-715-5897",
+                    "email": "svinayek@indianaspinegroup.com"
+                  },
+                  {
+                    "name": "Kevin Macadaeg, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 39.97837,
+                  "lon": -86.11804
+                }
+              },
+              {
+                "facility": "Norton Leatherman Spine Center",
+                "status": "RECRUITING",
+                "city": "Louisville",
+                "state": "Kentucky",
+                "zip": "40202",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Morgan Brown",
+                    "role": "CONTACT",
+                    "phone": "502-584-7525",
+                    "email": "morgan.brown2@nortonhealthcare.org"
+                  },
+                  {
+                    "name": "Steven Glassman, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 38.25424,
+                  "lon": -85.75941
+                }
+              },
+              {
+                "facility": "Ochsner Health System",
+                "status": "RECRUITING",
+                "city": "New Orleans",
+                "state": "Louisiana",
+                "zip": "70121",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Raquel Walker",
+                    "role": "CONTACT",
+                    "phone": "504-703-6091",
+                    "email": "raquel.walker@ochsner.org"
+                  },
+                  {
+                    "name": "Maged Guirguis, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 29.95465,
+                  "lon": -90.07507
+                }
+              },
+              {
+                "facility": "Mayo Clinic (MN)",
+                "status": "RECRUITING",
+                "city": "Rochester",
+                "state": "Minnesota",
+                "zip": "55905",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Rose Decker",
+                    "role": "CONTACT",
+                    "phone": "507-422-0584",
+                    "email": "decker.rose@mayo.edu"
+                  },
+                  {
+                    "name": "Ryan D'Souza, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 44.02163,
+                  "lon": -92.4699
+                }
+              },
+              {
+                "facility": "The Orthopedic Center of St. Louis",
+                "status": "RECRUITING",
+                "city": "St Louis",
+                "state": "Missouri",
+                "zip": "63141",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Study Coordinator",
+                    "role": "CONTACT",
+                    "phone": "314-738-4822",
+                    "email": "fschranck@spirittresearch.com"
+                  },
+                  {
+                    "name": "Matthew Gornet, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 38.62727,
+                  "lon": -90.19789
+                }
+              },
+              {
+                "facility": "Weill Cornell Medicine for Comprehensive Spine Care",
+                "status": "RECRUITING",
+                "city": "New York",
+                "state": "New York",
+                "zip": "10022",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Jeffery Tan",
+                    "role": "CONTACT",
+                    "phone": "888-922-2257",
+                    "email": "jet4014@med.cornell.edu"
+                  },
+                  {
+                    "name": "Prabhav Deo, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 40.71427,
+                  "lon": -74.00597
+                }
+              },
+              {
+                "facility": "Wake Research",
+                "status": "RECRUITING",
+                "city": "Wilmington",
+                "state": "North Carolina",
+                "zip": "28403",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Study Coordinator",
+                    "role": "CONTACT",
+                    "phone": "919-645-9212",
+                    "email": "dmyers@wakeresearch.com"
+                  },
+                  {
+                    "name": "Jeremy Hoff, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 34.23556,
+                  "lon": -77.94604
+                }
+              },
+              {
+                "facility": "Carolinas Pain Institute/ Center For Clinical Research",
+                "status": "RECRUITING",
+                "city": "Winston-Salem",
+                "state": "North Carolina",
+                "zip": "27103",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Study Coordinator",
+                    "role": "CONTACT",
+                    "phone": "336-765-6181",
+                    "phoneExt": "ext 146",
+                    "email": "jbrewer@ccrpain.com"
+                  },
+                  {
+                    "name": "Christopher Gilmore, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 36.09986,
+                  "lon": -80.24422
+                }
+              },
+              {
+                "facility": "Cleveland Clinic",
+                "status": "RECRUITING",
+                "city": "Cleveland",
+                "state": "Ohio",
+                "zip": "10524",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Heather Rogers",
+                    "role": "CONTACT",
+                    "phone": "216-444-1292",
+                    "email": "ROGERSH3@ccf.org"
+                  },
+                  {
+                    "name": "Jijun Xu, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 41.4995,
+                  "lon": -81.69541
+                }
+              },
+              {
+                "facility": "Pacific Sports and Spine",
+                "status": "RECRUITING",
+                "city": "Eugene",
+                "state": "Oregon",
+                "zip": "97404",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Ashley Hamann",
+                    "role": "CONTACT",
+                    "phone": "541-780-0355",
+                    "email": "ahamann@pacificsportsandspine.com"
+                  },
+                  {
+                    "name": "Gregory Moore, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 44.05207,
+                  "lon": -123.08675
+                }
+              },
+              {
+                "facility": "Main Line Spine",
+                "status": "RECRUITING",
+                "city": "King of Prussia",
+                "state": "Pennsylvania",
+                "zip": "19406",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Cheryl Pugh",
+                    "role": "CONTACT",
+                    "phone": "610-337-3111",
+                    "email": "cherylp@mainlinespine.com"
+                  },
+                  {
+                    "name": "Scott Davidoff, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 40.08927,
+                  "lon": -75.39602
+                }
+              },
+              {
+                "facility": "Semmes Murphey Neurological Clinic",
+                "status": "RECRUITING",
+                "city": "Memphis",
+                "state": "Tennessee",
+                "zip": "38120",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Study Coordinator",
+                    "role": "CONTACT",
+                    "phone": "901-260-6111",
+                    "email": "cberryman@semmes-murphey.com"
+                  },
+                  {
+                    "role": "CONTACT",
+                    "phone": "901-259-5319",
+                    "email": "jarnold@semmes-murphey.com"
+                  },
+                  {
+                    "name": "Michael LaBagnara, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 35.14953,
+                  "lon": -90.04898
+                }
+              },
+              {
+                "facility": "Pain Specialists of America",
+                "status": "RECRUITING",
+                "city": "Austin",
+                "state": "Texas",
+                "zip": "78745",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Sheila Nardelli",
+                    "role": "CONTACT",
+                    "phone": "949-922-5785",
+                    "email": "sheila@researchtex.com"
+                  },
+                  {
+                    "name": "Genaro Gutierrez, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 30.26715,
+                  "lon": -97.74306
+                }
+              },
+              {
+                "facility": "University of Utah",
+                "status": "RECRUITING",
+                "city": "Salt Lake City",
+                "state": "Utah",
+                "zip": "84108",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Tou Xiong",
+                    "role": "CONTACT",
+                    "phone": "801-587-5341",
+                    "email": "Tou.Xiong@hsc.utah.edu"
+                  },
+                  {
+                    "name": "Zachary McCormick, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 40.76078,
+                  "lon": -111.89105
+                }
+              },
+              {
+                "facility": "Virginia iSpine Physicians",
+                "status": "RECRUITING",
+                "city": "Richmond",
+                "state": "Virginia",
+                "zip": "23238",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Devon Withers",
+                    "role": "CONTACT",
+                    "phone": "804-330-2611",
+                    "email": "crc2@vaispine.com"
+                  },
+                  {
+                    "name": "Michael DePalma, MD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 37.55376,
+                  "lon": -77.46026
+                }
+              }
+            ]
+          },
+          "ipdSharingStatementModule": {
+            "ipdSharing": "UNDECIDED"
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D055959",
+                "term": "Intervertebral Disc Degeneration"
+              },
+              {
+                "id": "D017116",
+                "term": "Low Back Pain"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D013122",
+                "term": "Spinal Diseases"
+              },
+              {
+                "id": "D001847",
+                "term": "Bone Diseases"
+              },
+              {
+                "id": "D009140",
+                "term": "Musculoskeletal Diseases"
+              },
+              {
+                "id": "D001416",
+                "term": "Back Pain"
+              },
+              {
+                "id": "D010146",
+                "term": "Pain"
+              },
+              {
+                "id": "D009461",
+                "term": "Neurologic Manifestations"
+              },
+              {
+                "id": "D012816",
+                "term": "Signs and Symptoms"
+              },
+              {
+                "id": "D013568",
+                "term": "Pathological Conditions, Signs and Symptoms"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "id": "C005703",
+                "term": "salicylhydroxamic acid"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT07254806",
+        "title": "A Study to Evaluate the Effectiveness of IDCT (Intradiscal Cell Therapy) in Subjects With One Level, Symptomatic Mild to Moderate Lumbar Degenerative Disc Disease",
+        "status": "RECRUITING",
+        "conditions": [
+          "Degenerative Disc Disease"
+        ],
+        "criteria": "Inclusion Criteria:\n\n1. Has a diagnosis of mild to moderate, symptomatic, single-level degenerative disc disease (DDD) from L3-S1.\n2. Has a target disc that meets Modified Pfirrmann Grade 3-7, as determined by a central radiologist.\n3. Is ≥18 and ≤75 years of age, skeletally mature, and has a body mass index (BMI) ≥18 kg/m2 and ≤38 kg/m2 at Screening.\n4. Has been experiencing chronic low back pain for at least 6 months prior to Screening.\n5. Has had low back pain that is unresponsive to at least 3 months of conservative care (nonoperative treatment) to include at least one non-pharmacological intervention which may include physical therapy, acupuncture, chiropractic manipulation, massage, and at home medically supervised exercise program and two pharmacological interventions which may include NSAIDs, acetaminophen, duloxetine, and/or injectable therapy.\n6. Has pre-treatment low back pain score of 45 to 90 on VAS (Visual Analogue Scale) for low back pain at Screening and Day 1.\n7. Has pre-treatment ODI score of 35 to 90 at Screening and Day 1.\n8. Is willing to voluntarily sign the informed consent form and agrees to the release of previous medical history for purposes of this study (i.e., HIPAA authorization) at Screening.\n9. Is physically and mentally able to comply with the protocol, able to understand and complete the required forms, and willing and able to adhere to the requirements of the protocol in the opinion of the Investigator.\n10. Female-born subjects of childbearing potential must agree to and comply with using highly effective methods of bir",
+        "summary": "This is a Phase III, randomized, double-blinded, Sham-controlled, multi-center study in subjects with single-level, symptomatic lumbar (L3- S1) intervertebral disc degeneration. The study will have a 52-week primary period followed by 52 week Follow-up Period (total of 104 weeks).\n\nThe study protocol will be approved by the Institutional Review Board (IRB) or Independent Ethics Committee (IEC), and the study will be conducted in accordance with Good Clinical Practice (GCP). All subjects will provide written informed consent prior to Screening.\n\nApproximately 162 subjects will be enrolled",
+        "minimumAge": "18 Years",
+        "maximumAge": "75 Years",
+        "sex": "ALL",
+        "healthyVolunteers": false,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT07254806",
+        "fetchedAt": 1792848225175,
+        "lastUpdatePostDate": "2026-10-15",
+        "truncatedFields": [
+          "countries",
+          "criteria",
+          "summary"
+        ],
+        "missingFields": []
+      }
+    },
+    {
+      "id": "NCT06567886",
+      "fetchedAt": 1792848225293,
+      "sha256": "c78522c2c3ae324801c889c39848e9229c7f64acad4800402169ece960d7f0e1",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT06567886",
+            "orgStudyIdInfo": {
+              "id": "HUM00240590"
+            },
+            "secondaryIdInfos": [
+              {
+                "id": "1R01NR021025-01",
+                "type": "NIH",
+                "link": "https://reporter.nih.gov/quickSearch/1R01NR021025-01"
+              }
+            ],
+            "organization": {
+              "fullName": "University of Michigan",
+              "class": "OTHER"
+            },
+            "briefTitle": "Fibromyalgia Sleep A to ZZZ Study",
+            "officialTitle": "At Home Morning Bright Light Treatment for Chronic Nociplastic Pain"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2026-06",
+            "overallStatus": "RECRUITING",
+            "expandedAccessInfo": {
+              "hasExpandedAccess": false
+            },
+            "startDateStruct": {
+              "date": "2024-09-27",
+              "type": "ACTUAL"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2029-03",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2029-03",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2024-08-20",
+            "studyFirstSubmitQcDate": "2024-08-20",
+            "studyFirstPostDateStruct": {
+              "date": "2024-08-23",
+              "type": "ACTUAL"
+            },
+            "lastUpdateSubmitDate": "2026-06-02",
+            "lastUpdatePostDateStruct": {
+              "date": "2026-06-04",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "PRINCIPAL_INVESTIGATOR",
+              "investigatorFullName": "Helen Burgess",
+              "investigatorTitle": "Professor of Psychiatry, Medical School",
+              "investigatorAffiliation": "University of Michigan"
+            },
+            "leadSponsor": {
+              "name": "University of Michigan",
+              "class": "OTHER"
+            },
+            "collaborators": [
+              {
+                "name": "National Institute of Nursing Research (NINR)",
+                "class": "NIH"
+              }
+            ]
+          },
+          "oversightModule": {
+            "isFdaRegulatedDrug": false,
+            "isFdaRegulatedDevice": false,
+            "isUsExport": false
+          },
+          "descriptionModule": {
+            "briefSummary": "This research study is testing whether changes in sleep timing and morning light therapy may have an impact on symptoms related to fibromyalgia.",
+            "detailedDescription": "This study will test a consumer health light therapy device (Re-Timer)"
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Fibromyalgia"
+            ],
+            "keywords": [
+              "Sleep timing stabilization",
+              "Morning light therapy"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "NA"
+            ],
+            "designInfo": {
+              "allocation": "RANDOMIZED",
+              "interventionModel": "PARALLEL",
+              "primaryPurpose": "SUPPORTIVE_CARE",
+              "maskingInfo": {
+                "masking": "SINGLE",
+                "whoMasked": [
+                  "OUTCOMES_ASSESSOR"
+                ]
+              }
+            },
+            "enrollmentInfo": {
+              "count": 390,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "Light Therapy",
+                "type": "EXPERIMENTAL",
+                "description": "All participants will be asked to attend 8 virtual visits over 5 months.\n\nParticipants randomized to the morning light therapy group are asked to wear the glasses for 1 hour per day. The timing of each person's therapy is tailored to their average wake up time during a baseline period. The treatment period is 4 weeks long.",
+                "interventionNames": [
+                  "Device: Light Therapy"
+                ]
+              },
+              {
+                "label": "Sleep Stabilization",
+                "type": "EXPERIMENTAL",
+                "description": "All participants will be asked to attend 8 virtual visits over 5 months. Participants randomized to the sleep stabilization arm are asked to follow a fixed sleep schedule tailored to their sleep during a baseline period. The treatment period is 4 weeks.",
+                "interventionNames": [
+                  "Behavioral: Sleep Stabilization"
+                ]
+              },
+              {
+                "label": "Control Group, treatment as usual",
+                "type": "NO_INTERVENTION",
+                "description": "Participants will be asked to sleep as per usual."
+              }
+            ],
+            "interventions": [
+              {
+                "type": "DEVICE",
+                "name": "Light Therapy",
+                "description": "Participants will self-administer the daily light therapy within a few minutes of their assigned wake up time for one hour.\n\nResearchers will provide a light log to note light on/off times, any interruptions to light therapy, and primary activity during light therapy.",
+                "armGroupLabels": [
+                  "Light Therapy"
+                ],
+                "otherNames": [
+                  "Re-Timer"
+                ]
+              },
+              {
+                "type": "BEHAVIORAL",
+                "name": "Sleep Stabilization",
+                "description": "All participants will be asked to follow a fixed sleep schedule.",
+                "armGroupLabels": [
+                  "Sleep Stabilization"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Change in Fibromyalgia Impact Questionnaire-Revised (FIQR) score",
+                "description": "The FIQR is 21 questions. Each question has 11 boxes similar to a visual analog scale. Questions include the difficulty associated with various physical activities and the severity of symptoms. The score for the questions is on a scale from 0 - 100, where lower scores represented better functional status.",
+                "timeFrame": "baseline (Visit 3, day 8) to post-treatment (Visit 7, approximately day 36)."
+              }
+            ],
+            "secondaryOutcomes": [
+              {
+                "measure": "Change in Brief Pain Inventory (BPI) score",
+                "description": "The BPI consists of 11 questions and assesses for the presence of pain, pain intensity (i.e., worst, least, average, current) and functional interference from pain. A higher score indicates more pain.",
+                "timeFrame": "baseline (Visit 3, day 8) to post-treatment (Visit 7, approximately day 36)."
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria:\n\n1. Meets 2016 revised diagnostic criteria for fibromyalgia (FM)\n2. Has access to video conferencing (including web cameras and audio) and a private space for the remote study visits.\n\nExclusion Criteria:\n\n1. Significant chronic disease\n2. Severe hearing or memory problems\n3. Pending medical leave applications at workplace\n4. Current pregnancy, breastfeeding, or actively trying to get pregnant\n5. Night work or travel outside the eastern time zone within 1 month of the study\n6. Other research participation\n7. Frequent number of special events during study period (weddings, concerts, exams, etc).",
+            "healthyVolunteers": false,
+            "sex": "ALL",
+            "minimumAge": "18 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ]
+          },
+          "contactsLocationsModule": {
+            "centralContacts": [
+              {
+                "name": "Helen Burgess",
+                "role": "CONTACT",
+                "phone": "734-615-8303",
+                "email": "bhelen@umich.edu"
+              }
+            ],
+            "overallOfficials": [
+              {
+                "name": "Afton Hassett",
+                "affiliation": "University of Michigan",
+                "role": "PRINCIPAL_INVESTIGATOR"
+              }
+            ],
+            "locations": [
+              {
+                "facility": "University of Michigan",
+                "status": "RECRUITING",
+                "city": "Ann Arbor",
+                "state": "Michigan",
+                "zip": "48105",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Helen Burgess",
+                    "role": "CONTACT",
+                    "phone": "734-615-8303",
+                    "email": "bhelen@med.umich.edu"
+                  },
+                  {
+                    "name": "Afton Hassett, PsyD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  },
+                  {
+                    "name": "Helen Burgess, PhD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 42.27756,
+                  "lon": -83.74088
+                }
+              }
+            ]
+          },
+          "referencesModule": {
+            "references": [
+              {
+                "pmid": "40880266",
+                "type": "DERIVED",
+                "citation": "Burgess HJ, Rodgers AA, McNeil KA, Mott J, Fejer A, Dereski T, Rizvydeen M, Sibille KT, Kim HM, Cofield C, Burns JW, Shaikh S, Hassett AL. At-Home Morning Bright Light Treatment for Chronic Nociplastic Pain: Protocol for a Randomized Clinical Trial. JMIR Res Protoc. 2025 Oct 13;14:e75060. doi: 10.2196/75060."
+              }
+            ]
+          },
+          "ipdSharingStatementModule": {
+            "ipdSharing": "YES",
+            "description": "After the study is completed, the de-identified, archived data will be transmitted to and stored at the NHLBI National Sleep Research Resource (NSRR) data repository.",
+            "infoTypes": [
+              "STUDY_PROTOCOL",
+              "SAP",
+              "ICF"
+            ],
+            "timeFrame": "From study completion and up to 7 years following publication.",
+            "accessCriteria": "Members of the scientific community who would like a copy of the final data sets (i.e., data sets underlying any publication) from this study can request a copy by contacting the principal investigators and/or NSRR.",
+            "url": "https://sleepdata.org/"
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D005356",
+                "term": "Fibromyalgia"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D009135",
+                "term": "Muscular Diseases"
+              },
+              {
+                "id": "D009140",
+                "term": "Musculoskeletal Diseases"
+              },
+              {
+                "id": "D012216",
+                "term": "Rheumatic Diseases"
+              },
+              {
+                "id": "D009468",
+                "term": "Neuromuscular Diseases"
+              },
+              {
+                "id": "D009422",
+                "term": "Nervous System Diseases"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D010789",
+                "term": "Phototherapy"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D013812",
+                "term": "Therapeutics"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT06567886",
+        "title": "Fibromyalgia Sleep A to ZZZ Study",
+        "status": "RECRUITING",
+        "conditions": [
+          "Fibromyalgia"
+        ],
+        "criteria": "Inclusion Criteria:\n\n1. Meets 2016 revised diagnostic criteria for fibromyalgia (FM)\n2. Has access to video conferencing (including web cameras and audio) and a private space for the remote study visits.\n\nExclusion Criteria:\n\n1. Significant chronic disease\n2. Severe hearing or memory problems\n3. Pending medical leave applications at workplace\n4. Current pregnancy, breastfeeding, or actively trying to get pregnant\n5. Night work or travel outside the eastern time zone within 1 month of the study\n6. Other research participation\n7. Frequent number of special events during study period (weddings, concerts, exams, etc).",
+        "summary": "This research study is testing whether changes in sleep timing and morning light therapy may have an impact on symptoms related to fibromyalgia.",
+        "minimumAge": "18 Years",
+        "maximumAge": null,
+        "sex": "ALL",
+        "healthyVolunteers": false,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT06567886",
+        "fetchedAt": 1792848225293,
+        "lastUpdatePostDate": "2026-06-04",
+        "truncatedFields": [],
+        "missingFields": [
+          "maximumAge"
+        ]
+      }
+    },
+    {
+      "id": "NCT05067998",
+      "fetchedAt": 1792848225418,
+      "sha256": "94e9ac03dadf95153e6fa8c0808c613814a69b80f6bbbc567de24bbbbaa197fb",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT05067998",
+            "orgStudyIdInfo": {
+              "id": "NatIVSup"
+            },
+            "organization": {
+              "fullName": "The Essence of Integrative Health and Medicine Practice",
+              "class": "OTHER"
+            },
+            "briefTitle": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature",
+            "officialTitle": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2025-09",
+            "overallStatus": "RECRUITING",
+            "expandedAccessInfo": {
+              "hasExpandedAccess": false
+            },
+            "startDateStruct": {
+              "date": "2025-12-21",
+              "type": "ESTIMATED"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2026-07-24",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2026-09-17",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2021-09-19",
+            "studyFirstSubmitQcDate": "2021-09-26",
+            "studyFirstPostDateStruct": {
+              "date": "2021-10-05",
+              "type": "ACTUAL"
+            },
+            "lastUpdateSubmitDate": "2025-09-17",
+            "lastUpdatePostDateStruct": {
+              "date": "2025-09-23",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "SPONSOR_INVESTIGATOR",
+              "investigatorFullName": "Faith A. Richardson",
+              "investigatorTitle": "Psychotherapist/Licensed Holistic Health Practitioner",
+              "investigatorAffiliation": "The Essence of Integrative Health and Medicine Practice"
+            },
+            "leadSponsor": {
+              "name": "Faith A. Richardson",
+              "class": "OTHER"
+            }
+          },
+          "oversightModule": {
+            "oversightHasDmc": false,
+            "isFdaRegulatedDrug": true,
+            "isFdaRegulatedDevice": false,
+            "isUsExport": true
+          },
+          "descriptionModule": {
+            "briefSummary": "Herbal Medicine is known as the medicinal use of herbal substances as a means of treating different conditions in the human body to ensure that the body remains in optimal health and wellness. These substances are known to contain very active ingredients in it and as such is also a very potent means of managing diseases and ailments in the body.\n\nHerbal medicine has always been a standby source of getting relief from various conditions over centuries, however, it can be categorically said that the mode of usage of these herbal substances has changed over time. Traditional healers help individuals to make meaning out of the natural herbs seen around that can be useful to one's health.\n\nHerbal medicine is the use of plants to treat disease and enhance general health and wellbeing. Herbs can interact with other pharmaceutical medications and should be taken with care. Always seek a regular medical doctor (GP) about any health concerns and tell them about any herbal medicines you are taking or thinking of taking. Never stop taking prescribed medications in favor of herbs without first discussing it with your GP.",
+            "detailedDescription": "The major use of herbal medicines is for health promotion and therapy for chronic, as opposed to life-threatening, conditions. However, usage of traditional remedies increases when conventional medicine is ineffective in the treatment of disease, such as in advanced cancer and in the face of new infectious diseases.\n\nSome popular options include vitamin C, B12, and, increasingly, vitamin D, while also offering vitamin D3 drips. Vitamin D, sometimes called the \"sunshine vitamin\" because it can be obtained through sun exposure, helps the body absorb calcium, according to the National Institutes of Health. Some people may be turning to drips of the vitamin because they aren't getting their share of sunshine this time of year and because they want to maintain a strong and healthy immune system.\n\nVitamin D3 is the version to go for since the body absorbs it better than vitamin D2, Taub-Dix says. But she advises against getting your vitamin D from an IV and instead shop for an oral supplement, since it's readily available on pharmacy and grocery store shelves and is easy to take by mouth. It's safe to take at dosages of up to 4,000 international units (IU). IV therapy has recently enjoyed a spike in popularity in people who rely on it as a sure-fire way to obtain all the health benefits and vitamins necessary to help them combat ailments as well as to feel their best as they cope with the pandemic.\n\nThere are several types of intravenous vitamin therapies and vitamin injections to choose from. The ones containing a large assortment of vitamins necessary to combat the flu are in highest demand. These are the ones containing Vitamin C, D, Zinc, and Vitamin B12 - all of which are vitamins known to play an essential role in assisting the body in its production of red blood cells and common immune system boosters.\n\n\"The benefit of IV therapy is that by intravenously or intramuscularly administering vitamins, you are able to absorb 100 percent of what is being put in versus supplements which must be broken down. The therapy itself only takes about 30 minutes to an hour and is monitored. Once the infusion is finished, the IV is removed and the person who received the treatment is free to go home without restrictions.\n\nIntravenous vitamin therapy has proven helpful in the treatment of several different conditions that affect not only the immune system but other parts of the body as well. Some of the ailments of this type of therapy can help with constant fatigue, headaches, \"brain fog\" dry or tired looking skin, dehydration or frequent illness.\n\nFor years, people have turned to Vitamin C pills or multivitamins to help boost their immune systems. But with IV therapy, the options are endless.\n\nIf we are looking to strengthen our body and give our immune system a boost, intravenous IV therapy is the best option to do so, quickly and effectively. The body needs many different types of vitamins and nutrients to maintain normal function throughout day to day life. However, the body cannot create these vitamins on its own. Most vitamins and nutrients come from external sources, mostly from what we eat and drink. However, as efficient as the metabolic process is, the body does not absorb all the nutrients. IV therapy circumvents this problem and ensures 100% absorption because the nutrients are delivered directly into the bloodstream.\n\nThe effectiveness of IV drip therapy is especially valuable during illness, when the body's demand for nutrients is greater than usual. Supplements are invaluable to the healing process and helping the body recover more quickly.\n\nDrip Hydration offers many IV drip therapy options to quickly and effectively improve the symptoms of a wide variety of conditions. There will also custom-blend formulas upon request. Each of our treatments contain a unique combination of ingredients. Intravenous administration of nutrients can achieve serum concentrations not obtainable with oral, or even intramuscular (IM), administration. For example, as the oral dose of vitamin C is increased progressively, the serum concentration of ascorbate tends to approach an upper limit, as a result of both saturation of gastrointestinal absorption and a sharp increase in renal clearance of the vitamin. (3) When the daily intake of vitamin C is increased 12-fold, from 200 mg/day to 2,500 mg/day, the plasma concentration increases by only 25 percent, from 1.2 to 1.5 mg/dL. The highest serum vitamin C level reported after oral administration of pharmacological doses of the vitamin is 9.3 mg/dL. In contrast, IV administration of 50 g/day of vitamin C resulted in a mean peak plasma level of 80 mg/dL. (4) Similarly, oral supplementation with magnesium results in little or no change in serum magnesium concentrations, whereas IV administration can double or triple the serum levels, (5,6) at least for a short period of time.\n\nVarious nutrients have been shown to exert pharmacological effects, which are in many cases dependent on the concentration of the nutrient.\n\nIn addition to having direct pharmacological effects, IV nutrient therapy may be more effective than oral or IM treatment for correcting intracellular nutrient deficits. Some nutrients are present at much higher concentrations in the cells than in the serum. For example, the average magnesium concentration in myocardial cells is 10 times higher than the extracellular concentration. This ratio is maintained in healthy cells by an active-transport system that continually pumps magnesium ions into cells against the concentration gradient. In certain disease states, the capacity of membrane pumps to maintain normal concentration gradients may be compromised. In one study, the mean myocardial magnesium concentration was 65-percent lower in patients with cardiomyopathy than in healthy controls, (10) implying a reduction in the intracellular-to-extracellular ratio to less than 4-to-1. As magnesium plays a key role in mitochondrial energy production, intracellular magnesium deficiency may exacerbate heart failure and lead to a vicious cycle of further intracellular magnesium loss and more severe heart failure."
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Anxiety Disorders and Symptoms",
+              "Fibromyalgia",
+              "Arthritis",
+              "Chronic Pain",
+              "Hypertension,Essential"
+            ]
+          },
+          "designModule": {
+            "studyType": "OBSERVATIONAL",
+            "patientRegistry": true,
+            "targetDuration": "1 Week",
+            "designInfo": {
+              "observationalModel": "COHORT",
+              "timePerspective": "PROSPECTIVE"
+            },
+            "enrollmentInfo": {
+              "count": 25,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "IV Vitamin Therapy Treatments",
+                "description": "IV vitamin infusion therapy involves inserting an IV line into a vein in your arm to administer a high concentration of liquid vitamins, antioxidants, amino acids, and minerals into your bloodstream. The therapy may be for only one vitamin or a cocktail of nutrients.",
+                "interventionNames": [
+                  "Dietary Supplement: IV Vitamin Infused Therapy Treatment"
+                ]
+              },
+              {
+                "label": "Herbal Medicine, Tincture (Liquid Vitamins)",
+                "description": "Tinctures are concentrated herbal extracts made by soaking the bark, berries, leaves (dried or fresh), or roots from one or more plants in alcohol or vinegar. The alcohol or vinegar pulls out the active ingredients in the plant parts, concentrating them as a liquid. Examples of common herbal health products and supplements include black cohosh, echinacea, garlic, ginkgo, saw palmetto, and St. John's wort. Herbal Medicine is type of medicine that uses roots, stems, leaves, flowers, or seeds of plants to improve health, prevent disease, and treat illness.",
+                "interventionNames": [
+                  "Dietary Supplement: IV Vitamin Infused Therapy Treatment"
+                ]
+              },
+              {
+                "label": "Supplements",
+                "description": "Dietary supplements are substances you might use to add nutrients to your diet or to lower your risk of health problems such as osteoporosis or arthritis. Dietary supplements come in the form of pills, capsules, powders, gel capsules and tablets, extracts, or liquids. Dietary supplements come in a variety of forms, including tablets, capsules, gummies, and powders, as well as drinks and energy bars. Popular supplements include vitamins D and B12; minerals like calcium and iron; herbs such as echinacea and garlic; and products like glucosamine, probiotics, and fish oils.",
+                "interventionNames": [
+                  "Drug: Herbal medicine"
+                ]
+              },
+              {
+                "label": "Vitamins (Orally)",
+                "description": "Vitamins are substances that our bodies need to develop and function normally. They include vitamins A, C, D, E, and K, choline, and the B vitamins (thiamin, riboflavin, niacin, pantothenic acid, biotin, vitamin B6, vitamin B12, and folate/folic acid). Vitamins are essential nutrients that enable your body to work properly and to stay healthy. Most vitamins can be found in the food that we eat or from vitamin supplements.",
+                "interventionNames": [
+                  "Drug: Herbal medicine"
+                ]
+              }
+            ],
+            "interventions": [
+              {
+                "type": "DIETARY_SUPPLEMENT",
+                "name": "IV Vitamin Infused Therapy Treatment",
+                "description": "Vitamin B, C, D, E, K, liquid vitamins, antioxidants, amino acids, and minerals",
+                "armGroupLabels": [
+                  "Herbal Medicine, Tincture (Liquid Vitamins)",
+                  "IV Vitamin Therapy Treatments"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Herbal medicine",
+                "description": "Herbal medicine is the use of plants to treat disease and enhance general health and wellbeing. Examples of common herbal health products and supplements include black cohosh, echinacea, garlic, ginkgo, saw palmetto, and St. John's wort just to name a few.",
+                "armGroupLabels": [
+                  "Supplements",
+                  "Vitamins (Orally)"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Reduction in Symptoms related to Specific Illness or Disorder",
+                "description": "The percentage of patients who have lesser symptoms from their health issues and show measurable changes in heath, function, and quality of life that results from my care. I am creating a new supplement/vitamin brand that will reduce the symptoms of hypertension, anxiety, arthritis, fibromyalgia, nervousness and low energy levels among other conditions pertinent to herbal medicine and the patients involved in the study.",
+                "timeFrame": "8-12 weeks, varying with each Intervention"
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria:\n\n* N/A\n\nExclusion Criteria:\n\n* N/A",
+            "healthyVolunteers": true,
+            "sex": "ALL",
+            "minimumAge": "21 Years",
+            "maximumAge": "80 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ],
+            "studyPopulation": "Urban or Rural",
+            "samplingMethod": "PROBABILITY_SAMPLE"
+          },
+          "contactsLocationsModule": {
+            "locations": [
+              {
+                "facility": "Health for Life Holistic Wellness Center LLC",
+                "status": "RECRUITING",
+                "city": "Dover",
+                "state": "Delaware",
+                "zip": "19901",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Faith A Richardson, BSW, MPA, CBT, DBT, PhD",
+                    "role": "CONTACT",
+                    "phone": "302-363-3773",
+                    "email": "healthforlifewellnesscenterllc@gmail.com"
+                  },
+                  {
+                    "name": "Faith A Richardson, BSW, MPA, CBT, DBT, PhD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 39.15817,
+                  "lon": -75.52437
+                }
+              }
+            ]
+          },
+          "ipdSharingStatementModule": {
+            "ipdSharing": "UNDECIDED"
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D001008",
+                "term": "Anxiety Disorders"
+              },
+              {
+                "id": "D005356",
+                "term": "Fibromyalgia"
+              },
+              {
+                "id": "D001168",
+                "term": "Arthritis"
+              },
+              {
+                "id": "D059350",
+                "term": "Chronic Pain"
+              },
+              {
+                "id": "D000075222",
+                "term": "Essential Hypertension"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D001523",
+                "term": "Mental Disorders"
+              },
+              {
+                "id": "D009135",
+                "term": "Muscular Diseases"
+              },
+              {
+                "id": "D009140",
+                "term": "Musculoskeletal Diseases"
+              },
+              {
+                "id": "D012216",
+                "term": "Rheumatic Diseases"
+              },
+              {
+                "id": "D009468",
+                "term": "Neuromuscular Diseases"
+              },
+              {
+                "id": "D009422",
+                "term": "Nervous System Diseases"
+              },
+              {
+                "id": "D007592",
+                "term": "Joint Diseases"
+              },
+              {
+                "id": "D010146",
+                "term": "Pain"
+              },
+              {
+                "id": "D009461",
+                "term": "Neurologic Manifestations"
+              },
+              {
+                "id": "D012816",
+                "term": "Signs and Symptoms"
+              },
+              {
+                "id": "D013568",
+                "term": "Pathological Conditions, Signs and Symptoms"
+              },
+              {
+                "id": "D006973",
+                "term": "Hypertension"
+              },
+              {
+                "id": "D014652",
+                "term": "Vascular Diseases"
+              },
+              {
+                "id": "D002318",
+                "term": "Cardiovascular Diseases"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D008517",
+                "term": "Phytotherapy"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D000529",
+                "term": "Complementary Therapies"
+              },
+              {
+                "id": "D013812",
+                "term": "Therapeutics"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT05067998",
+        "title": "The Benefits of Natural Medicine, Vitamin IV Therapy and Supplements: Maintaining Good Health Through Nature",
+        "status": "RECRUITING",
+        "conditions": [
+          "Anxiety Disorders and Symptoms",
+          "Fibromyalgia",
+          "Arthritis",
+          "Chronic Pain",
+          "Hypertension,Essential"
+        ],
+        "criteria": "Inclusion Criteria:\n\n* N/A\n\nExclusion Criteria:\n\n* N/A",
+        "summary": "Herbal Medicine is known as the medicinal use of herbal substances as a means of treating different conditions in the human body to ensure that the body remains in optimal health and wellness. These substances are known to contain very active ingredients in it and as such is also a very potent means of managing diseases and ailments in the body.\n\nHerbal medicine has always been a standby source of getting relief from various conditions over centuries, however, it can be categorically said that the mode of usage of these herbal substances has changed over time. Traditional healers help indi",
+        "minimumAge": "21 Years",
+        "maximumAge": "80 Years",
+        "sex": "ALL",
+        "healthyVolunteers": true,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT05067998",
+        "fetchedAt": 1792848225418,
+        "lastUpdatePostDate": "2025-09-23",
+        "truncatedFields": [
+          "summary"
+        ],
+        "missingFields": []
+      }
+    },
+    {
+      "id": "NCT06229834",
+      "fetchedAt": 1792848225530,
+      "sha256": "e29136936b19fe339368dd82c0f6bd6e8df2f2b71b1894549189d63af54a1639",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT06229834",
+            "orgStudyIdInfo": {
+              "id": "2023P003554"
+            },
+            "secondaryIdInfos": [
+              {
+                "id": "R01AT012228-01",
+                "type": "NIH",
+                "link": "https://reporter.nih.gov/quickSearch/R01AT012228-01"
+              }
+            ],
+            "organization": {
+              "fullName": "Brigham and Women's Hospital",
+              "class": "OTHER"
+            },
+            "briefTitle": "Chiropractic Care for Episodic Migraine",
+            "officialTitle": "Chiropractic Care for Episodic Migraine"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2026-06",
+            "overallStatus": "RECRUITING",
+            "expandedAccessInfo": {
+              "hasExpandedAccess": false
+            },
+            "startDateStruct": {
+              "date": "2025-03-22",
+              "type": "ACTUAL"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2027-04-01",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2027-04-30",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2024-01-12",
+            "studyFirstSubmitQcDate": "2024-01-26",
+            "studyFirstPostDateStruct": {
+              "date": "2024-01-29",
+              "type": "ACTUAL"
+            },
+            "lastUpdateSubmitDate": "2026-06-24",
+            "lastUpdatePostDateStruct": {
+              "date": "2026-06-26",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "PRINCIPAL_INVESTIGATOR",
+              "investigatorFullName": "Peter M. Wayne, Ph.D.",
+              "investigatorTitle": "Associate Professor of Medicine",
+              "investigatorAffiliation": "Brigham and Women's Hospital"
+            },
+            "leadSponsor": {
+              "name": "Brigham and Women's Hospital",
+              "class": "OTHER"
+            },
+            "collaborators": [
+              {
+                "name": "Palmer College of Chiropractic",
+                "class": "OTHER"
+              },
+              {
+                "name": "Yale University",
+                "class": "OTHER"
+              },
+              {
+                "name": "VA Connecticut Healthcare System",
+                "class": "FED"
+              },
+              {
+                "name": "National Center for Complementary and Integrative Health (NCCIH)",
+                "class": "NIH"
+              }
+            ]
+          },
+          "oversightModule": {
+            "oversightHasDmc": true,
+            "isFdaRegulatedDrug": false,
+            "isFdaRegulatedDevice": false
+          },
+          "descriptionModule": {
+            "briefSummary": "Migraine, a chronic intermittent headache disorder, ranks in the top five causes of years lived with disability. One promising non-pharmacologic and integrative treatment for migraine may be chiropractic care due to the co-occurrence of migraine and musculoskeletal complaints. The goal of this application is to perform a pilot study of chiropractic care for episodic migraine to help inform the design of a future, full-scale pragmatic effectiveness trial.",
+            "detailedDescription": "Migraine, a chronic intermittent headache disorder, ranks in the top five causes for years lived with disability. Due to the high disability burden associated with migraine, individuals who experience migraine often seek treatments to reduce the frequency and severity of their attacks and often express interest in nonpharmacologic and integrative approaches. One promising treatment may be chiropractic care due to the comorbidity of migraine and musculoskeletal complaints.\n\nOur long-term goal is to conduct a multi-site large-scale, fully powered trial evaluating the effectiveness of a validated multimodal chiropractic care intervention to reduce migraine frequency, severity, and disability.\n\nTo help inform the design of a large-scale trial with both pragmatic and explanatory features, we propose to conduct a two-arm pilot randomized attention-controlled trial at two sites which are representative of sites to be included in the future large-scale trial. We will recruit and randomize 60 individuals (30 per site) to either 1) 14 visits of chiropractic care (CC) (6 visits of CC over 3-5 weeks followed by 8 visits of CC over 12 weeks); or 2) 14 sessions of headache health education (15-minute 1:1 virtual sessions focused on pre-defined migraine specific topics) - both added to usual medical care. This study will allow us to address the following aims: 1) To train a team of chiropractors from established clinics within two academic medical centers with existing partnerships with headache programs, refine our intervention, and assess the fidelity of intervention protocols; 2) To optimize data collection, data management, and reporting procedures across sites and establish the infrastructure needed for a large-scale trial; 3) To assess the feasibility of recruitment, retention, and adherence across multiple study sites; 4) To assess participant expectations and treatment experience."
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Episodic Migraine"
+            ],
+            "keywords": [
+              "migraine",
+              "headache disorder"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "NA"
+            ],
+            "designInfo": {
+              "allocation": "RANDOMIZED",
+              "interventionModel": "PARALLEL",
+              "interventionModelDescription": "A two-arm pilot randomized attention-controlled trial at two sites which are representative of sites to be included in the future large-scale trial (Osher Clinic, BWH, and VA Medical Center, West Haven, CT). We will recruit and randomize 60 individuals (30 per site). Individuals will be randomized (1:1) to: 1) 14 sessions of CC (6 sessions of chiropractic care over 3-5 weeks followed by 8 sessions of chiropractic care (CC) over 12 weeks); or 2) 14 sessions of headache health education (15-minute 1:1 virtual sessions focused on pre-defined migraine-specific topics) - both added to usual medical care. Individuals will be followed for 4 weeks after the end of their intervention period.",
+              "primaryPurpose": "OTHER",
+              "maskingInfo": {
+                "masking": "DOUBLE",
+                "maskingDescription": "While participants, treating chiropractors, study coordinators, and research assistants will be unblinded to treatment assignment, study investigators who are not involved in providing chiropractic care treatments or monitoring adverse events will be blinded. The blinding of these investigators and the programmer will only be broken after approval of the final statistical analysis plan and locking of the trial data.",
+                "whoMasked": [
+                  "INVESTIGATOR",
+                  "OUTCOMES_ASSESSOR"
+                ]
+              }
+            },
+            "enrollmentInfo": {
+              "count": 60,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "Chiropractic Care",
+                "type": "EXPERIMENTAL",
+                "description": "4 sessions of chiropractic care (6 sessions of chiropractic care over 3-5 weeks followed by 8 sessions of chiropractic care over 12 weeks); participants will be allowed to continue usual care throughout the study.",
+                "interventionNames": [
+                  "Procedure: Chiropractic Care"
+                ]
+              },
+              {
+                "label": "Headache Health Education (HHE)",
+                "type": "OTHER",
+                "description": "Participants randomized to Headache Health Education (HHE) will receive 14 interactive 15-minute education sessions delivered via videoconference.",
+                "interventionNames": [
+                  "Behavioral: Headache Health Education"
+                ]
+              }
+            ],
+            "interventions": [
+              {
+                "type": "PROCEDURE",
+                "name": "Chiropractic Care",
+                "description": "The chiropractic care protocol can be personalized to the patient's clinical needs and follows the scope of chiropractic care practice in the Commonwealth of Massachusetts and the State of Connecticut. Components of the chiropractic intervention include: posture correction / spinal stabilization exercises; soft tissue relaxation techniques; spinal manipulation (i.e. chiropractic adjustment) / mobilization; breathing and relaxation techniques; stretches, self-care; ergonomic modifications; bracing and supports.",
+                "armGroupLabels": [
+                  "Chiropractic Care"
+                ]
+              },
+              {
+                "type": "BEHAVIORAL",
+                "name": "Headache Health Education",
+                "description": "Participants randomized to the HHE arm will receive 14 interactive 15-minute education sessions delivered via video conference.\n\nTo partially control for attention and expectation associated with chiropractic care, participants randomized to the control group will receive a modified version of a headache education intervention we employed in our pilot study. Participants randomized to HHE will receive 14 interactive 15-minute education sessions delivered via VA or MGB Teams. Material to be covered will focus on pre-defined migraine-specific topics, compared with the control for our pilot study, in addition to greater contact time, HHE will be delivered in a more interactive manner utilizing active learning principles known to support adult learning. We will also utilize publicly available short videos (e.g., from the American Headache Society) followed by scripted discussions with the participant. Example topics include the physiology of migraine or the contribution of life.",
+                "armGroupLabels": [
+                  "Headache Health Education (HHE)"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Recruitment feasibility (average number of participants per month)",
+                "description": "Each site will be able to recruit 30 participants within 16 months",
+                "timeFrame": "16 months"
+              },
+              {
+                "measure": "Retention feasibility (proportion of participants not lost to follow-up)",
+                "description": "Retention will be quantified by the proportion of subjects who record their migraines for at least 26 out of 28 days and all questionnaires at each outcome assessment.",
+                "timeFrame": "20 weeks"
+              },
+              {
+                "measure": "Intervention adherence feasibility",
+                "description": "Adherence will be calculated as the proportion of subjects who attend at least 80% of the chiropractic care visits or 80% of the one-on-one headache health education video-conferences.",
+                "timeFrame": "15 weeks"
+              }
+            ],
+            "secondaryOutcomes": [
+              {
+                "measure": "Number of days with migraine headaches",
+                "description": "Number of migraine headaches as recorded in migraine diaries.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Proportion of responders",
+                "description": "Proportion of individuals who experience a ≥50% reduction in migraine days.",
+                "timeFrame": "Change from baseline to initial follow-up (16 weeks) and change from baseline to final follow-up (20 weeks)."
+              },
+              {
+                "measure": "Average severity of migraine attacks",
+                "description": "Average severity of migraine attacks (on a 1 to 10 scale) as recorded in migraine diaries.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Average number of hours for a migraine attack (duration)",
+                "description": "Average number of hours a migraine attack lasted as recorded in migraine diaries.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Average number of medications used for a migraine attack",
+                "description": "Average number of medications used to treat a migraine attack as recorded in migraine diaries",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Neck Disability Index (NDI)",
+                "description": "Self-report questionnaire used to determine how neck pain impacts daily activities of living and self-related neck pain disability.\n\nScore range: 10 - 60. Higher scores indicate greater disability.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Headache Related Disability (HIT-6)",
+                "description": "HIT-6 is a validated 6-item assessment that evaluates the impact headaches have on a participant's life. Score range: 36 - 78. Higher scores indicate greater disability.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Migraine Specific Quality of Life Questionnaire, version 2.1 (MSQv2.1)",
+                "description": "Migraine Specific Quality of Life Questionnaire, version 2.1 (MSQv2.1) is a validated 14-item questionnaire; it is one of the most frequently used disability instrument in migraine research and is highly reliable.\n\nParticipants are asked to provide their response to each question using a standard six point Likert-type scale (none of the time; a little bit of the time; some of the time; a good bit of the time; most of the time; all of the time). Each MSQoL v.2.1 dimension is scored independently from 0 to 100 such that a higher score indicates a better quality of life.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Patient-Reported Outcomes Measurement Information System (PROMIS-29)",
+                "description": "PROMIS-29 is a system of validated, highly reliable, precise measures of patient-reported health status for physical, mental, and social well-being.\n\nPROMIS-29 v2. 0 profile measure assesses pain intensity using a single 0-10 numeric rating item and seven health domains (physical function, fatigue, pain interference, depressive symptoms, anxiety, ability to participate in social roles and activities, and sleep disturbance) using four items for each domain.The patients' answers to the PROMIS-29 are scored from 1-5 (with the exception of the NRS). The sum of the PROMIS results in the raw score, which lies between 4 and 20. There is no total score, but each axis forms its own score.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "PTSD Checklist for DSM-5 (PCL-5)",
+                "description": "20-item self-report measure of the DSM-5 symptoms of PTSD. Score range: 0 - 5. Higher scores are associated with greater likelihood of PTSD.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "Godin Leisure-Time Exercise Questionnaire (GLTEQ)",
+                "description": "Godin Leisure-Time Exercise Questionnaire will be used to measure the amount and intensity of general exercise during the study period. This validated instrument consists of 4 items measuring the frequency of light, moderate, and vigorous-intensity leisure-time physical activity. In the GLTEQ, individuals are asked to complete a self-explanatory, brief four-item query of usual leisure-time exercise habits.\n\nHigher score indicate more leisure-time exercise per week.",
+                "timeFrame": "Assess during three 4-week periods (baseline, initial follow-up, final follow-up) within the total of 24 weeks that participants are enrolled in the trial."
+              },
+              {
+                "measure": "The Expectations for Complementary and Alternative Medicine Treatments Questionnaire short form (EXPECT)",
+                "description": "EXPECT Questionnaire (short form) is a recently developed and validated questionnaire used to assess individuals' expectations of treatments for chronic pain.\n\nScore range: 0 - 40. Higher scores indicate higher expectation of recovery after treatment.",
+                "timeFrame": "Assess only at baseline following the 4 weeks run-in phase but before randomization."
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria\n\n* Age 18-65 years\n* Confirmed diagnosis of migraine with or without aura which does not meet criteria for chronic migraine according to the International Classification for -Headache Disorders (ICHD)-3 guidelines at the screening visit with the study physician\n* History of migraines dating for at least one year\n* Completion of at least 26 headache diary days out of 28\n* Confirmed migraine frequency ≥4 to ≤13 days per month during a run-in period\n* If use of medication is applicable, dose must be stable for 2 months prior to study enrollment\n* If use of medication for non-migraine pain condition is applicable (with the exception of episodic tension type headache), dose must be stable for 2 months prior to study enrollment\n* Willing and able to complete all study procedures and be randomized to either of the two intervention groups\n* Fluency in English\n* Confirmed access to and proficiency with use of a smartphone, computer, and/or tablet\n* Working email address or willingness to create an email account for the study\n\nExclusion Criteria\n\n* Non-Veterans (VAMC only)\n* Received botulinum toxin treatment for headache and/or neck pain within the 4 months prior to the start of the baseline phase\n* Received chiropractic care for any condition within the 3 months prior to the start of the baseline phase\n* Received behavioral interventions (e.g., cognitive behavioral therapy, acceptance and commitment therapy, mindfulness, relaxation techniques, hypnosis) within the past 3 months)\n* Used neuromodulation (i.e., \"headache devices\"), procedures for migraine prevention within the 2 months before the baseline period, or investigational medications or headache devices for at least 90 days prior to screening\n* Diagnosis of medication overuse headache according to the ICHD-3 guidelines at the screening visit with the study physician\n* Traumatic Brain Injury ≤ 1 year before screening visit or worsening of migraine as noted by the screening study physician\n* Head or neck trauma within the past year causing neurological or musculoskeletal signs or symptoms requiring treatment\n* Any medical, neurologic, or psychiatric condition that the screening study physician deems would lead to difficulty complying with the protocol or negatively impact the safety profile of the interventions\n* Psychiatric hospitalization in the last 6 months\n* Receiving hospice or palliative care\n* History of carotid or vertebral artery dissection\n* Presence of carotid bruits\n* Presence of contraindications (relative or absolute) for spinal manipulation or mobilization where these procedures cannot be modified for safe administration and are consistent with those published by the World Health Organization (WHO) guidelines, including but not limited to:\n* Local spinal hypermobility/instability\n* Conditions causing general spinal hypermobility, such as Marfan, Ehlers-Danlos syndrome, and Osteogenesis imperfecta\n* Malignancy of the spine or spinal cord\n* Frank disc herniation with signs of progressive neurological deficit\n* Spinal or intracanalicular hematomas Inflammatory spondyloarthropathies such as rheumatoid arthritis\n* Spinal fractures or dislocations\n* Avascular necrosis in an area of proposed joint manipulation\n* Bone-weakening disorders affecting the spine, such as benign bone tumors, infection, or osteoporosis\n* Vertebrobasilar insufficiency syndrome\n* Aneurysm involving a major blood vessel in an area of potential joint manipulation\n* History of stroke\n* Anticoagulant therapy or blood disorders cause significant bleeding tendency\n* Cervical spine congenital anomalies that affect the stability or neurologic integrity of the individual or history of cervical spine surgery\n* Either self-reported current alcohol or substance use disorder or current alcohol or substance use disorder documented by a treating medical provider within the past 6 months\n* Hormone replacement therapy for less than six months, or if prescriptions greater than 6 months in duration must be at a stable dose\n* Significant cognitive impairment that would impair participation in the trial\n* Currently pregnant or intention to become pregnant within the next six months",
+            "healthyVolunteers": false,
+            "sex": "ALL",
+            "minimumAge": "18 Years",
+            "maximumAge": "65 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ]
+          },
+          "contactsLocationsModule": {
+            "centralContacts": [
+              {
+                "name": "Pamela M Rist, ScD",
+                "role": "CONTACT",
+                "phone": "617-278-0835",
+                "email": "prist@mail.harvard.edu"
+              },
+              {
+                "name": "Viviane Nguyen, BS",
+                "role": "CONTACT",
+                "phone": "617-525-9836",
+                "email": "Vnguyen11@bwh.harvard.edu"
+              }
+            ],
+            "locations": [
+              {
+                "facility": "Osher Center for Integrative Health, Mass General Brigham",
+                "status": "RECRUITING",
+                "city": "Boston",
+                "state": "Massachusetts",
+                "zip": "02215",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Viviane Nguyen, BS",
+                    "role": "CONTACT",
+                    "phone": "617-525-9836",
+                    "email": "vnguyen11@bwh.harvard.edu"
+                  },
+                  {
+                    "name": "Peter Wayne, PhD",
+                    "role": "CONTACT",
+                    "phone": "617-732-6271",
+                    "email": "pwayne@bwh.harvard.edu"
+                  },
+                  {
+                    "name": "Peter Wayne, PhD",
+                    "role": "PRINCIPAL_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 42.35843,
+                  "lon": -71.05977
+                }
+              }
+            ]
+          },
+          "referencesModule": {
+            "references": [
+              {
+                "pmid": "30918090",
+                "type": "BACKGROUND",
+                "citation": "Albrecht DS, Mainero C, Ichijo E, Ward N, Granziera C, Zurcher NR, Akeju O, Bonnier G, Price J, Hooker JM, Napadow V, Loggia ML, Hadjikhani N. Imaging of neuroinflammation in migraine with aura: A [11C]PBR28 PET/MRI study. Neurology. 2019 Apr 23;92(17):e2038-e2050. doi: 10.1212/WNL.0000000000007371. Epub 2019 Mar 27."
+              },
+              {
+                "pmid": "17000975",
+                "type": "BACKGROUND",
+                "citation": "Arnold M, Kappeler L, Georgiadis D, Berthet K, Keserue B, Bousser MG, Baumgartner RW. Gender differences in spontaneous cervical artery dissection. Neurology. 2006 Sep 26;67(6):1050-2. doi: 10.1212/01.wnl.0000237341.30854.6a."
+              },
+              {
+                "pmid": "24853166",
+                "type": "BACKGROUND",
+                "citation": "Ashina S, Bendtsen L, Lyngberg AC, Lipton RB, Hajiyeva N, Jensen R. Prevalence of neck pain in migraine and tension-type headache: a population study. Cephalalgia. 2015 Mar;35(3):211-9. doi: 10.1177/0333102414535110. Epub 2014 May 22."
+              },
+              {
+                "pmid": "31919834",
+                "type": "BACKGROUND",
+                "citation": "Beaton-Starr M, Rist PM, Connor JP, Wayne PM, Osypiuk K, Bernstein C. Development and Implementation of the Integrative Toolbox for Headache Management. Headache. 2020 Apr;60(4):771-775. doi: 10.1111/head.13743. Epub 2020 Jan 9."
+              },
+              {
+                "pmid": "31223518",
+                "type": "BACKGROUND",
+                "citation": "Befus DR, Hull S, Strand de Oliveira J, Schmidler GS, Weinberger M, Coeytaux RR. Nonpharmacological Self-Management of Migraine Across Social Locations: An Equity-Oriented, Qualitative Analysis. Glob Adv Health Med. 2019 Jun 13;8:2164956119858034. doi: 10.1177/2164956119858034. eCollection 2019."
+              },
+              {
+                "pmid": "30944771",
+                "type": "BACKGROUND",
+                "citation": "Bernstein C, Wayne PM, Rist PM, Osypiuk K, Hernandez A, Kowalski M. Integrating Chiropractic Care Into the Treatment of Migraine Headaches in a Tertiary Care Hospital: A Case Series. Glob Adv Health Med. 2019 Mar 28;8:2164956119835778. doi: 10.1177/2164956119835778. eCollection 2019."
+              },
+              {
+                "pmid": "33431279",
+                "type": "BACKGROUND",
+                "citation": "Connor JP, Bernstein C, Kilgore K, Rist PM, Osypiuk K, Kowalski M, Wayne PM. Perceptions of Chiropractic Care Among Women With Migraine: A Qualitative Substudy Using a Grounded-Theory Framework. J Manipulative Physiol Ther. 2021 Feb;44(2):154-163. doi: 10.1016/j.jmpt.2020.07.001. Epub 2021 Jan 9."
+              },
+              {
+                "pmid": "27288324",
+                "type": "BACKGROUND",
+                "citation": "Lisi AJ, Brandt CA. Trends in the Use and Characteristics of Chiropractic Services in the Department of Veterans Affairs. J Manipulative Physiol Ther. 2016 Jun;39(5):381-386. doi: 10.1016/j.jmpt.2016.04.005."
+              },
+              {
+                "pmid": "33050719",
+                "type": "BACKGROUND",
+                "citation": "Rist PM, Bernstein C, Kowalski M, Osypiuk K, Connor JP, Vining R, Long CR, Macklin EA, Wayne PM. Multimodal chiropractic care for migraine: A pilot randomized controlled trial. Cephalalgia. 2021 Mar;41(3):318-328. doi: 10.1177/0333102420963844. Epub 2020 Oct 13."
+              },
+              {
+                "pmid": "30971484",
+                "type": "BACKGROUND",
+                "citation": "Rist PM, Buring JE, Ridker PM, Kase CS, Kurth T, Rexrode KM. Lipid levels and the risk of hemorrhagic stroke among women. Neurology. 2019 May 7;92(19):e2286-e2294. doi: 10.1212/WNL.0000000000007454. Epub 2019 Apr 10."
+              },
+              {
+                "pmid": "30973196",
+                "type": "BACKGROUND",
+                "citation": "Rist PM, Hernandez A, Bernstein C, Kowalski M, Osypiuk K, Vining R, Long CR, Goertz C, Song R, Wayne PM. The Impact of Spinal Manipulation on Migraine Pain and Disability: A Systematic Review and Meta-Analysis. Headache. 2019 Apr;59(4):532-542. doi: 10.1111/head.13501. Epub 2019 Mar 14."
+              },
+              {
+                "pmid": "32043014",
+                "type": "BACKGROUND",
+                "citation": "Wayne PM, Bernstein C, Kowalski M, Connor JP, Osypiuk K, Long CR, Vining R, Macklin E, Rist PM. The Integrative Migraine Pain Alleviation through Chiropractic Therapy (IMPACT) trial: Study rationale, design and intervention validation. Contemp Clin Trials Commun. 2020 Jan 22;17:100531. doi: 10.1016/j.conctc.2020.100531. eCollection 2020 Mar."
+              },
+              {
+                "pmid": "20193083",
+                "type": "BACKGROUND",
+                "citation": "Wayne PM, Buring JE, Davis RB, Connors EM, Bonato P, Patritti B, Fischer M, Yeh GY, Cohen CJ, Carroll D, Kiel DP. Tai Chi for osteopenic women: design and rationale of a pragmatic randomized controlled trial. BMC Musculoskelet Disord. 2010 Mar 1;11:40. doi: 10.1186/1471-2474-11-40."
+              },
+              {
+                "pmid": "28694204",
+                "type": "BACKGROUND",
+                "citation": "Wayne PM, Gagnon MM, Macklin EA, Travison TG, Manor B, Lachman M, Thomas CP, Lipsitz LA. The Mind Body-Wellness in Supportive Housing (Mi-WiSH) study: Design and rationale of a cluster randomized controlled trial of Tai Chi in senior housing. Contemp Clin Trials. 2017 Sep;60:96-104. doi: 10.1016/j.cct.2017.07.005. Epub 2017 Jul 8."
+              },
+              {
+                "pmid": "23026349",
+                "type": "BACKGROUND",
+                "citation": "Wayne PM, Manor B, Novak V, Costa MD, Hausdorff JM, Goldberger AL, Ahn AC, Yeh GY, Peng CK, Lough M, Davis RB, Quilty MT, Lipsitz LA. A systems biology approach to studying Tai Chi, physiological complexity and healthy aging: design and rationale of a pragmatic randomized controlled trial. Contemp Clin Trials. 2013 Jan;34(1):21-34. doi: 10.1016/j.cct.2012.09.006. Epub 2012 Sep 29."
+              }
+            ]
+          },
+          "ipdSharingStatementModule": {
+            "ipdSharing": "NO",
+            "description": "Investigators interested in using data from this trial will be directed to contact the multiple principle investigators for data access."
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D008881",
+                "term": "Migraine Disorders"
+              },
+              {
+                "id": "D020773",
+                "term": "Headache Disorders"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D051270",
+                "term": "Headache Disorders, Primary"
+              },
+              {
+                "id": "D001927",
+                "term": "Brain Diseases"
+              },
+              {
+                "id": "D002493",
+                "term": "Central Nervous System Diseases"
+              },
+              {
+                "id": "D009422",
+                "term": "Nervous System Diseases"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT06229834",
+        "title": "Chiropractic Care for Episodic Migraine",
+        "status": "RECRUITING",
+        "conditions": [
+          "Episodic Migraine"
+        ],
+        "criteria": "Inclusion Criteria\n\n* Age 18-65 years\n* Confirmed diagnosis of migraine with or without aura which does not meet criteria for chronic migraine according to the International Classification for -Headache Disorders (ICHD)-3 guidelines at the screening visit with the study physician\n* History of migraines dating for at least one year\n* Completion of at least 26 headache diary days out of 28\n* Confirmed migraine frequency ≥4 to ≤13 days per month during a run-in period\n* If use of medication is applicable, dose must be stable for 2 months prior to study enrollment\n* If use of medication for non-migraine pain condition is applicable (with the exception of episodic tension type headache), dose must be stable for 2 months prior to study enrollment\n* Willing and able to complete all study procedures and be randomized to either of the two intervention groups\n* Fluency in English\n* Confirmed access to and proficiency with use of a smartphone, computer, and/or tablet\n* Working email address or willingness to create an email account for the study\n\nExclusion Criteria\n\n* Non-Veterans (VAMC only)\n* Received botulinum toxin treatment for headache and/or neck pain within the 4 months prior to the start of the baseline phase\n* Received chiropractic care for any condition within the 3 months prior to the start of the baseline phase\n* Received behavioral interventions (e.g., cognitive behavioral therapy, acceptance and commitment therapy, mindfulness, relaxation techniques, hypnosis) within the past 3 months)\n* Used neuromodulation (i.e., \"headache devices\"), proced",
+        "summary": "Migraine, a chronic intermittent headache disorder, ranks in the top five causes of years lived with disability. One promising non-pharmacologic and integrative treatment for migraine may be chiropractic care due to the co-occurrence of migraine and musculoskeletal complaints. The goal of this application is to perform a pilot study of chiropractic care for episodic migraine to help inform the design of a future, full-scale pragmatic effectiveness trial.",
+        "minimumAge": "18 Years",
+        "maximumAge": "65 Years",
+        "sex": "ALL",
+        "healthyVolunteers": false,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT06229834",
+        "fetchedAt": 1792848225530,
+        "lastUpdatePostDate": "2026-06-26",
+        "truncatedFields": [
+          "criteria"
+        ],
+        "missingFields": []
+      }
+    },
+    {
+      "id": "NCT06473597",
+      "fetchedAt": 1792848225642,
+      "sha256": "821c026a6d509dcb372911a3a09a5182128a4c073e9b8184fa0709dd03f1218e",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT06473597",
+            "orgStudyIdInfo": {
+              "id": "2023-12-20"
+            },
+            "organization": {
+              "fullName": "Maimonides Medical Center",
+              "class": "OTHER"
+            },
+            "briefTitle": "A Comparison of Nurtec ODT to Maxalt MLT-ODT in Adult ED Patients With Migraine Headache",
+            "officialTitle": "A Comparison of Rimegepant Orally Disintegrating Tablet (Nurtec ODT) to Rizatriptan Benzoate Orally Disintegrating Tablet (Maxalt MLT-ODT) in Adult Patients Presenting to the ED With Migraine Headache: Randomized, Double-Blind, Clinical Trial"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2026-09",
+            "overallStatus": "RECRUITING",
+            "expandedAccessInfo": {
+              "hasExpandedAccess": false
+            },
+            "startDateStruct": {
+              "date": "2024-09-01",
+              "type": "ACTUAL"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2028-12-31",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2028-12-31",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2024-06-19",
+            "studyFirstSubmitQcDate": "2024-06-19",
+            "studyFirstPostDateStruct": {
+              "date": "2024-06-25",
+              "type": "ACTUAL"
+            },
+            "lastUpdateSubmitDate": "2026-09-21",
+            "lastUpdatePostDateStruct": {
+              "date": "2026-09-24",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "SPONSOR_INVESTIGATOR",
+              "investigatorFullName": "Antonios Likourezos",
+              "investigatorTitle": "Research Administration Director",
+              "investigatorAffiliation": "Maimonides Medical Center"
+            },
+            "leadSponsor": {
+              "name": "Antonios Likourezos",
+              "class": "OTHER"
+            }
+          },
+          "oversightModule": {
+            "oversightHasDmc": true,
+            "isFdaRegulatedDrug": true,
+            "isFdaRegulatedDevice": false
+          },
+          "descriptionModule": {
+            "briefSummary": "Rimegepant (Nurtec) is an orally administered small molecule CGRP receptor antagonist with efficacy in the acute treatment of migraine. Rizatriptan benzoate (MAXALT), is a selective 5-hydroxytryptamine1B/1D (5-HT1B/1D) receptor agonist. Rizatriptan binds with high affinity to human cloned 5-HT1B and 5-HT1D receptors which leads to activation of these receptors results in cranial vessel constriction, inhibition of neuropeptide release and reduced transmission in trigeminal pain pathways with resultant relieve of the headache.\n\nTeh investigators hypothesize that the administration of Rimegepant ODT would provide better analgesic efficacy than Rizatriptan ODT with respect to analgesic efficacy at 60 min and 120 minutes in ED patients with acute headache.\n\nThis is a prospective, randomized, double-blind superiority trial evaluating and comparing analgesic efficacy and safety of Rimegepant ODT 75 mg to Rizatriptan ODT 10 mg in adult patients presenting to the Emergency Department of Maimonides Medical Center with acute migraine headache.",
+            "detailedDescription": "This is a prospective, randomized, double-blind superiority trial evaluating and comparing analgesic efficacy and safety of Rimegepant ODT 75 mg to Rizatriptan ODT 10 mg in adult patients presenting to the ED of Maimonides Medical Center with acute migraine headache.\n\nThe investigators will conduct the study in the emergency department of Maimonides Medical Center, an urban emergency department that receives over 120,000 adult visits annually. The emergency department is staffed on weekdays by salaried, trained, bilingual (English and Spanish) research associates who execute research studies under the supervision of the principal investigators. Adult patients between ages of 18 and 65 presenting to the ED with an acute exacerbation of a migraine without aura as defined by the International Classification of Headache Disorders, 3rd edition criteria for migraine without aura or for probable migraine without aura, with an initial pain score of 5 or more on a standard 11- point (0 to 10) numeric rating scale, and requiring oral analgesia as determined by the treating attending physician will be eligible for participation. Subjects' screening and enrollment will be performed by study investigators and research assistants. All patients will be enrolled at various times of the day when study investigators will be available for patient enrollment and an ED pharmacist will be available for medication preparation.\n\nEach patient will be approached by research associates for acquisition of written informed consent and Health Insurance Portability and Accountability Act authorization after being evaluated by the treating emergency physician and determined to meet study eligibility criteria. When English will not be the participant's primary language, a language- appropriate consent form will be used and non-investigator, hospital-employed, trained interpreters or licensed telephone interpreter will assist in acquisition of informed consent. Baseline pain score will be determined with an 11-point numeric rating scale (0 to 10), described to the patient as \"no pain\" being 0 and \"the worst pain imaginable\" being 10.\n\nResearch associates will ascertain the subject's headache level every 30 minutes after medication administration for up to 120 minutes. If enrolled subjects required more pain medication at or after one hour had elapsed, they will be given additional medication at the discretion of the treating physician.\n\nThe research team will be contacting all of research subjects by telephone 24 hours after ED discharge to ascertain headache status, satisfaction with treatment, and presence of adverse events.\n\nAll data will be recorded on data collection sheets, including patients' sex, demographics, medical history, and vital signs, and entered into SPSS (version 24.0; IBM Corp) by the research manager. Confirmation of written consent acquisition for all participants, and statistical analyses will be conducted by the institutional biostatistician who will work independently of any data collection.\n\nAs a primary measure of headache intensity, the investigators utilized a standard, validated, and reproducible 11-point numerical rating scale (NRS). This scale uses patients' responses in assigning their pain a number between 0 and 10, with 0 representing no pain and ten representing the worst pain imaginable. Secondary measurement scales included a standard four-point pain intensity categorical scale, in which patients describe their pain as \"severe\", \"moderate\", \"mild\", or \"none\" and a four-point functional disability scale, in which patients describe their headache-related disability as severe (\"cannot get up from bed or stretcher\"), moderate (\"great deal of difficulty doing what I usually do and can only do very minor activities\" ), mild (\"little bit of difficulty doing what I usually do\"), or none. These scales will be used in accordance with the recommendation by the International Headache Society for use in migraine research.\n\nOne hour after medication administration, the investigators will ask all of enrolled patients if they needed more medication for pain. Lastly, we will assess enrolled patients' satisfaction (efficacy and tolerability of the study drug) with treatment by asking each of them, 24 hours after enrollment, whether they would want to receive the same medication the next time they visited the ED with an acute migraine.\n\nThe primary outcome for this study will be a comparison of change in numerical rating scale score between baseline and one hour between two investigational arms.\n\nSecondary outcomes will include:\n\n1. A comparative change in pain score between two groups at 120 minutes\n2. A frequency of rescue analgesia at 60 and 120 minutes\n3. Sustained headache freedom, defined as achieving a level of \"none\" on the severe, moderate, mild, and none scale within 2 hours of investigational medication administration and maintaining this level continuously for 24 hours without use of rescue medication.\n4. Sustained headache relief, defined as change within 2 hours of the patient's description of headache from severe or moderate to either mild or none without use of rescue medication, and maintaining this level of relief continuously for 24 hours.\n5. Headache relief in the ED, defined as change within 2 hours of the patient's description of headache from severe or moderate to either mild or none without the use of rescue medication\n6. Headache freedom in the ED, defined as achieving a headache level of \"none\" within 2 hours without use of rescue medication\n7. Achieving a normal functional status by two hours\n8. The patient's overall assessment of efficacy and tolerability, expressed as a dichotomous response to the question \"Do you want to receive the same medication the next time you visit the ER with a migraine?\""
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Migraine"
+            ],
+            "keywords": [
+              "Migraine",
+              "Headache",
+              "Emergency Medicine"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE4"
+            ],
+            "designInfo": {
+              "allocation": "RANDOMIZED",
+              "interventionModel": "PARALLEL",
+              "primaryPurpose": "TREATMENT",
+              "maskingInfo": {
+                "masking": "QUADRUPLE",
+                "whoMasked": [
+                  "PARTICIPANT",
+                  "CARE_PROVIDER",
+                  "INVESTIGATOR",
+                  "OUTCOMES_ASSESSOR"
+                ]
+              }
+            },
+            "enrollmentInfo": {
+              "count": 80,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "Rimegepant (Nurtec ODT)",
+                "type": "ACTIVE_COMPARATOR",
+                "description": "Rimegepant (Nurtec ODT) 75 mg orally disintegrating tablets",
+                "interventionNames": [
+                  "Drug: Rimegepant"
+                ]
+              },
+              {
+                "label": "Rizatriptan Benzoate (Maxalt MLT-ODT)",
+                "type": "ACTIVE_COMPARATOR",
+                "description": "Rizatriptan ODT 10mg orally disintegrating tablets",
+                "interventionNames": [
+                  "Drug: Rizatriptan Benzoate"
+                ]
+              }
+            ],
+            "interventions": [
+              {
+                "type": "DRUG",
+                "name": "Rimegepant",
+                "description": "NURTEC ODT 75 mg orally disintegrating tablets",
+                "armGroupLabels": [
+                  "Rimegepant (Nurtec ODT)"
+                ],
+                "otherNames": [
+                  "Nurtec ODT"
+                ]
+              },
+              {
+                "type": "DRUG",
+                "name": "Rizatriptan Benzoate",
+                "description": "Rizatriptan ODT 10mg orally disintegrating tablets",
+                "armGroupLabels": [
+                  "Rizatriptan Benzoate (Maxalt MLT-ODT)"
+                ],
+                "otherNames": [
+                  "Maxalt MLT-ODT"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Change in Pain Score at 60 minutes",
+                "description": "Change in Pain Score between baseline and 60 minutes. Pain score will be measured via validated an 11 point Likert Scale where 0 is no pain, 5 moderate pain and 10 very severe pain.",
+                "timeFrame": "60 minutes"
+              }
+            ],
+            "secondaryOutcomes": [
+              {
+                "measure": "Change in Pain Score",
+                "description": "Change in Pain Score between baseline and 120 minutes. Pain score will be measured via validated an 11 point Likert Scale where 0 is no pain, 5 moderate pain and 10 very severe pain.",
+                "timeFrame": "120 minutes"
+              },
+              {
+                "measure": "Rescue Analgesia at 60 minutes",
+                "description": "Frequency of Rescue Analgesia at 60 minutes",
+                "timeFrame": "60 minutes"
+              },
+              {
+                "measure": "Rescue Analgesia at 120 minutes",
+                "description": "Frequency of Rescue Analgesia at 120 minutes",
+                "timeFrame": "120 minutes"
+              },
+              {
+                "measure": "Percentage of Patients who Sustained Headache Freedom",
+                "description": "Sustained headache freedom, defined as achieving a level of \"none\" on the severe, moderate, mild, and none scale within 2 hours of investigational medication administration and maintaining this level continuously for 24 hours without use of rescue medication.",
+                "timeFrame": "24 hours"
+              },
+              {
+                "measure": "Percentage of Patients Who Sustained Headache Relief",
+                "description": "Sustained headache relief, defined as change within 2 hours of the patient's description of headache from severe or moderate to either mild or none without use of rescue medication, and maintaining this level of relief continuously for 24 hours.",
+                "timeFrame": "24 hours"
+              },
+              {
+                "measure": "Percentage of Patients who had Headache Relief In the ED",
+                "description": "Headache relief in the ED, defined as change within 2 hours of the patient's description of headache from severe or moderate to either mild or none without the use of rescue medication",
+                "timeFrame": "2 hours"
+              },
+              {
+                "measure": "Percentage of Patients with Headache Freedom in the ED",
+                "description": "Headache freedom in the ED, defined as achieving a headache level of \"none\" within 2 hours without use of rescue medication",
+                "timeFrame": "2 hours"
+              },
+              {
+                "measure": "Functional Status",
+                "description": "Achieving a normal functional status by two hours",
+                "timeFrame": "2 hours"
+              },
+              {
+                "measure": "Headache Medication Efficacy and Tolerability Perception by the Patient",
+                "description": "The patient's overall assessment of efficacy and tolerability, expressed as a dichotomous response to the question \"Do you want to receive the same medication the next time you visit the ER with a migraine?\"",
+                "timeFrame": "2 hours"
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria:\n\n* Adult ED patients age 18 to 65 years old\n* Acute headache\n* Initial Pain score of 5 on a standard 11- point (score 0 to 10) numeric rating scale\n* Patients will have to be awake, alert, and oriented to person, place, and time\n* Patients able to demonstrate understanding of the informed consent process and content.\n* Patients also will have to demonstrate ability to verbalize the nature of any adverse effects they might experience as well as to express their pain severity by using the NRS.\n\nExclusion Criteria:\n\n* Allergy to Rimegepant or Rizatriptan\n* Pregnancy and breastfeeding\n* Unstable vital signs\n* Inability to provide consent\n* Suspicion for disease process other than migraine (those requiring emergent brain imaging, with a temperature of 100.4 °F, with objective neurologic findings, secondary headache (an \"organic\" headache))\n* Ischemic coronary artery disease (angina pectoris, history of myocardial infarction), coronary artery vasospasm (including Prinzmetal's angina)\n* History of stroke or transient ischemic attack\n* Peripheral vascular disease\n* Ischemic bowel disease,\n* Uncontrolled hypertension\n* Use of another 5-HT1 agonist, ergotamine-containing medications, or ergot-type medications (methylsergide)\n* Hemiplegic or basilar migraine\n* Concurrent administration or recent discontinuation (within 2 weeks) of a MAO-A inhibitors\n* Current use of Rimegepant as a prophylactic\n* Severe Nausea and Vomiting\n* Severe headache requiring immediate intervention\n* Severe hepatic impairment\n* If taking any of the following medications (contraindications):\n\n  * Monoaminoxidaze (MAO) inhibitors (isocarboxazid, linezolid, metaxalone, methylene blue, moclobemide, phenelzine, procarbazine, rasagiline, safinamide, selegiline, tranylcypromine)\n  * SSRI- Citalopram, Escitalopram, Sertraline\n  * Triptans: Sumatriptan, Zolmitriptan, Imigran\n  * Almotriptan.\n  * Cabergoline.\n  * Dihydroergotamine.\n  * Dihydroergotamine intranasal\n  * Eletriptan\n  * Ergoloid mesylates\n  * Ergotamine\n  * Frovatriptan\n  * Duloxetine\n  * Cyclobenzaprine\n  * Fluoxetine, velafaxine\n  * Trazodone\n  * Tramadol\n  * TCA: nortriptyline (Pamelor), amitriptyline, protriptyline\n  * Amphetamines: methamphetamine (Desoxyn), dextroamphetamine (Adderall, Adderall XR), dextroamphetamine (Dexedrine)\n  * azole antifungals ( ketoconazole, itraconazole)\n  * macrolide antibiotics (clarithromycin, erythromycin)\n  * rifamycins (such as rifampin, rifabutin)\n  * carbamazepine, phenytoin\n  * Cardiac Drug: amiodarone (Nexterone, Pacerone), quinidine, ranolazine (Aspruzyo Sprinkle), verapamil (Verelan, Verelan PM)",
+            "healthyVolunteers": false,
+            "sex": "ALL",
+            "minimumAge": "18 Years",
+            "maximumAge": "65 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ]
+          },
+          "contactsLocationsModule": {
+            "centralContacts": [
+              {
+                "name": "Sergey Motov, MD",
+                "role": "CONTACT",
+                "phone": "718-283-6000",
+                "email": "smotov@maimo.org"
+              },
+              {
+                "name": "Antonios Likourezos, MPH",
+                "role": "CONTACT",
+                "email": "alikourezos@maimo.org"
+              }
+            ],
+            "overallOfficials": [
+              {
+                "name": "Sergey Motov, MD",
+                "affiliation": "Maimonides Medical Center",
+                "role": "PRINCIPAL_INVESTIGATOR"
+              }
+            ],
+            "locations": [
+              {
+                "facility": "Maimonides Medical Center",
+                "status": "RECRUITING",
+                "city": "Brooklyn",
+                "state": "New York",
+                "zip": "11219",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Sergey Motov, MD",
+                    "role": "CONTACT",
+                    "email": "smotov@maimo.org"
+                  },
+                  {
+                    "name": "Antonios Likourezos, MPH",
+                    "role": "CONTACT",
+                    "email": "alikourezos@maimo.org"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 40.6501,
+                  "lon": -73.94958
+                }
+              }
+            ]
+          }
+        },
+        "documentSection": {
+          "largeDocumentModule": {
+            "largeDocs": [
+              {
+                "typeAbbrev": "Prot_SAP",
+                "hasProtocol": true,
+                "hasSap": true,
+                "hasIcf": false,
+                "label": "Study Protocol and Statistical Analysis Plan",
+                "date": "2024-03-04",
+                "uploadDate": "2024-06-19T12:13",
+                "filename": "Prot_SAP_000.pdf",
+                "size": 184268
+              }
+            ]
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D008881",
+                "term": "Migraine Disorders"
+              },
+              {
+                "id": "D006261",
+                "term": "Headache"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D051270",
+                "term": "Headache Disorders, Primary"
+              },
+              {
+                "id": "D020773",
+                "term": "Headache Disorders"
+              },
+              {
+                "id": "D001927",
+                "term": "Brain Diseases"
+              },
+              {
+                "id": "D002493",
+                "term": "Central Nervous System Diseases"
+              },
+              {
+                "id": "D009422",
+                "term": "Nervous System Diseases"
+              },
+              {
+                "id": "D010146",
+                "term": "Pain"
+              },
+              {
+                "id": "D009461",
+                "term": "Neurologic Manifestations"
+              },
+              {
+                "id": "D012816",
+                "term": "Signs and Symptoms"
+              },
+              {
+                "id": "D013568",
+                "term": "Pathological Conditions, Signs and Symptoms"
+              }
+            ]
+          },
+          "interventionBrowseModule": {
+            "meshes": [
+              {
+                "id": "C578443",
+                "term": "rimegepant sulfate"
+              },
+              {
+                "id": "C093622",
+                "term": "rizatriptan"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT06473597",
+        "title": "A Comparison of Nurtec ODT to Maxalt MLT-ODT in Adult ED Patients With Migraine Headache",
+        "status": "RECRUITING",
+        "conditions": [
+          "Migraine"
+        ],
+        "criteria": "Inclusion Criteria:\n\n* Adult ED patients age 18 to 65 years old\n* Acute headache\n* Initial Pain score of 5 on a standard 11- point (score 0 to 10) numeric rating scale\n* Patients will have to be awake, alert, and oriented to person, place, and time\n* Patients able to demonstrate understanding of the informed consent process and content.\n* Patients also will have to demonstrate ability to verbalize the nature of any adverse effects they might experience as well as to express their pain severity by using the NRS.\n\nExclusion Criteria:\n\n* Allergy to Rimegepant or Rizatriptan\n* Pregnancy and breastfeeding\n* Unstable vital signs\n* Inability to provide consent\n* Suspicion for disease process other than migraine (those requiring emergent brain imaging, with a temperature of 100.4 °F, with objective neurologic findings, secondary headache (an \"organic\" headache))\n* Ischemic coronary artery disease (angina pectoris, history of myocardial infarction), coronary artery vasospasm (including Prinzmetal's angina)\n* History of stroke or transient ischemic attack\n* Peripheral vascular disease\n* Ischemic bowel disease,\n* Uncontrolled hypertension\n* Use of another 5-HT1 agonist, ergotamine-containing medications, or ergot-type medications (methylsergide)\n* Hemiplegic or basilar migraine\n* Concurrent administration or recent discontinuation (within 2 weeks) of a MAO-A inhibitors\n* Current use of Rimegepant as a prophylactic\n* Severe Nausea and Vomiting\n* Severe headache requiring immediate intervention\n* Severe hepatic impairment\n* If taking any of the following",
+        "summary": "Rimegepant (Nurtec) is an orally administered small molecule CGRP receptor antagonist with efficacy in the acute treatment of migraine. Rizatriptan benzoate (MAXALT), is a selective 5-hydroxytryptamine1B/1D (5-HT1B/1D) receptor agonist. Rizatriptan binds with high affinity to human cloned 5-HT1B and 5-HT1D receptors which leads to activation of these receptors results in cranial vessel constriction, inhibition of neuropeptide release and reduced transmission in trigeminal pain pathways with resultant relieve of the headache.\n\nTeh investigators hypothesize that the administration of Rimegep",
+        "minimumAge": "18 Years",
+        "maximumAge": "65 Years",
+        "sex": "ALL",
+        "healthyVolunteers": false,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT06473597",
+        "fetchedAt": 1792848225642,
+        "lastUpdatePostDate": "2026-09-24",
+        "truncatedFields": [
+          "criteria",
+          "summary"
+        ],
+        "missingFields": []
+      }
+    },
+    {
+      "id": "NCT02846571",
+      "fetchedAt": 1792848225760,
+      "sha256": "5ab70d60a810ca47781fefe98bfbb9a96d0b956c69ec05b6baea935b45588097",
+      "raw": {
+        "protocolSection": {
+          "identificationModule": {
+            "nctId": "NCT02846571",
+            "orgStudyIdInfo": {
+              "id": "20160640"
+            },
+            "organization": {
+              "fullName": "University of Miami",
+              "class": "OTHER"
+            },
+            "briefTitle": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye",
+            "officialTitle": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye"
+          },
+          "statusModule": {
+            "statusVerifiedDate": "2026-03",
+            "overallStatus": "RECRUITING",
+            "expandedAccessInfo": {
+              "hasExpandedAccess": false
+            },
+            "startDateStruct": {
+              "date": "2019-12-05",
+              "type": "ACTUAL"
+            },
+            "primaryCompletionDateStruct": {
+              "date": "2026-12-31",
+              "type": "ESTIMATED"
+            },
+            "completionDateStruct": {
+              "date": "2027-12-31",
+              "type": "ESTIMATED"
+            },
+            "studyFirstSubmitDate": "2016-07-18",
+            "studyFirstSubmitQcDate": "2016-07-22",
+            "studyFirstPostDateStruct": {
+              "date": "2016-07-27",
+              "type": "ESTIMATED"
+            },
+            "lastUpdateSubmitDate": "2026-03-10",
+            "lastUpdatePostDateStruct": {
+              "date": "2026-03-12",
+              "type": "ACTUAL"
+            }
+          },
+          "sponsorCollaboratorsModule": {
+            "responsibleParty": {
+              "type": "SPONSOR_INVESTIGATOR",
+              "investigatorFullName": "Midhat H. Abdulreda",
+              "investigatorTitle": "Associate Professor, Diabetes Research Institute",
+              "investigatorAffiliation": "University of Miami"
+            },
+            "leadSponsor": {
+              "name": "Midhat H. Abdulreda",
+              "class": "OTHER"
+            },
+            "collaborators": [
+              {
+                "name": "Diabetes Research Institute Foundation",
+                "class": "OTHER"
+              },
+              {
+                "name": "Bascom Palmer Eye Institute",
+                "class": "OTHER"
+              }
+            ]
+          },
+          "oversightModule": {
+            "oversightHasDmc": true,
+            "isFdaRegulatedDrug": true,
+            "isFdaRegulatedDevice": false
+          },
+          "descriptionModule": {
+            "briefSummary": "The intervention in this trial is intraocular islet transplantation. A single dose of 1000 - 3000 Islet Equivalents (IEQ)/kg recipient body weight (BW) will be infused into the anterior chamber of the eye through a self-sealing incision in the peripheral cornea. The procedure is projected to take approximately 20-30 minutes. Transplant recipients in this study will receive localized maintenance immunosuppression via topical application of eye-drops.",
+            "detailedDescription": "The American Diabetes Association reports that 38.4 million Americans had diabetes in 2021, which accounts for 11.6% of the population. About 77% of them were diagnosed (29.7 million) and the rest were undiagnosed (8.7 million). With an estimated 1.2 million new diagnoses every year, the number of people living with diabetes in the U.S. alone is estimated to increase by the end of the decade to 45.6 million. Approximately 95% of diabetics have type 2 diabetes (T2D) and the rest (\\~2 million) are type 1 diabetics (T1D); although, the prevalence of T1D is also increasing. According to the Juvenile Diabetes research Foundation (JDFR), an anticipated 64,000 new T1D diagnoses are expected each year in the U.S., and similar trends have been observed in children and adolescents in many other countries. Consequently, the combined global economic cost of diabetes healthcare is expected to be around $2.2 trillion by 2030.\n\nWhile the etiologies of T1D and T2D may vary, both can lead to insulin insufficiency and hyperglycemia (increased blood sugar levels). Chronic hyperglycemia results in diabetic complications that severely impact on the quality-of-life of patients and some can be life-threatening, like diabetic ketoacidosis. Therefore, insulin supplementation in insulin-dependent diabetes is required. Insulin supplementation can be either in the form of multiple daily insulin injections (manual or via pump) or by biological replacement of the insulin-producing beta cells through transplantation, which provides a natural source of insulin. On the one hand, since the discovery of insulin in the early 1900s, exogenous insulin supplementation has saved countless lives of diabetic patients. However, it is well established that exogenous insulin injection therapy is suboptimal in preventing fluctuation in blood sugar levels (i.e., hyper- and hypoglycemia) due to mis-dosing and other factors. On the other hand, transplantation provides an endogenous source of insulin and c-peptide in real-time without the need for pre-meal dosing or the risk of miscalculating the dose in manual administration or for the challenging predictive algorithms in the case of insulin pumps. Importantly, it has been shown that even partial levels of endogenous insulin secretion can improve glycemic lability and protect from chronic diabetic complications and life-threatening hypoglycemia and diabetic ketoacidosis.\n\nIt is now established that beta cell replacement therapy through transplantation of isolated pancreatic islets offers a great therapeutic option in insulin-dependent diabetes, and FDA recently approved it as the first cellular therapy in T1D. However, islet transplantation also has limitations. In general, the limited availability of donor tissue remains a significant obstacle in transplant therapies, including that of pancreatic islets. Other limitations are associated with the mandatory use of systemic anti-rejection immunosuppressive drugs because chronic systemic immunosuppression exposes the transplant recipients to serious and potentially deadly side-effects and complications, such as, but not limited to, increased susceptibility to infections, sepsis, and cancer. While improving systemic immunosuppression regimens would reduce off-target effects and the associated systemic complications, avoiding generalized immunosuppression altogether via localized application would significantly reduce such undesired complications.\n\nCurrently, diabetic patients receive transplant therapy either in the form of whole pancreas or isolated pancreatic islets. On the one hand, whole pancreas transplant has been shown to achieve insulin independence in T1D patients, but it is also very invasive and is associated with a high risk of complications and adverse events including mortality. On the other hand, transplantation of isolated pancreatic islets is minimally invasive and has significantly less complications compared to whole pancreas transplant, but survival of the islet graft might be severely limited by complications associated with the current clinical transplant site, the portal system of the liver. Nevertheless, thousands of patients have received islet transplants in their livers in clinical trials that demonstrated its benefits and the significant improvement in the quality-of-life of islet transplant recipients brought about through improved glycemic control, reduced hypoglycemia episodes, and the prevention of diabetes-associated complications. Notably, some transplanted patients with restored awareness of hypoglycemia maintained this benefit even after going back on exogenous insulin therapy due to islet-graft loss. Many transplant recipients with diabetic retinopathy (D.R.) also experienced improvement in their D.R. Recent experimental evidence indicates that this improvement is mediated by c-peptide inhibiting VEGF-induced vasculopathies, which occur in both T1D and T2D patients. Therefore, transplantation of pancreatic islets is a good treatment option in insulin-dependent diabetes.\n\nThe current trial is evaluating the safety of intraocular islet transplantation with localized maintenance immunosuppression via topical application of eye-drops."
+          },
+          "conditionsModule": {
+            "conditions": [
+              "Diabetes"
+            ],
+            "keywords": [
+              "Islet Transplantation",
+              "Type 1 Diabetes",
+              "Immune Tolerance Induction",
+              "Diabetes Complications",
+              "Intraocular Transplantation",
+              "Eye Anterior Chamber",
+              "Kidney Transplantation",
+              "Immunosuppression",
+              "Type 2 Diabetes",
+              "Eye Drops Immunosuppression",
+              "localized immunosuppression"
+            ]
+          },
+          "designModule": {
+            "studyType": "INTERVENTIONAL",
+            "phases": [
+              "PHASE1",
+              "PHASE2"
+            ],
+            "designInfo": {
+              "allocation": "NA",
+              "interventionModel": "SINGLE_GROUP",
+              "primaryPurpose": "TREATMENT",
+              "maskingInfo": {
+                "masking": "NONE"
+              }
+            },
+            "enrollmentInfo": {
+              "count": 2,
+              "type": "ESTIMATED"
+            }
+          },
+          "armsInterventionsModule": {
+            "armGroups": [
+              {
+                "label": "Human Pancreatic Islet Transplantation",
+                "type": "OTHER",
+                "description": "Islet transplantation into the anterior chamber of the eye single arm",
+                "interventionNames": [
+                  "Biological: Human Pancreatic Islet Transplantation"
+                ]
+              }
+            ],
+            "interventions": [
+              {
+                "type": "BIOLOGICAL",
+                "name": "Human Pancreatic Islet Transplantation",
+                "description": "Human pancreatic islet transplantation in the eye anterior chamber of legally blind type 1 or type 2 diabetes patients with and without insulin-dependence",
+                "armGroupLabels": [
+                  "Human Pancreatic Islet Transplantation"
+                ]
+              }
+            ]
+          },
+          "outcomesModule": {
+            "primaryOutcomes": [
+              {
+                "measure": "Absence of ocular complications",
+                "description": "Absence of, corneal decompensation, increased intraocular pressure (IOP), uveitis, cataract formation, retinal detachment, retinal bleeding, retinal vasculopathies, macular edema, optic neuropathy, and endophthalmitis in the transplanted eye",
+                "timeFrame": "24 months after transplant"
+              },
+              {
+                "measure": "Absence of sympathetic ophthalmia",
+                "description": "Absence of ophthalmic complications in the non-transplanted eye and assessment of diabetic retinopathy compared to baseline before transplant",
+                "timeFrame": "24 months after transplant"
+              },
+              {
+                "measure": "Confirmation of intraocular islet graft survival",
+                "description": "Confirmation of positive c-peptide (\\>1 ng/ml) in the aqueous humor of the transplanted eye and assessment of intraocular islet graft integrity by slit-lamp microscopy and OCT imaging",
+                "timeFrame": "24 months after transplant"
+              }
+            ]
+          },
+          "eligibilityModule": {
+            "eligibilityCriteria": "Patients who meet all of the following criteria are eligible for participation in the study:\n\nOphthalmic inclusion criteria:\n\n1. Patient with at least one eye with extensive loss of vision from hand motion to no light perception.\n2. Phakic or pseudophakic with a stable intraocular lens in the blind eye.\n3. Normal cornea with good visualization of the anterior segment.\n4. Normal anterior segment anatomy including the iris bed.\n\nGeneral and metabolic inclusion criteria:\n\n1. Male and female subjects ages 18 to 75 years of age and no history of non-compliance.\n2. Clinical history compatible with T1D or T2D with or without insulin-dependence at the time of enrollment.\n3. Stable renal function of native or transplanted kidney if applicable.\n4. Ability to provide written informed consent.\n5. Mentally stable and able to comply with the procedures of the study protocol.\n\nExclusion Criteria: Patients who meet any of these criteria are not eligible for participation in the study:\n\nOphthalmic exclusion criteria (only in surgical eye):\n\n1. Poor visualization of the anterior chamber (corneal opacity, corneal edema, Herpes Keratitis).\n2. Aphakic status (no lens).\n3. Narrow angle of iris anatomy: Spade Scale IV.\n4. History of uncontrolled glaucoma or glaucoma that had required surgical intervention (e.g., trabeculectomy or shunting devices).\n5. Active uncontrolled uveitis.\n6. Presence of silicone in the anterior segment after complex diabetic retinopathy surgery.\n7. History of allergy to topical steroids and immune-modulatory drugs including CSA and Tacrolimus.\n\nGeneral and metabolic exclusion criteria:\n\n1. HbA1c \\>10%.\n2. Blood Pressure: SBP \\>160 mmHg or DBP \\>100 mmHg.\n3. Calculated GFR of ≤40 mL/min/1.73 m2 for patients with kidney transplant or \\<80 mL/min/1.73 m2 for those without kidney transplant, using the subject's measured serum creatinine and the Chronic Kidney Disease Epidemiology Collaboration (CKD-EPI) equation1.\n4. Strict vegetarians (vegans) will be excluded only if their estimated GFR is ≤35 mL/min/1.73 m2 for patients with kidney transplant or \\<70 mL/min/1.73 m2 for those without kidney transplant.\n5. Proteinuria (albumin/creatinine ratio or ACr \\>300mg/dl) of new onset or since kidney transplantation if applicable.\n6. Calculated panel-reactive anti-HLA antibodies \\>20%.\n7. Positive crossmatch.\n8. Antibodies (i.e., presumed de-novo) to the kidney transplant donor, if applicable.\n9. For female subjects: Positive pregnancy test, presently breast-feeding, or unwillingness to use effective contraceptive measures for the duration of the study and 4 months after discontinuation. For male subjects: intent to procreate during the duration of the study (24 months) or within 4 months after discontinuation, or unwillingness to use effective measures of contraception. Oral contraceptives, Norplant®, Depo-Provera®, and barrier devices with spermicide are acceptable contraceptive methods; condoms used alone are not acceptable.\n10. Presence or history of active infection including hepatitis B, hepatitis C, HIV, or tuberculosis (TB). Subjects with laboratory evidence of active infection are excluded even in the absence of clinical evidence of active infection.\n11. Negative screen for Epstein-Barr Virus (EBV) by IgG determination.\n12. Invasive aspergillus, histoplasmosis, and coccidioidomycosis infection within one year prior to study enrollment.\n13. Active malignancy (cancer) except if successfully treated and declared cancer-free and/or in-remission by the oncologist.\n14. Known active alcohol or substance abuse.\n15. Baseline Hb below the lower limits of normal at the local laboratory; lymphopenia (\\<1,000/µL), neutropenia (\\<1,500/µL), or thrombocytopenia (platelets \\<100,000/µL). Participants with lymphopenia are allowed if the investigator determines there is no additional risk with additional clearance from a hematologist.\n16. Severe co-existing cardiac disease, characterized by any one of these conditions:\n\n    1. Recent myocardial infarction (within past 6 months).\n    2. Evidence of ischemia on functional cardiac exam within the last year.\n    3. Left ventricular ejection fraction \\<30%.\n17. Hyperlipidemia despite medical therapy (fasting low-density lipoprotein \\[LDL\\] cholesterol \\>130 mg/dL, treated or untreated; and/or fasting triglycerides \\>200 mg/dL) for patients with kidney transplant.\n18. Receiving treatment for a medical condition requiring chronic use of systemic steroids, except for the use of ≤5 mg prednisone daily, or an equivalent dose of hydrocortisone, for physiological replacement only.\n19. Use of any investigational agents within 4 weeks of enrollment.\n20. Administration of live attenuated vaccine(s) within 2 months of enrollment.\n21. Any medical condition that, in the opinion of the investigator, will interfere with the safe participation in the trial.",
+            "healthyVolunteers": false,
+            "sex": "ALL",
+            "minimumAge": "18 Years",
+            "maximumAge": "75 Years",
+            "stdAges": [
+              "ADULT",
+              "OLDER_ADULT"
+            ]
+          },
+          "contactsLocationsModule": {
+            "centralContacts": [
+              {
+                "name": "Midhat H Abdulreda, Ph.D.",
+                "role": "CONTACT",
+                "phone": "305-243-9871",
+                "email": "mabdulreda@miami.edu"
+              },
+              {
+                "name": "Sonia Yoo, M.D.",
+                "role": "CONTACT",
+                "phone": "305-326-6000",
+                "phoneExt": "6322",
+                "email": "syoo@med.miami.edu"
+              }
+            ],
+            "overallOfficials": [
+              {
+                "name": "Midhat H Abdulreda, Ph.D.",
+                "affiliation": "University of Miami",
+                "role": "PRINCIPAL_INVESTIGATOR"
+              }
+            ],
+            "locations": [
+              {
+                "facility": "Bascom Palmer Eye Institute",
+                "status": "RECRUITING",
+                "city": "Miami",
+                "state": "Florida",
+                "zip": "33136",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Sonia H. Yoo, M.D.",
+                    "role": "CONTACT",
+                    "phone": "305-326-6000",
+                    "phoneExt": "6322",
+                    "email": "syoo@med.miami.edu"
+                  },
+                  {
+                    "name": "Javier Paredes, CCRC",
+                    "role": "CONTACT",
+                    "phone": "305-326-6387",
+                    "email": "jxp2537@med.miami.edu"
+                  },
+                  {
+                    "name": "Sonia H Yoo, M.D.",
+                    "role": "SUB_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 25.77427,
+                  "lon": -80.19366
+                }
+              },
+              {
+                "facility": "Diabetes Research Institute, University of Miami Miller School of Medicine",
+                "status": "RECRUITING",
+                "city": "Miami",
+                "state": "Florida",
+                "zip": "33136",
+                "country": "United States",
+                "contacts": [
+                  {
+                    "name": "Rodolfo Alejandro, M.D.",
+                    "role": "CONTACT",
+                    "phone": "(305) 243-5324",
+                    "email": "ralejand@med.miami.edu"
+                  },
+                  {
+                    "name": "David A Baidal, M.D.",
+                    "role": "CONTACT",
+                    "phone": "(305) 243-7740",
+                    "email": "dbaidal@med.miami.edu"
+                  },
+                  {
+                    "name": "Rodolfo Alejandro, M.D.",
+                    "role": "SUB_INVESTIGATOR"
+                  },
+                  {
+                    "name": "David A Baidal, M.D.",
+                    "role": "SUB_INVESTIGATOR"
+                  }
+                ],
+                "geoPoint": {
+                  "lat": 25.77427,
+                  "lon": -80.19366
+                }
+              }
+            ]
+          },
+          "referencesModule": {
+            "references": [
+              {
+                "pmid": "21360190",
+                "type": "BACKGROUND",
+                "citation": "Perez VL, Caicedo A, Berman DM, Arrieta E, Abdulreda MH, Rodriguez-Diaz R, Pileggi A, Hernandez E, Dubovy SR, Parel JM, Ricordi C, Kenyon NM, Kenyon NS, Berggren PO. The anterior chamber of the eye as a clinical transplantation site for the treatment of diabetes: a study in a baboon model of diabetes. Diabetologia. 2011 May;54(5):1121-6. doi: 10.1007/s00125-011-2091-y. Epub 2011 Mar 1."
+              },
+              {
+                "pmid": "29497631",
+                "type": "BACKGROUND",
+                "citation": "Shishido A, Caicedo A, Rodriguez-Diaz R, Pileggi A, Berggren PO, Abdulreda MH. Clinical intraocular islet transplantation is not a number issue. CellR4 Repair Replace Regen Reprogram. 2016;4(4):e2120. Epub 2016 Jul 26."
+              },
+              {
+                "pmid": "32264703",
+                "type": "BACKGROUND",
+                "citation": "Tun SBB, Chua M, Hasan R, Kohler M, Zheng X, Ali Y, Abdulreda MH, Juntti-Berggren L, Barathi VA, Berggren PO. Islet Transplantation to the Anterior Chamber of the Eye-A Future Treatment Option for Insulin-Deficient Type-2 Diabetics? A Case Report from a Nonhuman Type-2 Diabetic Primate. Cell Transplant. 2020 Jan-Dec;29:963689720913256. doi: 10.1177/0963689720913256."
+              },
+              {
+                "pmid": "30701283",
+                "type": "BACKGROUND",
+                "citation": "Abdulreda MH, Berman DM, Shishido A, Martin C, Hossameldin M, Tschiggfrie A, Hernandez LF, Hernandez A, Ricordi C, Parel JM, Jankowska-Gan E, Burlingham WJ, Arrieta-Quintero EA, Perez VL, Kenyon NS, Berggren PO. Operational immune tolerance towards transplanted allogeneic pancreatic islets in mice and a non-human primate. Diabetologia. 2019 May;62(5):811-821. doi: 10.1007/s00125-019-4814-4. Epub 2019 Jan 31."
+              }
+            ],
+            "seeAlsoLinks": [
+              {
+                "label": "CellR4 Publication",
+                "url": "http://www.cellr4.org/article/2120"
+              }
+            ]
+          },
+          "ipdSharingStatementModule": {
+            "ipdSharing": "NO"
+          }
+        },
+        "derivedSection": {
+          "miscInfoModule": {
+            "versionHolder": "2026-10-23"
+          },
+          "conditionBrowseModule": {
+            "meshes": [
+              {
+                "id": "D003920",
+                "term": "Diabetes Mellitus"
+              },
+              {
+                "id": "D003922",
+                "term": "Diabetes Mellitus, Type 1"
+              },
+              {
+                "id": "D048909",
+                "term": "Diabetes Complications"
+              },
+              {
+                "id": "D003924",
+                "term": "Diabetes Mellitus, Type 2"
+              }
+            ],
+            "ancestors": [
+              {
+                "id": "D044882",
+                "term": "Glucose Metabolism Disorders"
+              },
+              {
+                "id": "D008659",
+                "term": "Metabolic Diseases"
+              },
+              {
+                "id": "D009750",
+                "term": "Nutritional and Metabolic Diseases"
+              },
+              {
+                "id": "D004700",
+                "term": "Endocrine System Diseases"
+              },
+              {
+                "id": "D001327",
+                "term": "Autoimmune Diseases"
+              },
+              {
+                "id": "D007154",
+                "term": "Immune System Diseases"
+              }
+            ]
+          }
+        },
+        "hasResults": false
+      },
+      "normalized": {
+        "id": "NCT02846571",
+        "title": "Pancreatic Islet Transplantation Into the Anterior Chamber of the Eye",
+        "status": "RECRUITING",
+        "conditions": [
+          "Diabetes"
+        ],
+        "criteria": "Patients who meet all of the following criteria are eligible for participation in the study:\n\nOphthalmic inclusion criteria:\n\n1. Patient with at least one eye with extensive loss of vision from hand motion to no light perception.\n2. Phakic or pseudophakic with a stable intraocular lens in the blind eye.\n3. Normal cornea with good visualization of the anterior segment.\n4. Normal anterior segment anatomy including the iris bed.\n\nGeneral and metabolic inclusion criteria:\n\n1. Male and female subjects ages 18 to 75 years of age and no history of non-compliance.\n2. Clinical history compatible with T1D or T2D with or without insulin-dependence at the time of enrollment.\n3. Stable renal function of native or transplanted kidney if applicable.\n4. Ability to provide written informed consent.\n5. Mentally stable and able to comply with the procedures of the study protocol.\n\nExclusion Criteria: Patients who meet any of these criteria are not eligible for participation in the study:\n\nOphthalmic exclusion criteria (only in surgical eye):\n\n1. Poor visualization of the anterior chamber (corneal opacity, corneal edema, Herpes Keratitis).\n2. Aphakic status (no lens).\n3. Narrow angle of iris anatomy: Spade Scale IV.\n4. History of uncontrolled glaucoma or glaucoma that had required surgical intervention (e.g., trabeculectomy or shunting devices).\n5. Active uncontrolled uveitis.\n6. Presence of silicone in the anterior segment after complex diabetic retinopathy surgery.\n7. History of allergy to topical steroids and immune-modulatory drugs including CSA and Tacrolimus.",
+        "summary": "The intervention in this trial is intraocular islet transplantation. A single dose of 1000 - 3000 Islet Equivalents (IEQ)/kg recipient body weight (BW) will be infused into the anterior chamber of the eye through a self-sealing incision in the peripheral cornea. The procedure is projected to take approximately 20-30 minutes. Transplant recipients in this study will receive localized maintenance immunosuppression via topical application of eye-drops.",
+        "minimumAge": "18 Years",
+        "maximumAge": "75 Years",
+        "sex": "ALL",
+        "healthyVolunteers": false,
+        "hasResults": false,
+        "countries": [
+          "United States"
+        ],
+        "sourceUrl": "https://clinicaltrials.gov/study/NCT02846571",
+        "fetchedAt": 1792848225760,
+        "lastUpdatePostDate": "2026-03-12",
+        "truncatedFields": [
+          "criteria"
+        ],
+        "missingFields": []
+      }
+    }
+  ]
+}
