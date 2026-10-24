@@ -15,6 +15,9 @@ const sites=JSON.parse(await readFile(path.join(root,'sites.json'),'utf8'));
 const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
 if(variant==='b')manifest.name+=' · Version B';
 manifest.host_permissions=sites.origins.map(origin=>`${origin}/*`);
+// Fail closed if the extension-page CSP drifts toward remote, inline, eval, data: or blob: sources.
+const csp=manifest.content_security_policy?.extension_pages??'';
+if(!/(^|; )default-src 'none'(;|$)/.test(csp)||!/(^|; )script-src 'self'(;|$)/.test(csp)||/https?:|\*|data:|blob:|'unsafe-/.test(csp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
 await cp(path.join(root,'public/panel.html'),path.join(root,output,'panel.html'));
 for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,output,'data',name));
