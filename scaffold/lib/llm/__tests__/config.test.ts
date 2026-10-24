@@ -1,0 +1,435 @@
+import { test, describe, before, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// Isolated per-process path so this suite's writes never race the real
+// data/local/llm-config.json that other suites in the full run assume is
+// absent (see GRANTED_LLM_CONFIG_PATH in ../config). Set BEFORE the module is
+// imported (in `before`, below) so it takes effect at first read.
+const CONFIG_PATH = path.join(os.tmpdir(), `granted-llm-config-test-${process.pid}.json`);
+
+let readLlmConfig: typeof import("../config").readLlmConfig;
+let writeLlmConfig: typeof import("../config").writeLlmConfig;
+let resolveProvider: typeof import("../config").resolveProvider;
+let resolveCloudConfig: typeof import("../config").resolveCloudConfig;
+let resolveCloudApiKey: typeof import("../config").resolveCloudApiKey;
+let resolveAnthropicKey: typeof import("../config").resolveAnthropicKey;
+let resolveAnthropicKeySource: typeof import("../config").resolveAnthropicKeySource;
+let isValidAnthropicKey: typeof import("../config").isValidAnthropicKey;
+let resetLlmConfigCache: typeof import("../config").resetLlmConfigCache;
+let isEnvCloudConfig: typeof import("../config").isEnvCloudConfig;
+let resolveOperationMode: typeof import("../config").resolveOperationMode;
+let isOperationMode: typeof import("../config").isOperationMode;
+let isFullyLocal: typeof import("../config").isFullyLocal;
+let isLocalLlm: typeof import("../client").isLocalLlm;
+
+before(async () => {
+  process.env.GRANTED_LLM_CONFIG_PATH = CONFIG_PATH;
+  const config = await import("../config");
+  const client = await import("../client");
+  ({
+    readLlmConfig,
+    writeLlmConfig,
+    resolveProvider,
+    resolveCloudConfig,
+    resolveCloudApiKey,
+    resolveAnthropicKey,
+    resolveAnthropicKeySource,
+    isValidAnthropicKey,
+    resetLlmConfigCache,
+    isEnvCloudConfig,
+    resolveOperationMode,
+    isOperationMode,
+    isFullyLocal,
+  } = config);
+  ({ isLocalLlm } = client);
+});
+
+const savedProvider = process.env.LLM_PROVIDER;
+const savedKey = process.env.ANTHROPIC_API_KEY;
+const savedOpenAiKey = process.env.OPENAI_API_KEY;
+
+function removeConfigFile() {
+  try {
+    fs.unlinkSync(CONFIG_PATH);
+  } catch {
+    /* already absent */
+  }
+  resetLlmConfigCache();
+}
+
+afterEach(() => {
+  if (savedProvider === undefined) delete process.env.LLM_PROVIDER;
+  else process.env.LLM_PROVIDER = savedProvider;
+  if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+  else process.env.ANTHROPIC_API_KEY = savedKey;
+  if (savedOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = savedOpenAiKey;
+  removeConfigFile();
+});
+
+describe("llm/config — one cloud key is enough", () => {
+  const OPENAI = "sk-proj-test0000000000000000";
+  const ANTHROPIC = "sk-ant-test0000000000000000";
+
+  test("only OPENAI_API_KEY: OpenAI does the scoring too (its preset's default chat model)", () => {
+    removeConfigFile();
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = OPENAI;
+    assert.deepEqual(resolveCloudConfig(), { providerId: "openai", keySource: { type: "env", name: "OPENAI_API_KEY" } });
+    assert.equal(resolveCloudApiKey().key, OPENAI);
+  });
+
+  test("both keys: Anthropic still does the scoring (unchanged default)", () => {
+    removeConfigFile();
+    process.env.ANTHROPIC_API_KEY = ANTHROPIC;
+    process.env.OPENAI_API_KEY = OPENAI;
+    assert.equal(resolveCloudConfig()?.providerId, "anthropic");
+  });
+
+  test(".env.example's sk-... placeholder isn't a key", () => {
+    removeConfigFile();
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-...";
+    assert.equal(resolveCloudConfig(), undefined);
+  });
+
+  test("REGRESSION (review): a malformed Claude key fails loudly — it does NOT silently hand the scoring to OpenAI", () => {
+    removeConfigFile();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-truncated"; // set, but not a valid key
+    process.env.OPENAI_API_KEY = OPENAI;
+    assert.equal(resolveCloudConfig(), undefined);
+  });
+
+  test(".env.example's Claude placeholder counts as unset, so OpenAI does the scoring", () => {
+    removeConfigFile();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-...";
+    process.env.OPENAI_API_KEY = OPENAI;
+    assert.equal(resolveCloudConfig()?.providerId, "openai");
+  });
+
+  test("isEnvCloudConfig: env-derived (can't be removed in Settings) vs saved in Settings", () => {
+    removeConfigFile();
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = OPENAI;
+    assert.equal(isEnvCloudConfig(), true);
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "groq", keySource: { type: "inline", key: "gsk_test00000000000000" } } });
+    assert.equal(isEnvCloudConfig(), false);
+    removeConfigFile();
+    delete process.env.OPENAI_API_KEY;
+    assert.equal(isEnvCloudConfig(), false, "no cloud config at all");
+  });
+
+  test("a provider chosen in Settings still wins over either env key", () => {
+    removeConfigFile();
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = OPENAI;
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "groq", keySource: { type: "inline", key: "gsk_test00000000000000" } } });
+    assert.equal(resolveCloudConfig()?.providerId, "groq");
+  });
+});
+
+describe("llm/config — precedence", () => {
+  test("absent file -> env behavior unchanged", () => {
+    removeConfigFile();
+    process.env.LLM_PROVIDER = "ollama";
+    assert.equal(resolveProvider(), "ollama");
+    delete process.env.LLM_PROVIDER;
+    assert.equal(resolveProvider(), "cloud");
+  });
+
+  test("file's provider wins over LLM_PROVIDER", () => {
+    process.env.LLM_PROVIDER = "ollama";
+    writeLlmConfig({ provider: "cloud" });
+    assert.equal(resolveProvider(), "cloud");
+  });
+
+  test("file's key wins over ANTHROPIC_API_KEY", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-envkeyvalue0000";
+    writeLlmConfig({ provider: "cloud", anthropicApiKey: "sk-ant-savedkeyvalue0000" });
+    assert.equal(resolveAnthropicKey(), "sk-ant-savedkeyvalue0000");
+  });
+
+  test("no saved key -> falls back to ANTHROPIC_API_KEY", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-envkeyvalue0000";
+    writeLlmConfig({ provider: "cloud" });
+    assert.equal(resolveAnthropicKey(), "sk-ant-envkeyvalue0000");
+  });
+
+  test("corrupt file -> falls back to env (never throws)", () => {
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, "{not json", "utf8");
+    resetLlmConfigCache();
+    process.env.LLM_PROVIDER = "ollama";
+    assert.equal(resolveProvider(), "ollama");
+  });
+
+  test("write is atomic: no leftover .tmp file, and content round-trips", () => {
+    writeLlmConfig({ provider: "ollama" });
+    const base = path.basename(CONFIG_PATH);
+    const leftovers = fs.readdirSync(path.dirname(CONFIG_PATH)).filter((f) => f.startsWith(`${base}.`) && f.endsWith(".tmp"));
+    assert.deepEqual(leftovers, []);
+    assert.deepEqual(readLlmConfig(), { provider: "ollama" });
+  });
+
+  test("switching provider affects isLocalLlm() immediately, no restart (mtime change)", () => {
+    writeLlmConfig({ provider: "cloud" });
+    assert.equal(isLocalLlm(), false);
+
+    // Force a distinguishable mtime even on filesystems with coarse mtime
+    // resolution, so the cache is guaranteed to see a change.
+    writeLlmConfig({ provider: "ollama" });
+    const stat = fs.statSync(CONFIG_PATH);
+    fs.utimesSync(CONFIG_PATH, stat.atime, new Date(stat.mtimeMs + 5000));
+
+    assert.equal(isLocalLlm(), true);
+  });
+
+  test("mtime-cached: repeated reads of an unchanged file agree", () => {
+    writeLlmConfig({ provider: "ollama", anthropicApiKey: "sk-ant-cachedvalue0000" });
+    const first = readLlmConfig();
+    const second = readLlmConfig();
+    assert.deepEqual(first, second);
+  });
+
+  test("a placeholder/malformed env key is ignored", () => {
+    removeConfigFile();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-...";
+    assert.equal(resolveAnthropicKey(), undefined);
+    assert.equal(resolveAnthropicKeySource(), undefined);
+  });
+
+  test("resolveAnthropicKeySource: saved wins, then valid env, else undefined", () => {
+    removeConfigFile();
+    delete process.env.ANTHROPIC_API_KEY;
+    assert.equal(resolveAnthropicKeySource(), undefined);
+
+    process.env.ANTHROPIC_API_KEY = "sk-ant-envkeyvalue0000";
+    assert.equal(resolveAnthropicKeySource(), "env");
+
+    writeLlmConfig({ provider: "cloud", anthropicApiKey: "sk-ant-savedkeyvalue0000" });
+    assert.equal(resolveAnthropicKeySource(), "saved");
+  });
+
+  test("isValidAnthropicKey: prefix, length bounds", () => {
+    assert.equal(isValidAnthropicKey("sk-ant-..."), false);
+    assert.equal(isValidAnthropicKey("not-a-key"), false);
+    assert.equal(isValidAnthropicKey("sk-ant-x"), false);
+    assert.equal(isValidAnthropicKey("sk-ant-" + "a".repeat(200)), false);
+    assert.equal(isValidAnthropicKey("sk-ant-abcXYZ1234567890"), true);
+  });
+
+  test("backward compat: a config file with a legacy anthropicWorkspaceId still loads, field ignored", () => {
+    removeConfigFile();
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(
+      CONFIG_PATH,
+      JSON.stringify({
+        provider: "cloud",
+        cloud: { providerId: "anthropic", keySource: { type: "inline", key: "sk-ant-abcXYZ1234567890" }, anthropicWorkspaceId: "wrkspc_abc123" },
+      }),
+      "utf8",
+    );
+    resetLlmConfigCache();
+    const cfg = resolveCloudConfig();
+    assert.equal(cfg?.providerId, "anthropic");
+    assert.equal((cfg as any)?.anthropicWorkspaceId, undefined);
+  });
+});
+
+describe("llm/config — #210 back-compat", () => {
+  test("legacy {provider:'anthropic', anthropicApiKey} file resolves as cloud/anthropic", () => {
+    removeConfigFile();
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ provider: "anthropic", anthropicApiKey: "sk-ant-legacykey00000" }), "utf8");
+    resetLlmConfigCache();
+    assert.equal(resolveProvider(), "cloud");
+    assert.equal(isLocalLlm(), false);
+    const cfg = resolveCloudConfig();
+    assert.equal(cfg?.providerId, "anthropic");
+    assert.deepEqual(cfg?.keySource, { type: "inline", key: "sk-ant-legacykey00000" });
+  });
+
+  test("LLM_PROVIDER=anthropic env (no file) resolves as cloud", () => {
+    removeConfigFile();
+    process.env.LLM_PROVIDER = "anthropic";
+    assert.equal(resolveProvider(), "cloud");
+  });
+
+  test("LLM_PROVIDER=openai / local (legacy self-host values) still resolve as the local shim", () => {
+    removeConfigFile();
+    process.env.LLM_PROVIDER = "openai";
+    assert.equal(resolveProvider(), "ollama");
+    process.env.LLM_PROVIDER = "local";
+    assert.equal(resolveProvider(), "ollama");
+  });
+
+  test("switching to ollama migrates a legacy anthropicApiKey into cloud instead of dropping it", () => {
+    removeConfigFile();
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ provider: "anthropic", anthropicApiKey: "sk-ant-legacykey00000" }), "utf8");
+    resetLlmConfigCache();
+    writeLlmConfig({ provider: "ollama", anthropicApiKey: undefined });
+    const file = readLlmConfig();
+    assert.equal(file.anthropicApiKey, undefined);
+    assert.deepEqual(file.cloud, { providerId: "anthropic", keySource: { type: "inline", key: "sk-ant-legacykey00000" } });
+    // Switching back to cloud with no key resolves the migrated key, not undefined.
+    assert.deepEqual(resolveCloudConfig(), { providerId: "anthropic", keySource: { type: "inline", key: "sk-ant-legacykey00000" } });
+  });
+
+  test("any write that doesn't touch cloud migrates the legacy key and drops the legacy field", () => {
+    removeConfigFile();
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ provider: "ollama", anthropicApiKey: "sk-ant-legacykey00000" }), "utf8");
+    resetLlmConfigCache();
+    writeLlmConfig({ provider: "ollama" });
+    assert.deepEqual(JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")), {
+      provider: "ollama",
+      cloud: { providerId: "anthropic", keySource: { type: "inline", key: "sk-ant-legacykey00000" } },
+    });
+  });
+
+  test("clearCloud still purges a legacy anthropicApiKey entirely (no migration)", () => {
+    removeConfigFile();
+    fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ provider: "anthropic", anthropicApiKey: "sk-ant-legacykey00000" }), "utf8");
+    resetLlmConfigCache();
+    writeLlmConfig({ provider: "ollama", anthropicApiKey: undefined, cloud: undefined });
+    const file = readLlmConfig();
+    assert.equal(file.anthropicApiKey, undefined);
+    assert.equal(file.cloud, undefined);
+  });
+
+  test("new cloud object takes precedence over a legacy anthropicApiKey in the same file", () => {
+    removeConfigFile();
+    writeLlmConfig({ anthropicApiKey: "sk-ant-legacykey00000" });
+    writeLlmConfig({
+      provider: "cloud",
+      cloud: { providerId: "openai", model: "gpt-4o-mini", keySource: { type: "inline", key: "sk-newerkey000000000" } },
+    });
+    const cfg = resolveCloudConfig();
+    assert.equal(cfg?.providerId, "openai");
+  });
+});
+
+describe("llm/config — cloud key sources", () => {
+  test("env key source resolves process.env at use time", () => {
+    removeConfigFile();
+    process.env.MY_TEST_PROVIDER_KEY = "sk-test-envsourced0000";
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openrouter", keySource: { type: "env", name: "MY_TEST_PROVIDER_KEY" } } });
+    const resolved = resolveCloudApiKey();
+    assert.equal(resolved.key, "sk-test-envsourced0000");
+    delete process.env.MY_TEST_PROVIDER_KEY;
+  });
+
+  test("env key source: unset variable -> error, no throw", () => {
+    removeConfigFile();
+    delete process.env.MY_UNSET_TEST_KEY;
+    writeLlmConfig({ provider: "cloud", cloud: { providerId: "openrouter", keySource: { type: "env", name: "MY_UNSET_TEST_KEY" } } });
+    const resolved = resolveCloudApiKey();
+    assert.equal(resolved.key, undefined);
+    assert.match(resolved.error ?? "", /MY_UNSET_TEST_KEY.*isn't set/);
+  });
+});
+
+describe("operationMode", () => {
+  function clearSignals() {
+    removeConfigFile();
+    delete process.env.LLM_PROVIDER;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+  }
+
+  for (const mode of ["local", "cloud", "hybrid"] as const) {
+    test(`resolveOperationMode() returns "${mode}" when the config file says so`, () => {
+      clearSignals();
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify({ operationMode: mode }));
+      resetLlmConfigCache();
+      assert.equal(resolveOperationMode(), mode);
+    });
+  }
+
+  test("a saved mode wins over inference from env keys", () => {
+    clearSignals();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test0000000000000000";
+    writeLlmConfig({ operationMode: "local" });
+    assert.equal(resolveOperationMode(), "local");
+  });
+
+  test("an invalid saved mode is ignored on read", () => {
+    clearSignals();
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify({ operationMode: "bogus" }));
+    resetLlmConfigCache();
+    assert.equal(readLlmConfig().operationMode, undefined);
+  });
+
+  test("infers cloud when no mode is set but ANTHROPIC_API_KEY is present", () => {
+    clearSignals();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test0000000000000000";
+    assert.equal(resolveOperationMode(), "cloud");
+  });
+
+  test("infers local when no mode is set, the provider is ollama and there are no cloud keys", () => {
+    clearSignals();
+    process.env.LLM_PROVIDER = "ollama";
+    assert.equal(resolveOperationMode(), "local");
+  });
+
+  test("isOperationMode() accepts the three modes and rejects everything else", () => {
+    for (const m of ["local", "cloud", "hybrid"]) assert.equal(isOperationMode(m), true);
+    for (const m of ["", "Local", "offline", "anthropic", null, undefined, 1, {}]) assert.equal(isOperationMode(m), false);
+  });
+
+  test("isFullyLocal() is true for an explicit local mode", () => {
+    clearSignals();
+    writeLlmConfig({ operationMode: "local" });
+    assert.equal(isFullyLocal(), true);
+  });
+
+  test("isFullyLocal() is true when local is inferred (ollama, no cloud keys)", () => {
+    clearSignals();
+    process.env.LLM_PROVIDER = "ollama";
+    assert.equal(isFullyLocal(), true);
+  });
+
+  test("isFullyLocal() is false for explicit cloud and hybrid modes", () => {
+    clearSignals();
+    process.env.LLM_PROVIDER = "ollama";
+    writeLlmConfig({ operationMode: "cloud" });
+    assert.equal(isFullyLocal(), false);
+    writeLlmConfig({ operationMode: "hybrid" });
+    assert.equal(isFullyLocal(), false);
+  });
+
+  test("isFullyLocal() is false when ollama is selected but a cloud key is present", () => {
+    clearSignals();
+    process.env.LLM_PROVIDER = "ollama";
+    process.env.OPENAI_API_KEY = "sk-proj-test0000000000000000";
+    assert.equal(isFullyLocal(), false);
+  });
+
+  test("isFullyLocal() is false on an unconfigured install (no signal at all)", () => {
+    clearSignals();
+    assert.equal(isFullyLocal(), false);
+  });
+
+  test("writeLlmConfig() persists operationMode and it round-trips through readLlmConfig()", () => {
+    clearSignals();
+    for (const mode of ["hybrid", "cloud", "local"] as const) {
+      const written = writeLlmConfig({ operationMode: mode });
+      assert.equal(written.operationMode, mode);
+      assert.equal(JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")).operationMode, mode);
+      resetLlmConfigCache();
+      assert.equal(readLlmConfig().operationMode, mode);
+    }
+  });
+
+  test("writing another field keeps the saved operationMode", () => {
+    clearSignals();
+    writeLlmConfig({ operationMode: "hybrid" });
+    writeLlmConfig({ provider: "ollama" });
+    assert.equal(readLlmConfig().operationMode, "hybrid");
+  });
+});

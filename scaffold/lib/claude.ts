@@ -1,0 +1,1285 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { makeLlmClient, isLocalLlm, cloudBatchSize, defaultLocalModel, type LlmClient } from "./llm/client";
+import { currentLocalModel } from "./llm/modelContext";
+import { resolveCloudConfig, resolveCloudModel } from "./llm/config";
+import { getCloudProvider } from "./llm/providers";
+import type { StartupProfile, Opportunity, Match, CriterionCheck, Tier } from "./types";
+import type { EligibilityBucket } from "./contracts/eligibilityDetermination";
+import { loadPrompt } from "./prompts";
+import { isFlagEnabled } from "./flags";
+import type { CostMeter } from "./metering/meter";
+import { describeErrorForLog, ProviderHttpError } from "./llm/errors";
+import { truncateDescriptionForPrompt } from "./opportunities/truncateForPrompt";
+import { wrapUntrusted } from "./security/untrustedInput";
+import {
+  type Assessment as TwoPassAssessment,
+  type PassAScore,
+  PROMOTION_FLOOR,
+  promotedIds,
+  scoreOnlyAssessment,
+  assembleTwoPass,
+} from "./scoring/twoPass";
+
+import type { NarrativeAssessment } from "./scoring/hybridMerge";
+
+export const MODEL ="claude-sonnet-4-6";
+
+/**
+ * Phase 4 — model routing (lib/contracts/modelRouting.ts): `profile_extraction`
+ * is documented cheap-model work ("Structured extraction is cheap-model work"),
+ * so intake runs on Haiku, ~5-10x cheaper input/output than Sonnet, for near-zero
+ * quality impact. `candidate_analysis` and `weak_field_explanation` stay on the
+ * expensive `MODEL` (the routing table keeps those on the expensive model too).
+ * The id is a real, currently-available snapshot; override via env if it ever
+ * moves. The 4 judged demo cases never reach this — they hit the precomputed
+ * cache path in the route — so this only affects novel searches.
+ */
+const CHEAP_MODEL = process.env.PROFILE_EXTRACTION_MODEL || "claude-haiku-4-5-20251001";
+
+/**
+ * H2 (review) — an explicit per-call timeout for CLOUD providers. The SDK
+ * default is ~10 minutes, so without this a hung/slow call leaves the user
+ * staring at a stalled search with no error to show. With this timeout the SDK
+ * throws an `APIConnectionTimeoutError` we propagate to the route's try/catch,
+ * which streams a real `type: "error"` NDJSON line instead.
+ *
+ * `maxRetries: 0` is deliberate: an SDK-level retry of the long scoring call
+ * would double an already-long wait behind a silent stall. The batch fan-out in
+ * `explainMatches` is already
+ * fault-tolerant (Promise.allSettled) — a single timed-out batch degrades to
+ * partial results rather than failing the search.
+ *
+ * Tunable via `ANTHROPIC_TIMEOUT_MS`.
+ */
+const ANTHROPIC_TIMEOUT_MS = Number(process.env.ANTHROPIC_TIMEOUT_MS) || 100_000;
+// Local inference is far slower than a cloud API, and nothing imposes an
+// execution ceiling on a local run — so the cloud-sized per-call timeout above
+// would abort a legitimately-slow local batch mid-scoring (every batch aborting
+// → "All scoring batches failed" → the client's "network error"). Give local a
+// much larger, env-tunable budget instead.
+const LOCAL_LLM_TIMEOUT_MS = Number(process.env.LOCAL_LLM_TIMEOUT_MS) || 1_800_000; // 30 min
+
+function client(): LlmClient {
+  // Anthropic by default; an OpenAI-compatible LOCAL model when LLM_PROVIDER is set.
+  const timeout = isLocalLlm() ? LOCAL_LLM_TIMEOUT_MS : ANTHROPIC_TIMEOUT_MS;
+  return makeLlmClient({ timeout, maxRetries: 0 });
+}
+
+/**
+ * Extract the first balanced JSON value (object or array) from `text`,
+ * respecting string literals and escapes so braces/brackets inside strings
+ * don't miscount. Used as a fallback when the model wraps its JSON in preamble
+ * or trailing prose. Returns `undefined` if no balanced value is found.
+ */
+function firstBalancedJson(text: string): string | undefined {
+  const start = (() => {
+    const o = text.indexOf("{");
+    const a = text.indexOf("[");
+    if (o === -1) return a;
+    if (a === -1) return o;
+    return Math.min(o, a);
+  })();
+  if (start === -1) return undefined;
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Parse the model's JSON output. Strips markdown fences first; if the result
+ * still isn't valid JSON (preamble, trailing prose, a stray sentence — common
+ * LLM failure modes), fall back to extracting the first balanced object/array.
+ * This keeps a single non-strict-JSON response from failing the whole search
+ * (H-review: `extractProfile` JSON-parse fragility).
+ */
+/**
+ * Local models under JSON-object mode (lib/llm/client.ts) return valid JSON but
+ * sometimes wrap a bare array in a single key, e.g. {"candidates":[...]}. When
+ * the value is an object with exactly ONE key whose value is an array, unwrap to
+ * that array so the array-shaped callers keep working. Multi-key objects (every
+ * object-returning prompt) and already-bare arrays (the default Anthropic path)
+ * are returned untouched — so this is a no-op for hosted Claude.
+ */
+export function unwrapArrayEnvelope(value: unknown): unknown {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length === 1 && Array.isArray((value as Record<string, unknown>)[keys[0]])) {
+      return (value as Record<string, unknown>)[keys[0]];
+    }
+  }
+  return value;
+}
+
+function parseJson<T>(raw: string): T {
+  const clean = raw.replace(/```json/g, "").replace(/```/g, "").trim();
+  try {
+    return unwrapArrayEnvelope(JSON.parse(clean)) as T;
+  } catch (err) {
+    const balanced = firstBalancedJson(clean);
+    if (balanced !== undefined) return unwrapArrayEnvelope(JSON.parse(balanced)) as T;
+    throw err;
+  }
+}
+
+function asArray<T>(value: T | T[]): T[] {
+  return Array.isArray(value) ? value : [value];
+}
+
+/**
+ * `StartupProfileSchema` (lib/contracts/opportunityMap.ts) fields that are
+ * documented/required as strings. Kept as an explicit list (not "every field
+ * that isn't a known non-string") so this stays correct if the schema grows a
+ * new non-string field later.
+ */
+const STARTUP_PROFILE_STRING_FIELDS = [
+  "description",
+  "industry",
+  "technology",
+  "location",
+  "revenue",
+  "fundingStage",
+  "capitalRaised",
+  "rdActivities",
+  "productMaturity",
+  "targetCustomers",
+  "capitalRequirement",
+  "useOfFunds",
+] as const;
+
+/**
+ * `employees` is the one NUMBER-typed StartupProfile field, and local models
+ * drift on it just like the string fields — returning `"50"`, `"50 employees"`,
+ * `"~50"`, or a range like `"11-50"` instead of a plain number. The zod boundary
+ * (`employees: z.number().optional()`) rejects a string, so the value is dropped
+ * — and every downstream consumer guards on `typeof === "number"` (the SBIR
+ * 500-employee size screen in eligibility/bridge.ts, the small-business boost in
+ * retrieval/enrich.ts, the apply package). A dropped value silently disables all
+ * of them. Parse the common drift forms back to a number; a range takes the
+ * UPPER bound (conservative for a size cap — never over-claims small-business
+ * eligibility). Returns undefined when no integer can be recovered ("a few",
+ * "unknown"), so the caller drops it rather than failing the number field.
+ */
+export function coerceEmployees(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  const nums = value.replace(/,/g, "").match(/\d+(?:\.\d+)?/g);
+  if (!nums) return undefined;
+  const parsed = nums.map(Number).filter((n) => Number.isFinite(n));
+  return parsed.length ? Math.max(...parsed) : undefined;
+}
+
+/**
+ * Local models under JSON-object mode occasionally drift on `StartupProfile`'s
+ * string-typed fields — e.g. returning `location: {"city": "Austin", "state":
+ * "TX"}` or `capitalRaised: ["$500k", "seed"]` instead of a plain string. The
+ * `OpportunityMap` zod boundary (`StartupProfileSchema`) requires these fields
+ * to be strings, so an object/array value fails validation ("serving anyway"
+ * with an invalid-input log) even though the extraction itself mostly
+ * succeeded.
+ *
+ * Coerce at the boundary, right after JSON-parsing the model's output: an
+ * array of primitives joins into a readable comma-separated string, any other
+ * object/array becomes a compact JSON string (still readable, never dropped),
+ * a bare number/boolean stringifies, `null` is dropped (the field is
+ * `optional()`, not `nullable()` — a `null` fails the same boundary check a
+ * number does), and already-string/undefined values pass through untouched.
+ * This is deliberately generic (a fixed field list + one coercion rule)
+ * rather than enumerating local-model quirks, so it covers both cloud and
+ * local output.
+ */
+export function coerceProfileStrings(profile: Record<string, unknown>): StartupProfile {
+  const out: Record<string, unknown> = { ...profile };
+  for (const field of STARTUP_PROFILE_STRING_FIELDS) {
+    const value = out[field];
+    if (value === undefined || typeof value === "string") continue;
+    // `StartupProfileSchema` declares these `z.string().optional()` — optional
+    // allows a missing key, not `null`. A model that returns `null` (rather
+    // than omitting the field) fails the boundary the same way a number does;
+    // drop the key so it's absent instead.
+    if (value === null) {
+      delete out[field];
+      continue;
+    }
+    if (Array.isArray(value)) {
+      out[field] = value.every((v) => v == null || ["string", "number", "boolean"].includes(typeof v))
+        ? value.filter((v) => v != null).join(", ")
+        : JSON.stringify(value);
+    } else if (typeof value === "object") {
+      out[field] = JSON.stringify(value);
+    } else {
+      // number/boolean/etc. — stringify rather than leave a non-string on a
+      // string field.
+      out[field] = String(value);
+    }
+  }
+  // The one number field: coerce model drift ("50", "11-50", …) back to a number,
+  // or drop an unrecoverable value so the number-typed zod field still validates.
+  if ("employees" in out) {
+    const emp = coerceEmployees(out.employees);
+    if (emp == null) delete out.employees;
+    else out.employees = emp;
+  }
+  return out as StartupProfile;
+}
+
+/**
+ * Same drift as `coerceProfileStrings`, one level deeper: local models under
+ * JSON-object mode return a syntactically valid `criteria` array but
+ * individual entries can drift from `CriterionCheckSchema` (label: required
+ * string, met: required boolean, note: optional string) — most commonly
+ * `note: null` instead of omitting the key (observed live: "expected string,
+ * received null" at `matches[N].criteria[M].note`), same as the profile-field
+ * drift this file already coerces.
+ *
+ * `note` gets the identical treatment as the optional profile-string fields:
+ * `null` is dropped (the schema is `optional()`, not `nullable()`), and a
+ * non-string value is coerced to a readable string rather than dropped.
+ *
+ * `label`/`met` are NOT optional — there's no honest way to invent a
+ * criterion's label or a true/false determination the model never made, and
+ * this app's whole eligibility posture is "never turn a model guess into a
+ * fabricated verdict." So an entry missing either (null, wrong type, or
+ * absent) is dropped from the array entirely rather than coerced to a
+ * fabricated value — a shorter, fully-valid criteria list beats a
+ * boundary-invalid one or an invented "met: false".
+ */
+export function coerceCriteria(criteria: unknown, context?: string): CriterionCheck[] {
+  if (!Array.isArray(criteria)) return [];
+  const out: CriterionCheck[] = [];
+  let dropped = 0;
+  for (const raw of criteria) {
+    if (raw === null || typeof raw !== "object") {
+      dropped++;
+      continue;
+    }
+    const c = raw as Record<string, unknown>;
+    if (typeof c.label !== "string" || typeof c.met !== "boolean") {
+      dropped++;
+      continue;
+    }
+    const entry: CriterionCheck = { label: c.label, met: c.met };
+    const note = c.note;
+    if (note === undefined || note === null) {
+      // omit — optional() allows missing, not null.
+    } else if (typeof note === "string") {
+      entry.note = note;
+    } else if (Array.isArray(note)) {
+      entry.note = note.every((v) => v == null || ["string", "number", "boolean"].includes(typeof v))
+        ? note.filter((v) => v != null).join(", ")
+        : JSON.stringify(note);
+    } else if (typeof note === "object") {
+      entry.note = JSON.stringify(note);
+    } else {
+      entry.note = String(note);
+    }
+    out.push(entry);
+  }
+  // Same rationale as logSkippedBatches: a dropped entry (or a whole-array
+  // wipe, e.g. every entry returning `met` as a string "true"/"false" instead
+  // of a boolean) must leave a server-side trace, or this coercion silently
+  // masks the exact class of drift the boundary check exists to catch —
+  // worse, an emptied criteria array still passes CriterionCheckSchema, so
+  // `logMapDrift` never fires for it. An empty criteria array reaching
+  // `lib/recommend.ts` is handled there, not here: `recommendFor`'s
+  // `hasCriteriaSignal` guard (H6) treats zero criteria as "no signal", not
+  // as "the criteria say no", so it returns an honest `verify` instead of a
+  // confident `do_not_recommend` — whether the array is empty because this
+  // was the legitimate score-only two-pass path or because every entry here
+  // was dropped as malformed.
+  if (dropped > 0) {
+    console.warn(
+      `[criteria] dropped ${dropped}/${criteria.length} malformed entr${dropped === 1 ? "y" : "ies"}` +
+        (context ? ` for ${context}` : "") +
+        (out.length === 0 && criteria.length > 0 ? " -- criteria list is now EMPTY" : ""),
+    );
+  }
+  return out;
+}
+
+/**
+ * R4b — normalize one Anthropic call's `usage` into `CostMeter.record()`'s
+ * generic shape and record it. Called immediately once the API call resolves
+ * (msg.usage), BEFORE parseJson() or any other step that could throw — an
+ * already-spent call's cost must never go unrecorded because of a downstream
+ * parse failure.
+ *
+ * `@anthropic-ai/sdk` `^0.32.1`'s non-beta `Usage` type only declared
+ * `input_tokens`/`output_tokens` — `cache_creation_input_tokens`/
+ * `cache_read_input_tokens` only existed on the beta prompt-caching response
+ * type. `^0.33.0` promoted prompt caching to general availability and folded
+ * both fields into the STABLE `Usage` type (verified against the installed
+ * SDK's `resources/messages/messages.d.ts`: `cache_creation_input_tokens:
+ * number | null` / `cache_read_input_tokens: number | null`), so they can be
+ * read directly off `usage` with no cast. `scoreGroup` below is the first
+ * (and, today, only) call that actually sets `cache_control`, so this is
+ * where these stop being `undefined` — every other call site still reports
+ * `undefined`, which is the expected value (see meter.ts's `StageCost`
+ * comment).
+ */
+/**
+ * Which provider/model a call is metered as — the one that actually ran:
+ * - local: the OpenAI-compatible shim on the local model, at $0;
+ * - a non-Anthropic cloud provider (OpenAI — the default when only
+ *   OPENAI_API_KEY is set — Gemini, Groq, …): also the shim, on that
+ *   provider's model, not the Claude one this stage would use on Anthropic
+ *   (which would price a gpt-4o-mini call at Sonnet rates). An unpriced model
+ *   is logged at $0 with a one-time warning (lib/metering/pricing.ts) —
+ *   never a guessed number;
+ * - Anthropic (or an Anthropic-SDK proxy like fcc): the stage's Claude model.
+ */
+export function usageAttribution(opts: {
+  local: boolean;
+  localModel?: string;
+  cloud?: ReturnType<typeof resolveCloudConfig>;
+  stageModel: string;
+}): { provider: "openai" | "anthropic"; model: string } {
+  if (opts.local) return { provider: "openai", model: opts.localModel ?? opts.stageModel };
+  const cloud = opts.cloud;
+  if (cloud && !getCloudProvider(cloud.providerId)?.usesAnthropicSdk) {
+    return { provider: "openai", model: resolveCloudModel(cloud) ?? opts.stageModel };
+  }
+  return { provider: "anthropic", model: opts.stageModel };
+}
+
+export function recordUsage(meter: CostMeter | undefined, stage: string, usage: Anthropic.Messages.Usage, latencyMs: number, model: string = MODEL): void {
+  if (!meter) return;
+  // On a local backend every stage runs on the one local model, at $0 — record
+  // that honestly rather than mislabeling the call as the hosted Anthropic model
+  // (which would report a fictitious cost for a free, offline run).
+  const local = isLocalLlm();
+  const meteredAs = usageAttribution({
+    local,
+    localModel: local ? currentLocalModel() || defaultLocalModel() : undefined,
+    cloud: local ? undefined : resolveCloudConfig(),
+    stageModel: model,
+  });
+  meter.record({
+    stage,
+    provider: meteredAs.provider,
+    model: meteredAs.model,
+    inputTokens: usage?.input_tokens ?? 0,
+    outputTokens: usage?.output_tokens ?? 0,
+    cacheCreationInputTokens: usage?.cache_creation_input_tokens ?? undefined,
+    cacheReadInputTokens: usage?.cache_read_input_tokens ?? undefined,
+    latencyMs,
+  });
+}
+
+// §5.5 prompt-injection defense — `wrapUntrusted` now lives in
+// lib/security/untrustedInput.ts (H4.1), shared with generateQuestions.ts and
+// competitors/analyze.ts, which build prompts from the same kind of untrusted
+// text. The envelope lives in the per-request user message rather than
+// mutating a prompt template, so it is independent of the static system
+// prompts.
+
+/**
+ * Stage 1 — intake. Pull structured fields out of the user's description,
+ * expand into government vocabulary, and ask only for what's still missing.
+ */
+export async function extractProfile(
+  description: string,
+  meter?: CostMeter,
+  signal?: AbortSignal,
+): Promise<{ profile: StartupProfile; followUps: string[] }> {
+  const t0 = performance.now();
+  const msg = await client().messages.create(
+    {
+      model: CHEAP_MODEL,
+      max_tokens: 1500,
+      system: loadPrompt("extractProfile").template,
+      messages: [{ role: "user", content: wrapUntrusted(description) }],
+    },
+    { signal },
+  );
+  recordUsage(meter, "profile_extraction", msg.usage, performance.now() - t0, CHEAP_MODEL);
+
+  const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+  const parsed = parseJson<{ profile: StartupProfile; followUps: string[] }>(text);
+  return {
+    ...parsed,
+    profile: coerceProfileStrings((parsed.profile ?? {}) as unknown as Record<string, unknown>),
+  };
+}
+
+/**
+ * DISC §3-C — pick the scoring prompt. When `discernment_layer` is ON, use the
+ * rubric-ANCHORED variant (explicit 0-100 score bands → lower run-to-run
+ * variance); when OFF, the shipped prompt, byte-unchanged. Applied to BOTH the
+ * single-pass explainMatches and the two-pass Pass-A/Pass-B so scoring is
+ * consistent whichever scorer is active.
+ */
+function scorerPrompt(base: "explainMatches" | "scoreMatches"): string {
+  const anchored = base === "explainMatches" ? "explainMatchesAnchored" : "scoreMatchesAnchored";
+  return loadPrompt(isFlagEnabled("discernment_layer") ? anchored : base).template;
+}
+
+/** One scored+explained candidate — the shape `explainMatches`/`explainMatchesTwoPass`
+ *  both resolve to. Exported so `lib/match.ts` can build a `Match` preview from
+ *  a single batch's assessments (for progressive rendering) without waiting for
+ *  the full candidate set to finish scoring. */
+export type Assessment = { id: string; score: number; tier: Tier; criteria: CriterionCheck[]; whyCare: string; whyFit: string; whyIneligible: string; whatToVerify: string; whatToDoNext: string; final?: boolean; unscored?: boolean };
+
+/**
+ * Stage 2 — explain. Given candidate opportunities that already passed rules
+ * and similarity, score each and write the four-part explanation.
+ */
+export async function explainMatches(
+  profile: StartupProfile,
+  candidates: Opportunity[],
+  meter?: CostMeter,
+  onBatch?: (batchAssessments: Assessment[], doneCandidates: number, totalCandidates: number) => void,
+  signal?: AbortSignal,
+): Promise<Assessment[]> {
+  const SYSTEM = scorerPrompt("explainMatches");
+
+
+  // Score in parallel batches. A single serial call over all candidates emits
+  // ~700-900 output tokens each and dominates request latency (~3 min for 24
+  // candidates); concurrent batches cut wall-clock ~3x with identical per-
+  // candidate scoring. max_tokens per batch stays well clear of truncation.
+  // Hosted: 8/batch, concurrent. Local: 1/batch, serial: JSON-object mode tends to
+  // return one bare object per call, so bigger local batches drop candidates.
+  const BATCH = Number(process.env.LLM_BATCH_SIZE) || (isLocalLlm() ? 1 : cloudBatchSize(8));
+  const groups: Opportunity[][] = [];
+  for (let i = 0; i < candidates.length; i += BATCH) groups.push(candidates.slice(i, i + BATCH));
+
+  const scoreGroup = async (group: Opportunity[]): Promise<Assessment[]> => {
+    const t0 = performance.now();
+    const msg = await client().messages.create(
+      {
+        model: MODEL,
+        max_tokens: 8000, // ~900/assessment * 8 = 7200, fits with margin
+        // Prompt-caching breakpoint on the static system prompt: SYSTEM is
+        // identical on every batch of every search (only the user message —
+        // profile + candidate group — varies), so this is the highest-volume
+        // repeat-input-token call in the app. `cache_control: {type:
+        // "ephemeral"}` on this block tells Anthropic to cache it (5min TTL,
+        // refreshed on each hit) so concurrent/subsequent batches read it
+        // from cache instead of paying full input-token price for it again.
+        // Bumped @anthropic-ai/sdk ^0.32.1 -> ^0.33.1 (GA prompt-caching
+        // release, non-breaking per upstream changelog) so `TextBlockParam`
+        // types `cache_control` on the STABLE (non-beta) client — no beta
+        // namespace, no casting past the types. `SYSTEM` itself (the prompt
+        // TEXT) is unchanged: it's still `loadPrompt("explainMatches")
+        // .template` verbatim and content-hash-stable (`npm run
+        // check:prompts`) — only the wire shape of this one field changed,
+        // not what's sent.
+        //
+        // H4.2 — `wrapUntrusted`'s marker tag is now a random nonce, which is
+        // a NEW value on every call and would poison the Anthropic prefix
+        // cache if it ever landed inside this `system` block (the cache is a
+        // prefix match, so one changed byte invalidates everything after it).
+        // It does not: `wrapUntrusted` is only ever applied to per-request
+        // data below, in `messages`, never to `SYSTEM` — so this cache
+        // breakpoint sees the same bytes on every call and the nonce has no
+        // effect on cache hit rate.
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [
+          {
+            role: "user",
+            // Untrusted user profile + corpus fields wrapped in the §5.5
+            // envelope. Compact JSON (no `null, 2` pretty-print) — the
+            // indentation was pure whitespace tokens on the highest-volume stage.
+            content: `COMPANY:\n${wrapUntrusted(JSON.stringify(profile))}\n\nCANDIDATE OPPORTUNITIES:\n${wrapUntrusted(
+              JSON.stringify(
+                group.map((c) => ({
+                  id: c.id, program: c.program, agency: c.agency, kind: c.kind,
+                  description: truncateDescriptionForPrompt(c.description, 1200), eligibility: c.eligibility ? truncateDescriptionForPrompt(c.eligibility, 1200) : c.eligibility,
+                  fundingLow: c.fundingLow, fundingHigh: c.fundingHigh, deadline: c.deadline,
+                })),
+              ),
+            )}`,
+          },
+        ],
+      },
+      { signal },
+    );
+    // R4b — record THIS batch's usage the instant its own call resolves, not
+    // after Promise.allSettled below: a batch whose parseJson() throws on
+    // non-JSON output must still have its already-spent cost captured.
+    recordUsage(meter, "candidate_analysis", msg.usage, performance.now() - t0);
+    const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+    return asArray(parseJson<Assessment[] | Assessment>(text)).map(({ final, unscored, ...a }) => ({
+      ...a,
+      criteria: coerceCriteria(a.criteria, a.id),
+    }));
+  };
+
+  // Fault-tolerant: keep whatever batches succeed. One batch throwing or
+  // emitting non-JSON must not discard the others (and their spend). Only fail
+  // the whole request if every batch fails. As each batch settles, emit a
+  // progress milestone so the ~83s scoring stage isn't a frozen bar (fills the
+  // 52%->90% dead-zone).
+  const fanOutStart = performance.now();
+  let doneCandidates = 0;
+  // Two-arg `.then(onFulfilled, onRejected)` (not `.then().catch()`) so a throw
+  // inside `onBatch` can never be mistaken for `scoreGroup` itself having
+  // failed — each branch only reacts to ITS OWN outcome, then reproduces
+  // exactly what `.finally()` used to: doneCandidates advances either way, and
+  // the settle/reject value passes through unchanged. On success, `onBatch`
+  // ALSO receives this batch's own assessments (not just the running count) —
+  // that's what lets a caller (buildOpportunityMap) render each match the
+  // moment ITS batch is scored, instead of waiting for the whole candidate set.
+  const runGroup = (group: Opportunity[]) =>
+    scoreGroupWithSplit(group, scoreGroup, "candidate_analysis").then(
+      (result) => {
+        doneCandidates += group.length;
+        try { onBatch?.(result, doneCandidates, candidates.length); } catch { /* progress is best-effort */ }
+        return result;
+      },
+      (reason) => {
+        doneCandidates += group.length;
+        try { onBatch?.([], doneCandidates, candidates.length); } catch { /* progress is best-effort */ }
+        throw reason;
+      },
+    );
+  // A local single-GPU backend (Ollama) serves requests SERIALLY, so firing all
+  // batches at once just makes the queued ones blow their own per-call timeout
+  // while they wait. Run them one at a time when local (each timer then starts
+  // when the batch is actually dispatched); keep the ~3x concurrent fan-out for
+  // hosted providers. Fault-tolerance (keep whatever succeeds) is identical.
+  let settled: PromiseSettledResult<Assessment[]>[];
+  if (isLocalLlm()) {
+    settled = [];
+    for (const group of groups) {
+      try {
+        settled.push({ status: "fulfilled", value: await runGroup(group) });
+      } catch (reason) {
+        settled.push({ status: "rejected", reason } as PromiseRejectedResult);
+      }
+    }
+  } else {
+    settled = await Promise.allSettled(groups.map(runGroup));
+  }
+  // R4b — batches ran CONCURRENTLY, so the stage's latency is the wall-clock
+  // of the whole fan-out, not a sum of the per-batch latencies recorded above
+  // (summing would overcount — this overwrites that sum with the real span).
+  meter?.recordStageLatency("candidate_analysis", performance.now() - fanOutStart);
+  logSkippedBatches("candidate_analysis", settled, groups);
+  const ok = settled
+    .filter((s): s is PromiseFulfilledResult<Assessment[]> => s.status === "fulfilled")
+    .map((s) => s.value);
+  if (ok.length === 0) {
+    const firstErr = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
+    // `cause` keeps the provider error, so the search can say what went wrong (lib/llm/searchErrors.ts).
+    throw new Error(`All scoring batches failed: ${firstErr?.reason?.message ?? "unknown error"}`, { cause: firstErr?.reason });
+  }
+  // §5.5 — clamp the model-returned score to its valid 0-100 range server-side
+  // (a crafted description could otherwise push an out-of-range score into the
+  // tier/summary math). NaN/missing degrades to 0.
+  return ok.flat().map((a) => ({ ...a, score: clampScore(a.score) }));
+}
+
+/**
+ * Log one concise warning per rejected batch from an `allSettled` fan-out —
+ * otherwise a batch that silently drops out (see `ok`/ `settled.filter`
+ * above) leaves no server-side trace of which/how many candidates went
+ * unscored. Never logs the raw error (could echo request/response bodies,
+ * incl. keys) — always the sanitized message from `describeErrorForLog`.
+ */
+function logSkippedBatches(stage: string, settled: PromiseSettledResult<unknown>[], groups: Opportunity[][]): void {
+  settled.forEach((s, i) => {
+    if (s.status !== "rejected") return;
+    const { status, message } = describeErrorForLog(s.reason);
+    console.warn(
+      `[${stage}] batch skipped: ${groups[i]?.length ?? 0} candidate(s) unscored` +
+        (status != null ? `, status ${status}` : "") +
+        ` — ${message}`,
+    );
+  });
+}
+
+/** A provider's "request too large" rejection — Anthropic SDK (`APIError.status
+ * === 413`) or the OpenAI-compat shim (`ProviderHttpError.status === 413`) —
+ * distinct from a 429 (already retried, see rateLimit.ts) or any other error,
+ * which `scoreGroupWithSplit` deliberately does NOT split on. */
+function isRequestTooLarge(err: unknown): boolean {
+  if (err instanceof Anthropic.APIError) return err.status === 413;
+  if (err instanceof ProviderHttpError) return err.status === 413;
+  return false;
+}
+
+/**
+ * Wraps one batch's scoring call so a 413 ("request too large" — e.g. a
+ * free-tier tokens-per-minute cap that a fixed BATCH size can still exceed)
+ * splits the batch in half and scores each half instead of dropping every
+ * candidate in it. Recurses down to single-candidate groups; a single
+ * candidate that still 413s is NOT split further — it throws, and the caller
+ * logs it skipped exactly like any other rejected batch. A non-413 error
+ * (or a 413 the split couldn't work around) also throws unchanged, so the
+ * caller's existing fault-tolerant fan-out (Promise.allSettled + `logSkippedBatches`)
+ * handles it as it does today. Only ever narrows the failure (a split half
+ * that DOES succeed is logged and its candidates recovered), never widens it.
+ */
+async function scoreGroupWithSplit<T>(
+  group: Opportunity[],
+  scoreFn: (group: Opportunity[]) => Promise<T[]>,
+  stage: string,
+): Promise<T[]> {
+  try {
+    return await scoreFn(group);
+  } catch (err) {
+    if (group.length <= 1 || !isRequestTooLarge(err)) throw err;
+    const mid = Math.ceil(group.length / 2);
+    const left = group.slice(0, mid);
+    const right = group.slice(mid);
+    const [l, r] = await Promise.allSettled([
+      scoreGroupWithSplit(left, scoreFn, stage),
+      scoreGroupWithSplit(right, scoreFn, stage),
+    ]);
+    // Both halves failed: propagate (the first half's reason) so this group is
+    // rejected exactly like an unsplit failure — the caller's own fan-out logs it
+    // once, against the FULL original group, instead of us double-logging here.
+    if (l.status === "rejected" && r.status === "rejected") throw l.reason;
+    const results: T[] = [];
+    if (l.status === "fulfilled") results.push(...l.value);
+    else logSkippedBatches(stage, [l], [left]);
+    if (r.status === "fulfilled") results.push(...r.value);
+    else logSkippedBatches(stage, [r], [right]);
+    return results;
+  }
+}
+
+/** Clamp a model-supplied score to the contract's valid 0-100 range. */
+function clampScore(score: number): number {
+  const n = Number(score);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+// ---------------------------------------------------------------------------
+// E3 — TWO-PASS SCORING (flag `e3_two_pass`, default OFF).
+//
+// Pass A: a cheap SCORE-ONLY sweep over the WHOLE candidate set on CHEAP_MODEL
+// (Haiku-class, ~5-10x cheaper) — one `{id, score}` per candidate, tiny
+// max_tokens. Pass B: the FULL narrative on the expensive MODEL, ONLY for the
+// candidates whose Pass-A score clears `PROMOTION_FLOOR`. This cuts cost/latency
+// ~3x: the expensive narrative call now runs over the handful that render as
+// real tiers, not every retrieved candidate. Non-promoted candidates keep their
+// Pass-A score (so `tierFromScore` still assigns them a tier), they simply don't
+// spend on narrative.
+//
+// The flag-OFF single-pass `explainMatches` above is byte-unchanged; two-pass is
+// an ADDITIVE, separately-exported path selected by `lib/match.ts` on the flag.
+// ---------------------------------------------------------------------------
+
+/**
+ * A dedicated Anthropic client for the two-pass calls, with a SHORTER per-call
+ * timeout than the single pass and `maxRetries: 0` (we do our own bounded
+ * retry, `withOverloadRetry`, below). Kept separate from `client()` so the
+ * flag-off path's client is untouched. The shorter timeout + our own retry keep
+ * the two-pass stages safely inside the route's `maxDuration = 120s` even when
+ * Anthropic is briefly overloaded.
+ *
+ * Tunable via `E3_TWO_PASS_TIMEOUT_MS` (must stay well under the deploy's
+ * maxDuration, with room for both passes to run sequentially).
+ */
+const E3_TWO_PASS_TIMEOUT_MS = Number(process.env.E3_TWO_PASS_TIMEOUT_MS) || 45_000;
+const E3_TWO_PASS_MAX_RETRIES = Number(process.env.E3_TWO_PASS_MAX_RETRIES) || 3;
+const E3_TWO_PASS_BACKOFF_MS = Number(process.env.E3_TWO_PASS_BACKOFF_MS) || 500;
+
+function twoPassClient(): LlmClient {
+  // Same local-vs-hosted split as client(): the 45s two-pass budget is a
+  // cloud figure that would abort a slow local batch.
+  const timeout = isLocalLlm() ? LOCAL_LLM_TIMEOUT_MS : E3_TWO_PASS_TIMEOUT_MS;
+  return makeLlmClient({ timeout, maxRetries: 0 });
+}
+
+/**
+ * Is this error worth a bounded retry? Only transient SERVER-side conditions
+ * that fail FAST — Anthropic overload (529, the one that stalls precompute)
+ * and generic 5xx. Deliberately NOT 429: cloud clients already retry it
+ * (lib/llm/rateLimit.ts). Also deliberately NOT a timeout / connection
+ * error: a timed-out call was genuinely slow, so retrying it risks multiplying
+ * the per-call timeout past the route budget — we let that batch degrade instead
+ * (the fan-out is `Promise.allSettled`, so one failed batch never fails the
+ * search). Because the retried conditions reject nearly immediately, the retry
+ * loop adds only backoff time, never another full timeout.
+ */
+function isRetryableOverload(err: unknown): boolean {
+  const status = (err as { status?: number } | undefined)?.status;
+  return typeof status === "number" && (status === 529 || status >= 500);
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run `fn`, retrying up to `E3_TWO_PASS_MAX_RETRIES` times on a fast-failing
+ * overload/transient error with short exponential backoff (+jitter, capped).
+ * A non-retryable error (or exhausting retries) rethrows to the caller, where
+ * the `Promise.allSettled` fan-out degrades that one batch to a partial result.
+ */
+async function withOverloadRetry<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= E3_TWO_PASS_MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (signal?.aborted || attempt === E3_TWO_PASS_MAX_RETRIES || !isRetryableOverload(err)) throw err;
+      const backoff = Math.min(E3_TWO_PASS_BACKOFF_MS * 2 ** attempt, 4_000) + Math.floor(Math.random() * 250);
+      await sleep(backoff);
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Pass A — cheap SCORE-ONLY sweep over EVERY candidate on CHEAP_MODEL. Batched
+ * and fault-tolerant (`Promise.allSettled`) exactly like the single pass: a
+ * batch that throws or emits non-JSON degrades to fewer scores rather than
+ * failing the search. Records under its own `candidate_prescore` stage so the
+ * cost breakdown attributes the cheap sweep separately from the expensive Pass B.
+ */
+async function scorePassA(
+  profile: StartupProfile,
+  candidates: Opportunity[],
+  meter: CostMeter | undefined,
+  signal: AbortSignal | undefined,
+  onScore?: (scores: PassAScore[]) => void,
+): Promise<PassAScore[]> {
+  const SYSTEM = scorerPrompt("scoreMatches");
+  // Local: 1/batch, serial — JSON-object mode drops candidates from bigger batches (see explainMatches).
+  const BATCH_A = Number(process.env.LLM_PASS_A_BATCH_SIZE) || (isLocalLlm() ? 1 : cloudBatchSize(12));
+  const groups: Opportunity[][] = [];
+  for (let i = 0; i < candidates.length; i += BATCH_A) groups.push(candidates.slice(i, i + BATCH_A));
+
+  const scoreGroup = async (group: Opportunity[]): Promise<PassAScore[]> => {
+    const t0 = performance.now();
+    const msg = await withOverloadRetry(
+      () =>
+        twoPassClient().messages.create(
+          {
+            model: CHEAP_MODEL,
+            max_tokens: 1024, // just `[{id,score}]` per candidate — small on purpose
+            // Same prompt-caching breakpoint as explainMatches' scoreGroup above —
+            // see the H4.2 note there for why wrapUntrusted's per-call random
+            // nonce (below, in `messages`, never in `system`) cannot invalidate it.
+            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+            messages: [
+              {
+                role: "user",
+                content: `COMPANY:\n${wrapUntrusted(JSON.stringify(profile))}\n\nCANDIDATE OPPORTUNITIES:\n${wrapUntrusted(
+                  JSON.stringify(
+                    group.map((c) => ({
+                      id: c.id, program: c.program, agency: c.agency, kind: c.kind,
+                      description: truncateDescriptionForPrompt(c.description, 1200), eligibility: c.eligibility ? truncateDescriptionForPrompt(c.eligibility, 1200) : c.eligibility,
+                      fundingLow: c.fundingLow, fundingHigh: c.fundingHigh, deadline: c.deadline,
+                    })),
+                  ),
+                )}`,
+              },
+            ],
+          },
+          { signal },
+        ),
+      signal,
+    );
+    recordUsage(meter, "candidate_prescore", msg.usage, performance.now() - t0, CHEAP_MODEL);
+    const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+    const scores = asArray(parseJson<PassAScore[] | PassAScore>(text));
+    try { onScore?.(scores); } catch { /* progress/preview is best-effort */ }
+    return scores;
+  };
+
+  const fanOutStart = performance.now();
+  let settled: PromiseSettledResult<PassAScore[]>[];
+  if (isLocalLlm()) {
+    settled = [];
+    for (const group of groups) {
+      try {
+        settled.push({ status: "fulfilled", value: await scoreGroupWithSplit(group, scoreGroup, "candidate_prescore") });
+      } catch (reason) {
+        settled.push({ status: "rejected", reason } as PromiseRejectedResult);
+      }
+    }
+  } else {
+    settled = await Promise.allSettled(groups.map((group) => scoreGroupWithSplit(group, scoreGroup, "candidate_prescore")));
+  }
+  meter?.recordStageLatency("candidate_prescore", performance.now() - fanOutStart);
+  logSkippedBatches("candidate_prescore", settled, groups);
+  const ok = settled
+    .filter((s): s is PromiseFulfilledResult<PassAScore[]> => s.status === "fulfilled")
+    .map((s) => s.value);
+  if (ok.length === 0) {
+    const firstErr = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
+    throw new Error(`All Pass-A scoring batches failed: ${firstErr?.reason?.message ?? "unknown error"}`, { cause: firstErr?.reason });
+  }
+  return ok.flat().map((s) => ({ id: s.id, score: clampScore(s.score) }));
+}
+
+/**
+ * Pass B — the FULL narrative on the expensive MODEL for the PROMOTED subset
+ * only. Mirrors the single pass's `scoreGroup` (same `explainMatches` prompt,
+ * same prompt-caching breakpoint, same `candidate_analysis` stage) so a promoted
+ * candidate's narrative + score are identical to what the single pass produces —
+ * only wrapped in the two-pass client + bounded overload retry. `onBatch` is
+ * invoked as each batch settles so `lib/match.ts` can advance the progress bar.
+ */
+async function narratePassB(
+  profile: StartupProfile,
+  promoted: Opportunity[],
+  meter: CostMeter | undefined,
+  onBatchSettled: ((doneInPassB: number, batch: TwoPassAssessment[]) => void) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<TwoPassAssessment[]> {
+  if (promoted.length === 0) return [];
+  const SYSTEM = scorerPrompt("explainMatches");
+  const BATCH = Number(process.env.LLM_PASS_B_BATCH_SIZE) || (isLocalLlm() ? 1 : cloudBatchSize(8));
+  const groups: Opportunity[][] = [];
+  for (let i = 0; i < promoted.length; i += BATCH) groups.push(promoted.slice(i, i + BATCH));
+
+  const narrateGroup = async (group: Opportunity[]): Promise<TwoPassAssessment[]> => {
+    const t0 = performance.now();
+    const msg = await withOverloadRetry(
+      () =>
+        twoPassClient().messages.create(
+          {
+            model: MODEL,
+            max_tokens: 8000,
+            // Same prompt-caching breakpoint as explainMatches' scoreGroup above —
+            // see the H4.2 note there for why wrapUntrusted's per-call random
+            // nonce (below, in `messages`, never in `system`) cannot invalidate it.
+            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+            messages: [
+              {
+                role: "user",
+                content: `COMPANY:\n${wrapUntrusted(JSON.stringify(profile))}\n\nCANDIDATE OPPORTUNITIES:\n${wrapUntrusted(
+                  JSON.stringify(
+                    group.map((c) => ({
+                      id: c.id, program: c.program, agency: c.agency, kind: c.kind,
+                      description: truncateDescriptionForPrompt(c.description, 1200), eligibility: c.eligibility ? truncateDescriptionForPrompt(c.eligibility, 1200) : c.eligibility,
+                      fundingLow: c.fundingLow, fundingHigh: c.fundingHigh, deadline: c.deadline,
+                    })),
+                  ),
+                )}`,
+              },
+            ],
+          },
+          { signal },
+        ),
+      signal,
+    );
+    recordUsage(meter, "candidate_analysis", msg.usage, performance.now() - t0);
+    const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+    return asArray(parseJson<TwoPassAssessment[] | TwoPassAssessment>(text)).map(({ final, unscored, ...a }) => ({
+      ...a,
+      criteria: coerceCriteria(a.criteria, a.id),
+    }));
+  };
+
+  const fanOutStart = performance.now();
+  let doneInPassB = 0;
+  const runGroup = (group: Opportunity[]) =>
+    scoreGroupWithSplit(group, narrateGroup, "candidate_analysis").then(
+      (result) => {
+        doneInPassB += group.length;
+        try { onBatchSettled?.(doneInPassB, result); } catch { /* progress/preview is best-effort */ }
+        return result;
+      },
+      (reason) => {
+        doneInPassB += group.length;
+        try { onBatchSettled?.(doneInPassB, []); } catch { /* progress/preview is best-effort */ }
+        throw reason;
+      },
+    );
+  let settled: PromiseSettledResult<TwoPassAssessment[]>[];
+  if (isLocalLlm()) {
+    settled = [];
+    for (const group of groups) {
+      try {
+        settled.push({ status: "fulfilled", value: await runGroup(group) });
+      } catch (reason) {
+        settled.push({ status: "rejected", reason } as PromiseRejectedResult);
+      }
+    }
+  } else {
+    settled = await Promise.allSettled(groups.map(runGroup));
+  }
+  meter?.recordStageLatency("candidate_analysis", performance.now() - fanOutStart);
+  logSkippedBatches("candidate_analysis", settled, groups);
+  const ok = settled
+    .filter((s): s is PromiseFulfilledResult<TwoPassAssessment[]> => s.status === "fulfilled")
+    .map((s) => s.value);
+  // Pass B failing entirely is NOT fatal here (unlike the single pass): every
+  // candidate still has a Pass-A score, so `assembleTwoPass` degrades each
+  // promoted candidate to its score-only assessment and the search still returns
+  // ranked tiers. So we return whatever succeeded (possibly []).
+  return ok.flat().map((a) => ({ ...a, score: clampScore(a.score) }));
+}
+
+/**
+ * Hybrid scorer (flag `hybrid_scorer`) — narrative-only LLM call. The DBSF
+ * scorer already produced each score; the model only EXPLAINS it. Batched and
+ * fault-tolerant like `narratePassB` (split on 413, bounded overload retry,
+ * `Promise.allSettled`). Any `score`/`tier` the model emits is discarded. A
+ * failed batch degrades to no narrative for its candidates (never throws), so
+ * the caller's scores still stand. `onBatchNarrated` fires per settled batch.
+ */
+export async function narrateForHybrid(
+  profile: StartupProfile,
+  candidates: Opportunity[],
+  dbsfScores: Array<{ id: string; score: number }>,
+  meter?: CostMeter,
+  onBatchNarrated?: (narratives: NarrativeAssessment[]) => void,
+  signal?: AbortSignal,
+): Promise<NarrativeAssessment[]> {
+  if (candidates.length === 0) return [];
+  const SYSTEM = loadPrompt("narrateMatches").template;
+  const scoreById = new Map(dbsfScores.map((s) => [s.id, s.score]));
+  const BATCH = Number(process.env.LLM_PASS_B_BATCH_SIZE) || (isLocalLlm() ? 1 : cloudBatchSize(8));
+  const groups: Opportunity[][] = [];
+  for (let i = 0; i < candidates.length; i += BATCH) groups.push(candidates.slice(i, i + BATCH));
+
+  const narrateGroup = async (group: Opportunity[]): Promise<NarrativeAssessment[]> => {
+    const t0 = performance.now();
+    const msg = await withOverloadRetry(
+      () =>
+        twoPassClient().messages.create(
+          {
+            model: MODEL,
+            max_tokens: 8000,
+            temperature: 0,
+            // Same prompt-caching breakpoint as narratePassB; the per-call
+            // wrapUntrusted nonce lives in `messages`, never in `system`.
+            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+            messages: [
+              {
+                role: "user",
+                content: `COMPANY:\n${wrapUntrusted(JSON.stringify(profile))}\n\nCANDIDATE OPPORTUNITIES:\n${wrapUntrusted(
+                  JSON.stringify(
+                    group.map((c) => ({
+                      id: c.id, program: c.program, agency: c.agency, kind: c.kind,
+                      description: truncateDescriptionForPrompt(c.description, 1200), eligibility: c.eligibility ? truncateDescriptionForPrompt(c.eligibility, 1200) : c.eligibility,
+                      fundingLow: c.fundingLow, fundingHigh: c.fundingHigh, deadline: c.deadline,
+                      // Named `score` to match the narrateMatches prompt ("each candidate carries its final score").
+                      score: scoreById.get(c.id),
+                    })),
+                  ),
+                )}`,
+              },
+            ],
+          },
+          { signal },
+        ),
+      signal,
+    );
+    recordUsage(meter, "hybrid_narrative", msg.usage, performance.now() - t0);
+    const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+    const allowed = new Set(group.map((c) => c.id));
+    return asArray(parseJson<NarrativeAssessment[] | NarrativeAssessment>(text))
+      .filter((n) => n && typeof n.id === "string" && allowed.has(n.id))
+      .map((n): NarrativeAssessment => ({
+        id: n.id,
+        whyCare: n.whyCare ?? "",
+        whyFit: n.whyFit ?? "",
+        whyIneligible: n.whyIneligible ?? "",
+        whatToVerify: n.whatToVerify ?? "",
+        whatToDoNext: n.whatToDoNext ?? "",
+        criteria: coerceCriteria(n.criteria, n.id).map((c) => ({ label: c.label, met: c.met, note: c.note ?? "" })),
+      }));
+  };
+
+  const fanOutStart = performance.now();
+  const runGroup = (group: Opportunity[]) =>
+    scoreGroupWithSplit(group, narrateGroup, "hybrid_narrative").then(
+      (result) => {
+        try { onBatchNarrated?.(result); } catch { /* progress/preview is best-effort */ }
+        return result;
+      },
+    );
+  let settled: PromiseSettledResult<NarrativeAssessment[]>[];
+  if (isLocalLlm()) {
+    settled = [];
+    for (const group of groups) {
+      try {
+        settled.push({ status: "fulfilled", value: await runGroup(group) });
+      } catch (reason) {
+        settled.push({ status: "rejected", reason } as PromiseRejectedResult);
+      }
+    }
+  } else {
+    settled = await Promise.allSettled(groups.map(runGroup));
+  }
+  meter?.recordStageLatency("hybrid_narrative", performance.now() - fanOutStart);
+  logSkippedBatches("hybrid_narrative", settled, groups);
+  return settled
+    .filter((s): s is PromiseFulfilledResult<NarrativeAssessment[]> => s.status === "fulfilled")
+    .flatMap((s) => s.value);
+}
+
+/** Pass B narrates at most this many promoted candidates, best Pass-A score first. Uncapped on hosted. */
+function e3TwoPassTopN(): number {
+  const envN = Number(process.env.E3_TWO_PASS_TOP_N);
+  if (Number.isFinite(envN) && envN > 0) return envN;
+  return isLocalLlm() ? 8 : Infinity;
+}
+
+/** Wall-clock cost of one Pass-B narrative in Pass-A score units (~30s vs ~2s on local). */
+const PASS_B_COST_WEIGHT = Number(process.env.E3_TWO_PASS_PASS_B_WEIGHT) || 15;
+
+/** Cost-weighted progress scaled onto 0..total, so a bar/rate reading `done/total` tracks wall-clock time. */
+export function twoPassProgress(passAScored: number, promotedCount: number, passBScored: number, total: number): number {
+  const totalUnits = total + promotedCount * (PASS_B_COST_WEIGHT - 1);
+  const doneUnits = passAScored + passBScored * (PASS_B_COST_WEIGHT - 1);
+  return totalUnits > 0 ? Math.min(total, Math.round((doneUnits / totalUnits) * total)) : 0;
+}
+
+/** Real Pass A/B counts for the progress label; `promotedCount` is 0 until Pass A finishes. */
+export type TwoPassProgressDetail = {
+  passAScored: number;
+  promotedCount: number;
+  passBScored: number;
+};
+
+function selectPassBCandidates(
+  candidates: Opportunity[],
+  passA: PassAScore[],
+  topN: number,
+): Opportunity[] {
+  const eligible = promotedIds(passA, PROMOTION_FLOOR);
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  return passA
+    .filter((s) => eligible.has(s.id))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topN)
+    .map((s) => byId.get(s.id))
+    .filter((o): o is Opportunity => o !== undefined);
+}
+
+/**
+ * Stage 2 (two-pass) — the counterpart to `explainMatches`, with the same
+ * return shape (default on local, `e3_two_pass` on hosted). Runs Pass A over all candidates,
+ * narrates only the top `E3_TWO_PASS_TOP_N` candidates (by Pass-A score) that
+ * clear `PROMOTION_FLOOR`, and merges back into one `Assessment[]` (narrated →
+ * full narrative; others → score-only). Scores are clamped server-side (§5.5)
+ * in each pass.
+ *
+ * `onAssessment` fires with each Pass-A score-only assessment, then again with
+ * each Pass-B narrative, so a preview card can be upgraded in place.
+ */
+export async function explainMatchesTwoPass(
+  profile: StartupProfile,
+  candidates: Opportunity[],
+  meter?: CostMeter,
+  onBatch?: (doneCandidates: number, totalCandidates: number, detail?: TwoPassProgressDetail) => void,
+  signal?: AbortSignal,
+  onAssessment?: (a: TwoPassAssessment) => void,
+): Promise<TwoPassAssessment[]> {
+  const total = candidates.length;
+  const topN = e3TwoPassTopN();
+  const reserved = Math.min(topN, total);
+  let passAScored = 0;
+
+  const passA = await scorePassA(profile, candidates, meter, signal, (scores) => {
+    passAScored += scores.length;
+    try {
+      onBatch?.(twoPassProgress(passAScored, reserved, 0, total), total, {
+        passAScored,
+        promotedCount: 0,
+        passBScored: 0,
+      });
+    } catch { /* best-effort */ }
+    for (const s of scores) {
+      // ANALYZING ring (§5): a candidate whose Pass-A score clears the
+      // promotion floor MIGHT still get a Pass-B narrative (final unknown
+      // until the top-N cut below runs) — everything else is already final,
+      // Pass A being the only pass it will ever get.
+      const final = !(Number.isFinite(s.score) && s.score >= PROMOTION_FLOOR);
+      try { onAssessment?.(scoreOnlyAssessment(s.id, clampScore(s.score), { final })); } catch { /* best-effort */ }
+    }
+  });
+
+  const promoted = selectPassBCandidates(candidates, passA, topN);
+  const promotedIdSet = new Set(promoted.map((o) => o.id));
+  // A candidate that cleared the promotion floor but missed the top-N cut
+  // will never get Pass B — finalize it now instead of leaving its card
+  // "analyzing" forever (no further event will ever arrive for it).
+  for (const s of passA) {
+    if (Number.isFinite(s.score) && s.score >= PROMOTION_FLOOR && !promotedIdSet.has(s.id)) {
+      try { onAssessment?.(scoreOnlyAssessment(s.id, clampScore(s.score), { final: true })); } catch { /* best-effort */ }
+    }
+  }
+
+  try {
+    onBatch?.(twoPassProgress(total, promoted.length, 0, total), total, {
+      passAScored: total,
+      promotedCount: promoted.length,
+      passBScored: 0,
+    });
+  } catch { /* best-effort */ }
+
+  const passB = await narratePassB(
+    profile,
+    promoted,
+    meter,
+    (doneInPassB, batch) => {
+      try {
+        onBatch?.(twoPassProgress(total, promoted.length, doneInPassB, total), total, {
+          passAScored: total,
+          promotedCount: promoted.length,
+          passBScored: doneInPassB,
+        });
+      } catch { /* best-effort */ }
+      for (const a of batch) {
+        try { onAssessment?.(a); } catch { /* best-effort */ }
+      }
+    },
+    signal,
+  );
+
+  // ANALYZING ring (§5) — a promoted candidate whose Pass-B batch failed
+  // outright never got its own onAssessment call above (a rejected batch's
+  // onBatchSettled fires with `[]`), so its last STREAMED state is still
+  // Pass A's `final: false`. It IS resolved in the return value below
+  // (assembleTwoPass degrades it to its Pass-A score, final: true) — but
+  // finalize it here too so a still-open card stops analyzing as soon as
+  // scoring for it is actually done, not only once the whole search ends.
+  const passBIds = new Set(passB.map((a) => a.id));
+  for (const s of passA) {
+    if (promotedIdSet.has(s.id) && !passBIds.has(s.id)) {
+      try { onAssessment?.(scoreOnlyAssessment(s.id, clampScore(s.score), { final: true })); } catch { /* best-effort */ }
+    }
+  }
+
+  return assembleTwoPass(candidates.map((c) => c.id), passA, passB);
+}
+
+/**
+ * Stage 3 — the honest no. Called when nothing clears the bar.
+ * This is the highest-value output in the whole product.
+ */
+export async function explainWeakField(profile: StartupProfile, meter?: CostMeter, signal?: AbortSignal) {
+  const t0 = performance.now();
+  const msg = await client().messages.create(
+    {
+      model: MODEL,
+      max_tokens: 1200,
+      system: loadPrompt("explainWeakField").template,
+      messages: [{ role: "user", content: wrapUntrusted(JSON.stringify(profile)) }],
+    },
+    { signal },
+  );
+  recordUsage(meter, "weak_field_explanation", msg.usage, performance.now() - t0);
+
+  const text = msg.content.filter((c) => c.type === "text").map((c: any) => c.text).join("");
+  return parseJson<{ headline: string; reasoning: string; redirects: Array<{ label: string; why: string }> }>(text);
+}
+
+// ---------------------------------------------------------------------------
+// ONE ELIGIBILITY VOICE — reconcile the model narrative to the deterministic
+// determination (§1 #5 / R8.4). Pure + dependency-free (no SDK, no network).
+// ---------------------------------------------------------------------------
+
+/**
+ * The deterministic `EligibilityDetermination` produced by
+ * `lib/eligibility/screen.ts` is the SINGLE SOURCE OF TRUTH for whether a
+ * user is ruled out. The model's `whyIneligible` narrative is a SUBORDINATE,
+ * hedged read of "possible concerns" (see the `explainMatches` prompt rule 1:
+ * "You are NOT determining eligibility"). This function enforces that at the
+ * boundary: the narrative may echo a definitive exclusion ONLY when the engine's
+ * own bucket is `excluded`. In every other case (eligible / conditional /
+ * unknown / no determination) a definitive-exclusion assertion is NEUTRALIZED —
+ * so the UI can never tell a user they are ineligible on the strength of an
+ * uncited model sentence the engine never agreed with (R8.4, the worst single
+ * failure this product can make).
+ *
+ * Kept SDK-free so it is unit-testable and safe to call from the render layer.
+ */
+export type NarrativeReconciliation = {
+  /** The narrative safe to render — never asserts a determination the engine didn't make. */
+  text: string;
+  /** True when the raw narrative over-asserted an exclusion the engine did not make. */
+  reconciled: boolean;
+};
+
+/**
+ * Definitive (NON-hedged) exclusion assertions the model must not make on its
+ * own authority. Hedged forms ("you may not be eligible", "verify with the
+ * program officer", "could disqualify") are deliberately NOT matched — those are
+ * the allowed, subordinate voice. Matching is case-insensitive.
+ */
+const DEFINITIVE_EXCLUSION =
+  /\b(?:you(?:'re| are)\s+(?:currently\s+)?(?:ineligible|not eligible|excluded|disqualified|barred)|you\s+(?:do|does)\s+not\s+qualify|you\s+don'?t\s+qualify|your\s+company\s+is\s+(?:ineligible|not eligible|excluded|disqualified)|(?:this|the)\s+(?:program|opportunity|solicitation)\s+(?:excludes|disqualifies|bars)\s+you|renders?\s+you\s+ineligible|makes?\s+you\s+ineligible)\b/i;
+
+/** Determination-free caution used when a definitive assertion can't be softened cleanly. */
+const RECONCILED_FALLBACK =
+  "These are concerns to verify with the program officer — not a determination that you are ruled out. Your eligibility status is shown by the screening result above.";
+
+/** Soften definitive-exclusion phrasing into the hedged, subordinate voice. */
+function softenDefinitiveExclusion(text: string): string {
+  return text
+    .replace(/\byou are ineligible\b/gi, "you may have an eligibility concern")
+    .replace(/\byou're ineligible\b/gi, "you may have an eligibility concern")
+    .replace(/\byou are not eligible\b/gi, "you may not be eligible")
+    .replace(/\byou're not eligible\b/gi, "you may not be eligible")
+    .replace(/\byou are excluded\b/gi, "you may face an exclusion concern")
+    .replace(/\byou're excluded\b/gi, "you may face an exclusion concern")
+    .replace(/\byou are disqualified\b/gi, "you may have a disqualifying factor to verify")
+    .replace(/\byou're disqualified\b/gi, "you may have a disqualifying factor to verify")
+    .replace(/\byou are barred\b/gi, "you may be restricted")
+    .replace(/\byou're barred\b/gi, "you may be restricted")
+    .replace(/\byou do not qualify\b/gi, "you may not qualify")
+    .replace(/\byou does not qualify\b/gi, "you may not qualify")
+    .replace(/\byou don't qualify\b/gi, "you may not qualify")
+    .replace(/\byou dont qualify\b/gi, "you may not qualify")
+    .replace(/\byour company is ineligible\b/gi, "your company may have an eligibility concern")
+    .replace(/\byour company is not eligible\b/gi, "your company may not be eligible")
+    .replace(/\byour company is excluded\b/gi, "your company may face an exclusion concern")
+    .replace(/\byour company is disqualified\b/gi, "your company may have a disqualifying factor to verify")
+    .replace(/\b(this|the) (program|opportunity|solicitation) excludes you\b/gi, "$1 $2 may exclude you")
+    .replace(/\b(this|the) (program|opportunity|solicitation) disqualifies you\b/gi, "$1 $2 may disqualify you")
+    .replace(/\b(this|the) (program|opportunity|solicitation) bars you\b/gi, "$1 $2 may restrict you")
+    .replace(/\brenders you ineligible\b/gi, "may affect your eligibility")
+    .replace(/\brender you ineligible\b/gi, "may affect your eligibility")
+    .replace(/\bmakes you ineligible\b/gi, "may affect your eligibility")
+    .replace(/\bmake you ineligible\b/gi, "may affect your eligibility");
+}
+
+/**
+ * Reconcile a model `whyIneligible` narrative against the deterministic bucket.
+ *
+ * - engine bucket `excluded` → the exclusion is the engine's OWN determination,
+ *   so the narrative may state it: returned unchanged.
+ * - otherwise (eligible / conditional / unknown / no determination) → any
+ *   definitive-exclusion assertion is softened to the hedged voice; if a
+ *   definitive assertion still survives softening, the whole narrative is
+ *   replaced with a determination-free caution. Narratives that are already
+ *   hedged (or say nothing definitive) pass through untouched.
+ */
+export function reconcileIneligibilityNarrative(
+  narrative: string | undefined,
+  determination: { bucket: EligibilityBucket } | undefined,
+): NarrativeReconciliation {
+  const raw = (narrative ?? "").trim();
+  // The engine itself ruled the user out → the narrative may echo it.
+  if (determination?.bucket === "excluded") return { text: raw, reconciled: false };
+  if (raw.length === 0) return { text: raw, reconciled: false };
+  // No definitive over-assertion → already the subordinate/hedged voice.
+  if (!DEFINITIVE_EXCLUSION.test(raw)) return { text: raw, reconciled: false };
+
+  const softened = softenDefinitiveExclusion(raw);
+  // Defense in depth: if any definitive assertion survives the softening table,
+  // fall back to the canonical determination-free caution so the narrative can
+  // NEVER assert an exclusion the engine did not make.
+  const text = DEFINITIVE_EXCLUSION.test(softened) ? RECONCILED_FALLBACK : softened;
+  return { text, reconciled: true };
+}

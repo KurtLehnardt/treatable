@@ -1,0 +1,282 @@
+name: ci
+
+# Typecheck + unit tests on every PR and every push to main.
+#
+# Both commands are hermetic: the suite needs no API keys, no .env.local, no
+# network and no database (verified by running it with .env.local removed), so
+# this job needs no secrets. Anything that WOULD need a key belongs in a
+# separate workflow, not here — a required check that depends on a secret
+# silently stops working for forks.
+#
+# Playwright (`npm run e2e`) is deliberately NOT run here: it needs browser
+# binaries and a built app, which is a different job with a different runtime
+# budget. Add it separately rather than making this check slow enough that
+# people stop waiting for it.
+#
+# Node versions: 22 (current LTS) and 24. NOT 20, even though that is the floor
+# the README gives for RUNNING the app — `npm test` passes glob patterns to the
+# Node test runner, and glob expansion only arrived in Node 22. On 20 the runner
+# takes the pattern literally and exits 1 with "Could not find
+# '.../lib/**/__tests__/**/*.test.ts'" before running a single test. So 20 is a
+# valid floor for running Granted but not for developing it. If the test script
+# is ever made 20-compatible, add "20" back to the matrix.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per branch/PR. Cancelling superseded runs is safe: this job only
+  # reads the tree and publishes nothing.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Report every failing Node version, not just whichever tripped first.
+      fail-fast: false
+      matrix:
+        node-version: ["22", "24"]
+    defaults:
+      run:
+        working-directory: scaffold
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: scaffold/package-lock.json
+
+      # `npm ci` (not `install`) so a lockfile that has drifted from
+      # package.json fails the build instead of being silently rewritten.
+      # ONNXRUNTIME_NODE_INSTALL=skip: onnxruntime-node (the built-in search
+      # model's runtime) would otherwise download its CUDA add-on on linux/x64,
+      # several hundred MB that nothing here uses.
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
+
+      # Kept as separate steps so a red build names which one broke.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Two repository-consistency gates. Both existed as npm scripts but were
+      # never wired into CI, and both had accumulated violations by the time
+      # they were first run here; they are added only now that each passes on
+      # a clean tree, because adding a failing gate would just make CI red.
+      #
+      # check:prompts keeps prompt text in lib/prompts/registry.ts instead of
+      # inline template literals, so a prompt change is reviewable in one
+      # place and carries a version number. check:hex keeps raw hex colours
+      # out of components/ and app/ in favour of the design tokens in
+      # lib/design/tokens.ts (a line may opt out with a "// hex-ok" comment).
+      - name: Prompt registry check
+        run: npm run check:prompts
+
+      - name: Design token check
+        run: npm run check:hex
+
+  # The GUI installer (installer/) is its own npm project. Its unit +
+  # integration tests are hermetic (temp folders, a 127.0.0.1 HTTP server,
+  # no keys); the ones that drive a real powershell.exe skip themselves off
+  # Windows, so Linux covers typecheck + everything portable...
+  installer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: installer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: installer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + integration tests
+        run: npm test
+
+  # ...and Windows runs the Windows-only half: the PowerShell integration
+  # tests and the Playwright end-to-end tests, which drive the built
+  # Electron app and the real console windows it opens, through to the
+  # "Installation complete" screen. (macOS reaches that screen too now —
+  # see the installer-macos job below — but through its own scripts, so each
+  # platform's half needs its own runner.)
+  installer-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: installer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: installer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit + integration tests
+        run: npm test
+
+      - name: End-to-end tests
+        run: npm run e2e
+
+      # The packaged .exe a release ships (release.yml builds it the same
+      # way), so a change that breaks packaging fails here, not at release time.
+      - name: Package the installer
+        env:
+          GRANTED_RELEASE_TAG: v0.0.0
+        run: npm run dist
+
+      - name: Smoke-test the packaged installer
+        env:
+          GRANTED_PACKAGED_EXE: ${{ github.workspace }}\installer\dist\win-unpacked\Granted Setup.exe
+          GRANTED_EXPECT_TAG: v0.0.0
+        run: npx playwright test e2e/packaged.spec.ts
+
+  # ...and macOS runs the macOS-only half, the same shape as the Windows job
+  # above: the integration tests that drive the real scaffold/scripts/macos/
+  # shell scripts and the Swift menu-bar helper, the Playwright end-to-end
+  # tests, and the .dmg a release ships.
+  #
+  # macos-latest is Apple Silicon, which is the only architecture the .dmg
+  # targets, so what CI packages here is exactly what a release publishes.
+  # The Xcode Command Line Tools (and so `swift`) are already on the runner
+  # image; nothing extra is installed.
+  #
+  # The GUI-session tests inside macTray.integration.test.ts skip themselves
+  # where NSStatusBar has no Aqua session to attach to (its `inAquaSession`
+  # check), so this job stays correct whether or not the runner gives it one.
+  # The end-to-end tests do assume a per-user launchd domain (`gui/<uid>`,
+  # which granted-tray.sh bootstraps its throwaway test LaunchAgent into) —
+  # true of the GitHub macOS images, which auto-log a user in, but this is
+  # the first macOS run of this suite in real CI, so that is the thing to
+  # look at first if the "End-to-end tests" step is the one that goes red.
+  installer-macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: installer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: installer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Separate from the tests so a Swift compile error says so, instead of
+      # surfacing as a timed-out `before` hook: macTray.integration.test.ts
+      # builds the helper itself, exactly like this, and reuses this build.
+      - name: Build the Swift menu-bar helper
+        run: swift build -c release --package-path ../scaffold/scripts/macos/menubar
+
+      - name: Unit + integration tests
+        run: npm test
+
+      - name: End-to-end tests
+        run: npm run e2e
+
+      # The .dmg a release ships (release.yml builds it the same way), so a
+      # change that breaks packaging fails here, not at release time.
+      - name: Package the installer
+        env:
+          GRANTED_RELEASE_TAG: v0.0.0
+        run: npm run dist:mac
+
+      - name: Smoke-test the packaged installer
+        env:
+          GRANTED_PACKAGED_EXE: ${{ github.workspace }}/installer/dist/mac-arm64/Granted Setup.app
+          GRANTED_EXPECT_TAG: v0.0.0
+        run: npx playwright test e2e/packaged.spec.ts
+
+  # The built-in search model for real, on Windows: download it (cached on the
+  # pinned revision, so it's fetched once per revision, not per run), load it
+  # through onnxruntime-node, and check a known query's vector, the shipped
+  # corpus vectors and the model's own files. The hermetic suite above never
+  # loads the model, so a native-runtime problem (onnxruntime's DLLs, a broken
+  # model file) would otherwise only show up on someone's machine.
+  scaffold-windows-model:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: scaffold
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: scaffold/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pinned model revision
+        id: model
+        shell: bash
+        run: |
+          rev=$(node --input-type=module -e "import { BUILTIN_MODEL } from './scripts/lib/builtinModel.mjs'; console.log(BUILTIN_MODEL.revision)")
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the built-in search model
+        uses: actions/cache@v4
+        with:
+          path: scaffold/models
+          key: builtin-search-model-${{ steps.model.outputs.revision }}-fp16
+
+      # Verifies every file against its pinned SHA-256; downloads only on a cache miss.
+      - name: Download (or verify) the model
+        run: npm run model:fetch
+
+      # GRANTED_REQUIRE_MODEL makes the test fail, not skip, if the model is missing.
+      - name: Real-model integration test
+        env:
+          GRANTED_REQUIRE_MODEL: "1"
+        run: npx tsx --test lib/embeddings/__tests__/builtinModel.integration.test.ts

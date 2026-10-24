@@ -1,0 +1,371 @@
+"use client";
+import { Component, type ReactNode } from "react";
+import OpportunityCard from "./OpportunityCard";
+import EligibilityBuckets, { type EligibilityItem } from "./EligibilityBuckets";
+import SimilarCompanies from "./SimilarCompanies";
+import AgencyMap from "./AgencyMap";
+import OpportunityGroups from "./OpportunityGroups";
+import OpportunityFilters from "./OpportunityFilters";
+import WeakerMatches from "./WeakerMatches";
+import OpportunityGraph from "./OpportunityGraph";
+import FundingStrategy from "./FundingStrategy";
+import OpportunityAlerts from "./OpportunityAlerts";
+import type { OpportunityMap as MapT, Match } from "@/lib/types";
+import { isFlagEnabled, isFlagExplicitlyDisabled } from "@/lib/flags";
+import { aggregateSimilarCompanies } from "@/lib/similar/aggregate";
+import { fundingCell, closingSoonCount, expiredCount } from "@/lib/ui/opportunitySummary";
+import { useCorpusAsOf } from "@/lib/corpus/useCorpusAsOf";
+
+/** Cards in the main list. NEVER-VANISH LIST (§2): the main list is the top
+ *  `CARD_CAP` matches by score — everything else (a tier-"none" candidate, a
+ *  real match that scored well but didn't make the cap, or a candidate that
+ *  couldn't be scored at all) goes into the ONE "More matches" collapsed
+ *  section below instead of being dropped. Exported so the progressive
+ *  preview list (app/page.tsx, while a search is still streaming in matches)
+ *  caps at the SAME number the finished map settles on — one source of truth,
+ *  so the card count never visibly shrinks when the preview list is replaced
+ *  by the final, complete map. */
+export const CARD_CAP = 8;
+
+/** Real fits (best first, capped at `CARD_CAP`) plus rule-excluded candidates,
+ *  which stay visible (R8.2) but outside the cap and header stats. Everything
+ *  that doesn't make the main list — a plain tier-"none" candidate, a real
+ *  match past the cap, or an unscored candidate — goes in `weaker`, shown
+ *  collapsed in the ONE "More matches" section below (never silently
+ *  dropped; §2). */
+export function selectShownMatches(matches: Match[]): { real: Match[]; excluded: Match[]; weaker: Match[] } {
+  const clean = matches.filter((m): m is Match => Boolean(m));
+  const excluded = clean.filter(
+    (m) => m.tier === "none" && m.eligibility?.determination?.bucket === "excluded",
+  );
+  const rest = clean.filter((m) => !excluded.includes(m));
+  const ranked = rest
+    .filter((m) => !m.unscored)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const real = ranked.filter((m) => m.tier === "likely").slice(0, CARD_CAP);
+  const realIds = new Set(real.map((m) => m.opportunity.id));
+  const weaker = [
+    ...ranked.filter((m) => !realIds.has(m.opportunity.id)),
+    ...rest.filter((m) => m.unscored),
+  ];
+  return { real, excluded, weaker };
+}
+
+/** FE-01: shared "eyebrow"-style mono label, token-driven. */
+function eyebrowClass(extra = "") {
+  return `font-mono text-[11px] uppercase tracking-eyebrow text-structure-on-canvas ${extra}`.trim();
+}
+
+/** Small boundary so a malformed match can't white-screen the whole demo.
+ *  Exported so app/page.tsx's progressive preview list (streamed matches,
+ *  rendered before the full map has even validated) gets the same resilience. */
+export class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (this.state.failed) {
+      const cls =
+        "mt-8 border-l-2 border-error bg-canvas-alt px-4 py-3 font-body text-sm text-foreground";
+      return (
+        <p className={cls}>
+          We hit a snag rendering these results. Try rephrasing your description and running it again.
+        </p>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function OpportunityMap({ map }: { map: MapT }) {
+  if (!map || typeof map !== "object") return null;
+
+  // R8 / ELG-04: gates the three-bucket eligibility DISPLAY. Off = today's
+  // results unchanged; the determinations still ride on each match, just unshown.
+  const r8 = isFlagEnabled("r8_eligibility");
+
+  const matches: Match[] = Array.isArray(map.matches) ? map.matches : [];
+  const followUps: string[] = Array.isArray(map.followUps) ? map.followUps : [];
+  const agencyIntelligence = Array.isArray(map.agencyIntelligence) ? map.agencyIntelligence : [];
+  const w = map.weakFieldFinding;
+
+  // D1 — free aggregate "Similar companies funded" panel. Pure/hermetic:
+  // dedupes provenance-verified award recipients across the strong matches
+  // (falling back to all matches if none of the strong ones have verified
+  // recipients), independent of the paid, Max-gated CompetitorAnalysisModal /
+  // CompetitorResults deep-analysis flow, which this never reads or affects.
+  const similarRecipients = aggregateSimilarCompanies(matches, { limit: 10 });
+
+  const { real: shownReal, excluded: excludedShown, weaker: weakerMatches } = selectShownMatches(matches);
+  const shown = [...shownReal, ...excludedShown];
+
+  // Header stats derived from real fits only — keeps them honest and consistent.
+  const highPotential = shownReal.length;
+  // Evergreen-safe (F1): a rolling/continuous/standing program is never
+  // counted here, even if a stray deadline-shaped value is present on the
+  // record — see closingSoonCount/isClosingSoon in lib/ui/opportunitySummary.
+  const closingSoon = closingSoonCount(shownReal);
+  const funding = fundingCell(shownReal);
+  // Data-freshness: how many of the shown cards have a deadline now in the past
+  // (evergreen/forecasted-safe). The committed corpus is a point-in-time
+  // snapshot; when it has aged, say so plainly instead of presenting stale
+  // deadlines as current. Works on cached/precomputed maps too — it reads only
+  // `m.opportunity.deadline`, which every map shape carries.
+  const expired = expiredCount(shownReal);
+  // The corpus "as of" stamp (GET /api/corpus). `null` when the
+  // stamp is absent/invalid — the footer then degrades to a date-free caveat.
+  const asOf = useCorpusAsOf();
+
+  // R8 / ELG-04: map the REAL determinations attached by buildOpportunityMap
+  // (screen() + freshness) into the FE-04 three-bucket display's item shape.
+  // Only the shown opportunities are screened here — the same set the user
+  // sees as cards. Empty when the flag is off, or on cached maps that predate
+  // the field (their matches simply carry no `eligibility`).
+  const eligibilityItems: EligibilityItem[] = r8
+    ? shown
+        .filter((m) => m.eligibility)
+        .map((m) => ({
+          determination: m.eligibility!.determination,
+          title: m.opportunity?.title ?? m.opportunity?.program,
+          agency: m.opportunity?.agency,
+          // ELG-02: carry the freshness caveat through so a stale/unverified
+          // determination is visibly flagged rather than dropped (§4.5/§11).
+          // `caveat` is null when the determination is fresh.
+          caveat: m.eligibility!.freshness?.caveat ?? null,
+        }))
+    : [];
+
+  // The stat band keeps its hairline grid (gap-px over a navy fill = structural
+  // cell separators), now clipped to a rounded, softly-elevated card.
+  //
+  // The column count MUST match the number of cells rendered below. The funding
+  // cell is conditional (dropped when there's no groundable figure — the honest
+  // funding label), so a hardcoded 4-col grid leaves the 4th slot empty and the
+  // navy gap-fill shows through as a blank cell. Size to the actual count: 4
+  // cells → 2-up mobile / 4-up desktop; 3 cells → an even 3-up row (no gap).
+  const statCols = funding ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
+  const statGridClass = `grid ${statCols} gap-px overflow-hidden rounded-lg border border-structure-on-canvas bg-structure-on-canvas shadow-card`;
+
+  // "A finding, not a dead end" is the honest-no hero panel — navy structure
+  // fill (white content on top), same pairing as the header/nav per R7.2.
+  // Polish: rounded + elevation instead of a same-color border.
+  const weakFieldClass =
+    "mt-8 rounded-lg bg-structure px-5 py-6 text-token-white shadow-card sm:px-7 sm:py-7";
+
+  const weakFieldBodyClass =
+    "mt-3 max-w-2xl text-pretty font-body text-[15px] leading-relaxed text-token-white";
+
+  // Full-opacity token.white throughout the panel rather than opacity
+  // modifiers: Tailwind can't precompute alpha for CON-02's CSS-var-backed
+  // colors at build time (only for v1's literal-hex theme colors), so an
+  // opacity slash on these tokens silently doesn't apply. De-emphasis in v2
+  // comes from type hierarchy, not color-fade.
+  const redirectItemClass = "border-l-2 border-token-white pl-4";
+
+  const redirectWhyClass = "mt-1 text-pretty font-body text-[13px] leading-relaxed text-token-white";
+
+  const followUpsSectionClass = "mt-8 rounded-lg bg-canvas-alt px-4 py-5 shadow-card sm:px-6";
+
+  const followUpItemClass = "text-pretty font-body text-[14px] text-foreground";
+
+  const agenciesSectionClass = "mt-10 border-t border-structure-on-canvas pt-7";
+
+  // D1 — same section rhythm as "Agencies most relevant to you" above it.
+  const similarCompaniesCaptionClass =
+    "mt-1.5 max-w-2xl text-pretty font-body text-[13px] leading-relaxed text-foreground";
+
+  const footerClass =
+    "mt-10 border-t border-structure-on-canvas pt-5 text-pretty font-body text-[12px] leading-relaxed text-foreground";
+
+  return (
+    <Boundary>
+      <div className="reveal">
+        {/* The search couldn't use its embedding model and fell back to keyword matching: say so up front. */}
+        {map.searchNotice?.message && (
+          <p
+            className="mb-4 rounded-r-sm border-l-2 border-warning bg-canvas-alt px-3 py-2 font-body text-[13px] text-foreground"
+            data-testid="search-notice"
+            role="status"
+          >
+            {map.searchNotice.message}
+          </p>
+        )}
+        {/* On a weak-field finding the honest panel is the hero — an empty
+            "0 / $0" band above it would read as a failed query, so we drop it. */}
+        {!w && (
+          <div className={statGridClass}>
+            <Cell n={String(highPotential)} label="strong matches" />
+            {funding && <Cell n={funding.n} label={funding.label} />}
+            <Cell n={String(agencyIntelligence.length)} label="relevant agencies" />
+            <Cell n={String(closingSoon)} label="closing within 2 weeks" />
+          </div>
+        )}
+
+        {/* Data-freshness: when any shown match has a passed deadline, say so
+            once, plainly, up front — "verify," never "these are dead." The
+            committed corpus is a point-in-time snapshot, so a stale deadline is
+            expected on an aging clone; this caveat plus the per-card badge keep
+            it honest instead of letting it read as current. */}
+        {expired > 0 && (
+          <p
+            role="note"
+            className="mt-4 border-l-2 border-warning pl-3 font-body text-[13px] leading-relaxed text-foreground"
+          >
+            {expired === 1 ? "1 of these has a passed deadline" : `${expired} of these have passed deadlines`} —
+            verify current status on the official source before applying.
+          </p>
+        )}
+
+        {/* The honest no. Deliberate, not an error state. */}
+        {w && (
+          <section className={weakFieldClass}>
+            <p className={eyebrowClass()}>A finding, not a dead end</p>
+            <h2 className="mt-3 text-balance font-display text-[20px] font-medium leading-snug sm:text-[24px]">{w.headline}</h2>
+            <p className={weakFieldBodyClass}>{w.reasoning}</p>
+
+            {w.redirects?.length > 0 && (
+              <>
+                <p className={eyebrowClass("mt-7")}>Where to look instead</p>
+                <ul className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {w.redirects.map((r, i) => (
+                    <li key={i} className={redirectItemClass}>
+                      <p className="text-balance font-display text-[15px] font-medium">{r.label}</p>
+                      <p className={redirectWhyClass}>{r.why}</p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
+
+        {/* D5 — "Since your last visit" alerts: new matches / tier upgrades /
+            newly closing-soon, diffed client-only against a localStorage
+            snapshot of the user's last run. Default-off; all logic lives
+            in OpportunityAlerts.tsx + lib/alerts/*. */}
+        {isFlagEnabled("d5_alerts") && <OpportunityAlerts map={map} />}
+
+        {followUps.length > 0 && (
+          <section className={followUpsSectionClass}>
+            <p className={eyebrowClass("mb-3")}>A few things would sharpen this</p>
+            <ul className="space-y-2">
+              {followUps.map((q, i) => (
+                <li key={i} className={followUpItemClass}>{q}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {shown.length > 0 && (
+          <section className="mt-8">
+            <p className={eyebrowClass("mb-4")}>
+              {w ? "Adjacent and partial matches" : "Your opportunity map"}
+            </p>
+            {/* Match-results filter/sort (location/match %/award/recency).
+                Shown by default (shipped and tested in #259/#263/#304), so it
+                no longer needs a flag turned on; NEXT_PUBLIC_FLAG_MATCH_FILTERS=false
+                still hides it. It takes precedence over the C1b kind-filter
+                chips, feeding its own filtered+sorted array into whichever of
+                those two renders next, so the two controls stack rather than
+                one replacing the other. With it switched off, C1b's own
+                kind-filter-or-flat-list choice applies, as before. */}
+            {!isFlagExplicitlyDisabled("match_filters") ? (
+              <OpportunityFilters matches={shown} startupProfile={map.profile} />
+            ) : isFlagEnabled("c1b_type_groups") ? (
+              <OpportunityGroups matches={shown} startupProfile={map.profile} />
+            ) : (
+              <div className="space-y-3">
+                {shown.map((m, i) => (
+                  // G5: thread the user's extracted v1 profile down so the
+                  // assisted-apply "Draft my application" flow can assemble a
+                  // grounded package from real data (bridged to a §3.1
+                  // CompanyProfile inside OpportunityCard). Absent → honest gaps.
+                  <OpportunityCard key={m.opportunity?.id ?? i} m={m} index={i} startupProfile={map.profile} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* More matches (§2, never-vanish list) — a tier-"none" candidate, a
+            real match past CARD_CAP, or an unscored candidate (never a
+            rule-excluded one, which stays in `excluded` above) collapses here
+            instead of being silently dropped. */}
+        <WeakerMatches matches={weakerMatches} startupProfile={map.profile} />
+
+        {/* R8 / ELG-04: real three-bucket eligibility screening for the shown
+            opportunities, gated behind r8_eligibility (default off). */}
+        {r8 && eligibilityItems.length > 0 && (
+          <section className={agenciesSectionClass}>
+            <p className={eyebrowClass("mb-4")}>Eligibility screening</p>
+            <EligibilityBuckets items={eligibilityItems} />
+          </section>
+        )}
+
+        {/* D2 — "Agencies most relevant to you": presentation-layer only, reads
+            the EXISTING agencyIntelligence + matches already computed by
+            buildOpportunityMap (lib/match.ts). See components/AgencyMap.tsx. */}
+        <AgencyMap agencyIntelligence={agencyIntelligence} matches={matches} />
+
+        {/* D3 — "Your 12-month funding strategy": presentation-only, derived from
+            the EXISTING map by the pure lib/strategy/fundingStrategy.ts. Gated
+            behind the default-off d3_funding_strategy flag. */}
+        {isFlagEnabled("d3_funding_strategy") && <FundingStrategy map={map} />}
+
+        {/* D1 — free aggregate panel, NEVER Max-gated (no useBilling / useEntitlements
+            read here or in SimilarCompanies). Honestly labeled: a rollup of verified
+            public federal award records, not a personalized/live competitor analysis —
+            that stays the separate Maximum-gated CompetitorAnalysisModal /
+            CompetitorResults flow, untouched by this section. */}
+        {similarRecipients.length > 0 && (
+          <section className={agenciesSectionClass}>
+            <p className={eyebrowClass("mb-1")}>Companies like yours that received federal funding</p>
+            <p className={similarCompaniesCaptionClass}>
+              Verified public federal award records, deduped across your strongest matches — each row links to
+              its official source record.
+            </p>
+            <div className="mt-4">
+              <SimilarCompanies recipients={similarRecipients} />
+            </div>
+          </section>
+        )}
+
+        {/* D4 — compact Startup -> Technology -> Agency -> Program -> Award
+            node-link graph over the SAME map data rendered above. Default
+            OFF behind d4_opportunity_graph; see components/OpportunityGraph.tsx. */}
+        {isFlagEnabled("d4_opportunity_graph") && <OpportunityGraph map={map} />}
+
+        <div className={footerClass}>
+          {/* Data-freshness "as of" surface: the corpus ships committed and is a
+              point-in-time snapshot, so we stamp WHEN it was built and always
+              route the user to the official source for the live deadline —
+              never presenting the snapshot as if it were current. Safe fallback:
+              a date-free caveat when the corpus-meta stamp is absent/invalid. */}
+          <p>
+            {asOf
+              ? `Opportunities as of ${asOf.label} — always verify current deadlines on the official source.`
+              : "Always verify current deadlines on the official source — this opportunity data is a point-in-time snapshot."}
+          </p>
+          <p className="mt-2">
+            These are assessments, not eligibility determinations. Confirm requirements with the
+            program officer before you invest time in an application.
+          </p>
+        </div>
+      </div>
+    </Boundary>
+  );
+}
+
+function Cell({ n, label }: { n: string; label: string }) {
+  // Mobile pass (N4): tighter padding + a smaller number size at phone
+  // widths so a 2-up stat grid (grid-cols-2 below sm) doesn't crowd or wrap
+  // longer figures like "$1.2M+ potential funding identified".
+  const cellClass = "bg-canvas-alt px-3 py-4 text-foreground sm:px-5 sm:py-6";
+  return (
+    <div className={cellClass}>
+      <div className="font-display text-[22px] font-bold leading-none tabular-nums sm:text-[30px]">{n}</div>
+      <div className={eyebrowClass("mt-2 leading-snug")}>{label}</div>
+    </div>
+  );
+}

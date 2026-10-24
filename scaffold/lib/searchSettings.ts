@@ -1,0 +1,202 @@
+/**
+ * Client-only search preferences (localStorage): "search depth" (how many
+ * candidates the model scores per search) and, on a local backend, the chosen
+ * model. Null means "use the server default" (never pin a specific value, so a
+ * future default change is picked up automatically).
+ *
+ * Device-local only, like the auto-fill requirements in lib/mockAuth.ts —
+ * nothing here is sent anywhere except as fields on the user's own
+ * /api/match request.
+ */
+const MAX_CANDIDATES_KEY = "granted:maxCandidates";
+const MODEL_KEY = "granted:model";
+export const LAST_SEARCH_MS_KEY = "granted:lastSearchMs";
+
+/** The saved candidate cap, or null when unset (→ server default). */
+export function getMaxCandidates(): number | null {
+  try {
+    const raw = window.localStorage.getItem(MAX_CANDIDATES_KEY);
+    if (raw == null || raw === "") return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  } catch {
+    // localStorage unavailable (SSR / private mode) — fall back to the default.
+    return null;
+  }
+}
+
+/** Persist the candidate cap; pass null to clear it (→ server default). */
+export function setMaxCandidates(value: number | null): void {
+  try {
+    if (value == null) window.localStorage.removeItem(MAX_CANDIDATES_KEY);
+    else window.localStorage.setItem(MAX_CANDIDATES_KEY, String(Math.floor(value)));
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}
+
+/** The saved local-model choice, or null when unset (→ server default). Ignored when hosted. */
+export function getModel(): string | null {
+  try {
+    return window.localStorage.getItem(MODEL_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the local model (null → server default). A change drops the last-search
+ *  duration, which was measured on the previous model. */
+export function setModel(value: string | null): void {
+  try {
+    if (value === getModel()) return;
+    if (value == null) window.localStorage.removeItem(MODEL_KEY);
+    else window.localStorage.setItem(MODEL_KEY, value);
+    window.localStorage.removeItem(LAST_SEARCH_MS_KEY);
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}
+
+/** Off by default: no government API calls unless the user opts in. */
+const AUTO_UPDATE_KEY = "granted:autoUpdateCorpus";
+
+export function getAutoUpdateCorpus(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_UPDATE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setAutoUpdateCorpus(value: boolean): void {
+  try {
+    if (value) window.localStorage.setItem(AUTO_UPDATE_KEY, "1");
+    else window.localStorage.removeItem(AUTO_UPDATE_KEY);
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}
+
+const MAX_CORPUS_SIZE_KEY = "granted:maxCorpusSize";
+export const MIN_CORPUS_SIZE = 1000;
+export const MAX_CORPUS_SIZE = 20000;
+export const DEFAULT_CORPUS_SIZE = 1000;
+
+export function clampCorpusSize(n: number): number {
+  return Math.min(MAX_CORPUS_SIZE, Math.max(MIN_CORPUS_SIZE, Math.floor(n)));
+}
+
+export function getMaxCorpusSize(): number {
+  try {
+    const raw = window.localStorage.getItem(MAX_CORPUS_SIZE_KEY);
+    const n = raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) ? clampCorpusSize(n) : DEFAULT_CORPUS_SIZE;
+  } catch {
+    return DEFAULT_CORPUS_SIZE;
+  }
+}
+
+export function setMaxCorpusSize(value: number): void {
+  try {
+    window.localStorage.setItem(MAX_CORPUS_SIZE_KEY, String(clampCorpusSize(value)));
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}
+
+/** Per-source "which states should we fetch" selection (Settings' state-sources
+ *  control). Default/fallback — both when nothing is stored yet AND when localStorage
+ *  is unavailable — is every state OFF. (Was CA/IL/NC-on-by-default; changed so a
+ *  state only ever gets fetched because the user actually wants it — either checked
+ *  directly in Settings, or confirmed via the "Enable grants for <state>?" prompt
+ *  triggered by typing a supported state into the location field — never silently
+ *  on day one for a state nobody asked about.) Utah was always opt-in, for its own
+ *  separate reason: meaningfully weaker data (no deadline/eligibility, no stable id,
+ *  occasional federal overlap — see scripts/1-fetch-ut-grants.mjs) and a
+ *  headless-browser-only source. */
+const STATE_SOURCES_KEY = "granted:selectedStateSources";
+export const DEFAULT_STATE_SOURCES: string[] = [];
+
+export function getSelectedStateSources(): string[] {
+  try {
+    const raw = window.localStorage.getItem(STATE_SOURCES_KEY);
+    if (raw == null) return [...DEFAULT_STATE_SOURCES];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((s) => typeof s === "string") ? parsed : [...DEFAULT_STATE_SOURCES];
+  } catch {
+    return [...DEFAULT_STATE_SOURCES];
+  }
+}
+
+export function setSelectedStateSources(sources: string[]): void {
+  try {
+    window.localStorage.setItem(STATE_SOURCES_KEY, JSON.stringify(sources));
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}
+
+/** Which state sources the "Enable grants for <state>?" prompt has already
+ *  been declined for, so it asks at most once per state -- a "no" is a real
+ *  answer, not a formality to keep re-litigating every time the location
+ *  field happens to still say that state. Persisted (not per-session):
+ *  matches every other preference in this file, and the user can always
+ *  still enable a state by hand in Settings regardless of a past decline. */
+const DECLINED_STATE_PROMPTS_KEY = "granted:declinedStateEnablePrompts";
+
+export function hasDeclinedStateEnablePrompt(sourceId: string): boolean {
+  try {
+    const raw = window.localStorage.getItem(DECLINED_STATE_PROMPTS_KEY);
+    if (raw == null) return false;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.includes(sourceId);
+  } catch {
+    return false;
+  }
+}
+
+export function markStateEnablePromptDeclined(sourceId: string): void {
+  try {
+    const raw = window.localStorage.getItem(DECLINED_STATE_PROMPTS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const existing = Array.isArray(parsed) && parsed.every((s) => typeof s === "string") ? parsed : [];
+    if (existing.includes(sourceId)) return;
+    window.localStorage.setItem(DECLINED_STATE_PROMPTS_KEY, JSON.stringify([...existing, sourceId]));
+  } catch {
+    /* localStorage unavailable — nothing to persist; worst case, asks again next time */
+  }
+}
+
+/** Ollama management: whether Granted should start/stop Ollama automatically */
+const MANAGE_OLLAMA_KEY = "granted:manageOllama";
+
+/** There are three distinguishable states for this preference: never configured
+ *  (the key has never been written), explicitly on (stored value "1"), and
+ *  explicitly off (stored value "0"). The default is true, so both "never
+ *  configured" and "explicitly on" return true here; only the explicit-off
+ *  value returns false. If localStorage is unavailable, fall back to the
+ *  same true default. */
+export function getManageOllama(): boolean {
+  try {
+    const raw = window.localStorage.getItem(MANAGE_OLLAMA_KEY);
+    if (raw === null) return true;
+    return raw !== "0";
+  } catch {
+    // Default to true: manage Ollama by default
+    return true;
+  }
+}
+
+/** Writes an explicit "0" for false instead of removing the key. Removing the
+ *  key on false would make "explicitly off" indistinguishable from "never
+ *  configured" — and since getManageOllama() defaults a never-configured key
+ *  to true, that would make a user's deliberate "off" silently flip back to
+ *  on the next time this is read. Writing "0" keeps the three states
+ *  (never configured, explicitly on, explicitly off) distinct. */
+export function setManageOllama(value: boolean): void {
+  try {
+    window.localStorage.setItem(MANAGE_OLLAMA_KEY, value ? "1" : "0");
+  } catch {
+    /* localStorage unavailable — nothing to persist */
+  }
+}

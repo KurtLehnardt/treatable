@@ -1,0 +1,482 @@
+/**
+ * npm run data:refresh: fetch every open listing into data/local/ (gitignored; data/raw and the
+ * committed corpus are untouched), drop expired, cap, embed only new/changed records, write atomically.
+ *
+ * Records are embedded in the embedding space search uses (lib/embeddings/spaces.ts), so a refresh
+ * needs no API key when search is built-in: new and changed records are embedded in this process
+ * and written to data/local/vectors/, reusing every vector whose id and text are unchanged. With
+ * OpenAI (or a custom embedder) only the inline vectors are refreshed, as before, and no CPU time
+ * goes to the built-in model. If search later switches to the built-in model, the app fills in the
+ * missing built-in vectors in the background (lib/embeddings/backfill.ts).
+ */
+import "./_loadEnvLocal.mjs"; // honor scaffold/.env.local when run as plain `node`
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { embedBatch, EMBEDDINGS_DIMENSIONS, EMBEDDINGS_MODEL } from "../lib/embed.ts";
+import { activeSearchSpace, getSpace } from "../lib/embeddings/spaces.ts";
+import { embedWithBuiltin, ensureBuiltinModel } from "../lib/embeddings/builtin.ts";
+import { logError } from "../lib/errorLog/server.ts";
+import { buildSpaceVectors, compatibleVectorFile } from "./lib/spaceVectors.mjs";
+import { readVectorFile, writeVectorFile } from "./lib/vectorFile.mjs";
+import { BUILTIN_MODEL } from "./lib/builtinModel.mjs";
+import { clampCorpusSize, DEFAULT_CORPUS_SIZE } from "../lib/searchSettings.ts";
+import { dropExpiredOpportunities } from "../lib/corpus/expiry.ts";
+import { dropPastAwards } from "../lib/corpus/pastAwards.ts";
+import { selectCorpusWithinCap } from "../lib/corpus/selection.ts";
+import {
+  computeStopOutcome,
+  countBySource,
+  countRemoved,
+  dedupeById,
+  excludeDeselectedSources,
+  findUnhealthySources,
+  opportunityEmbedText,
+  planEmbedding,
+  refreshEmbedsBuiltinVectors,
+} from "../lib/corpus/refresh.ts";
+import {
+  acquireRefreshLock,
+  clearStopRequest,
+  isStopRequested,
+  releaseRefreshLock,
+  writeRefreshStatus,
+  writeRefreshProgress,
+} from "../lib/corpus/refreshStatus.ts";
+import { overallPct } from "../lib/corpus/refreshProgress.ts";
+import { normalizeGrantsRecord, normalizeSbirSolicitation } from "./lib/normalizeGrants.mjs";
+import { shouldFetchFederal, shouldFetchState as shouldFetchStateScope } from "./lib/refreshScope.mjs";
+import {
+  normalizeSamRow,
+  normalizeCaRow,
+  normalizeIlRow,
+  normalizeNcRow,
+  normalizeUtRow,
+} from "./lib/normalizeNewSources.mjs";
+
+const LOCAL_DIR = "data/local";
+const RAW_DIR = join(LOCAL_DIR, "raw");
+const LOCAL_OPPS = join(LOCAL_DIR, "opportunities.json");
+const LOCAL_META = join(LOCAL_DIR, "corpus-meta.json");
+const LOCAL_VECTORS = join(LOCAL_DIR, "vectors");
+const COMMITTED_VECTORS = join("data", "vectors");
+
+// The space search uses decides what this refresh must embed. Inline spaces (OpenAI, a custom
+// embedder) keep their vectors in opportunities.json; the built-in space has its own vector file.
+const SEARCH_SPACE = activeSearchSpace().space;
+const INLINE_SPACE = SEARCH_SPACE.vectors.kind === "inline" ? SEARCH_SPACE : null;
+const INLINE_MODEL = INLINE_SPACE?.id === "openai" ? INLINE_SPACE.model : EMBEDDINGS_MODEL;
+const INLINE_DIMS = INLINE_SPACE?.id === "openai" ? INLINE_SPACE.dims : EMBEDDINGS_DIMENSIONS;
+const BUILTIN_SPACE = getSpace("builtin");
+const EMBED_BATCH = 64;
+const STOP_EXIT_CODE = 75; // 1-fetch.mjs uses this to signal "stopped, not failed" between detail-fetch batches
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function reportProgress(stage, { done, total, foundCount, keptCount } = {}) {
+  writeRefreshProgress({
+    stage,
+    ...(done != null ? { done } : {}),
+    ...(total != null ? { total } : {}),
+    pct: overallPct(stage, done, total),
+    ...(foundCount != null ? { foundCount } : {}),
+    ...(keptCount != null ? { keptCount } : {}),
+  });
+}
+
+const maxFlag = process.argv.indexOf("--max");
+const requestedMax = Number(maxFlag !== -1 ? process.argv[maxFlag + 1] : process.env.CORPUS_MAX);
+const MAX_CORPUS_SIZE = Number.isFinite(requestedMax) ? clampCorpusSize(requestedMax) : DEFAULT_CORPUS_SIZE;
+
+// Per-source "which states should we fetch" selection (Settings' new state-sources
+// control — see lib/searchSettings.ts's getSelectedStateSources). Default, when the
+// flag is absent entirely, is today's actual unconditional behavior: CA/IL/NC on,
+// Utah opt-in — so a bare `npm run data:refresh` run directly from a terminal,
+// bypassing the UI entirely, behaves exactly as it does today, unchanged.
+const stateSourcesFlag = process.argv.find((a) => a.startsWith("--state-sources="));
+const SELECTED_STATE_SOURCES = stateSourcesFlag
+  ? stateSourcesFlag.slice("--state-sources=".length).split(",").filter(Boolean)
+  : ["ca-grants", "il-grants", "nc-grants"];
+const wantsSource = (id) => SELECTED_STATE_SOURCES.includes(id);
+// Duplicated by hand, like TOGGLEABLE_STATE_SOURCES in
+// app/api/corpus/refresh/handler.ts, rather than importing a component
+// file (or a Next.js lib module) into this standalone script.
+const TOGGLEABLE_STATE_SOURCES = ["ca-grants", "il-grants", "nc-grants", "ut-grants"];
+
+// Settings' per-state "refresh just this one" link: skip re-fetching
+// grants.gov/SAM.gov and every OTHER state source this run, reusing
+// whatever's already on disk from the last real fetch for them (the merge
+// step below reads each raw/*.json file fresh regardless of whether this
+// run re-fetched it) -- only ONLY_SOURCE itself gets a live fetch. Absent
+// entirely, every selected source is fetched as before, unchanged.
+const onlySourceFlag = process.argv.find((a) => a.startsWith("--only-source="));
+const ONLY_SOURCE = onlySourceFlag ? onlySourceFlag.slice("--only-source=".length) : null;
+const FETCH_FEDERAL = shouldFetchFederal(ONLY_SOURCE, existsSync(join(RAW_DIR, "grants.json")));
+const shouldFetchState = (id) => shouldFetchStateScope(ONLY_SOURCE, id);
+
+/** `{ escalate: true }` when the first batch's real dims differ from priorDims (EMBEDDINGS_DIMENSIONS is unset off OpenAI). */
+async function embedAll(toEmbedList, { foundCount, keptCount, allowReembedEscalation, priorDims }) {
+  const embedded = [];
+  for (let i = 0; i < toEmbedList.length; i += EMBED_BATCH) {
+    if (isStopRequested()) return { embedded, stopped: true };
+    const slice = toEmbedList.slice(i, i + EMBED_BATCH);
+    const vectors = await embedBatchWithRetry(slice.map((o) => opportunityEmbedText(o)));
+    if (allowReembedEscalation && i === 0 && priorDims != null && vectors[0] && vectors[0].length !== priorDims) {
+      return { escalate: true };
+    }
+    slice.forEach((o, k) => embedded.push({ ...o, embedding: vectors[k].map((v) => Math.round(v * 1e5) / 1e5) }));
+    process.stdout.write(`\rembedded ${Math.min(i + EMBED_BATCH, toEmbedList.length)}/${toEmbedList.length}`);
+    reportProgress("embedding", { done: embedded.length, total: toEmbedList.length, foundCount, keptCount });
+  }
+  return { embedded, stopped: false };
+}
+
+async function embedBatchWithRetry(texts, attempt = 0) {
+  try {
+    return await embedBatch(texts, undefined, undefined, { space: INLINE_SPACE, kind: "document" });
+  } catch (e) {
+    const status = Number(String(e.message).match(/\((\d+)\)/)?.[1]);
+    if (!(status === 429 || status >= 500) || attempt >= 7) throw e;
+    const wait = Math.min(60000, 1000 * 2 ** attempt);
+    console.warn(`\n  embedding batch failed (${status}) — backing off ${Math.round(wait / 1000)}s (retry ${attempt + 1}/7)`);
+    await sleep(wait);
+    return embedBatchWithRetry(texts, attempt + 1);
+  }
+}
+
+async function readJson(path, fallback) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeAtomic(path, content) {
+  const tmp = `${path}.tmp-${process.pid}`;
+  await writeFile(tmp, content);
+  await rename(tmp, path);
+}
+
+function run(label, script, env, { tsx = false } = {}) {
+  console.log(`\n— ${label} —`);
+  const args = tsx ? ["--import", "tsx", script] : [script];
+  const res = spawnSync(process.execPath, args, {
+    stdio: "inherit",
+    windowsHide: true,
+    env: { ...process.env, GRANTED_REFRESH_RUN: "1", ...env },
+  });
+  if (res.status === STOP_EXIT_CODE) return { stopped: true };
+  if (res.status !== 0) throw new Error(`${script} exited ${res.status}`);
+  return { stopped: false };
+}
+
+async function main() {
+  const t0 = Date.now();
+  const attemptAt = new Date(t0).toISOString();
+  await mkdir(LOCAL_DIR, { recursive: true });
+  const lockHeld = process.env.GRANTED_REFRESH_LOCK_HELD === "1";
+  if (!lockHeld && !acquireRefreshLock()) {
+    console.log("data:refresh — another refresh is already running (lock held). Exiting.");
+    process.exitCode = 1;
+    return;
+  }
+  // Only clear when we took the lock ourselves; the API already cleared it for a spawned run.
+  if (!lockHeld) clearStopRequest();
+
+  let existingMeta = {};
+  let existingById = new Map();
+
+  async function applyStop(opts) {
+    const realDims = opts.embeddedSoFar?.[0]?.embedding?.length;
+    const outcome = computeStopOutcome({
+      stoppedAt: new Date().toISOString(),
+      duringEmbedding: false,
+      fullReembed: false,
+      reused: [],
+      embeddedSoFar: [],
+      notYetEmbedded: [],
+      priorById: existingById,
+      dims: realDims ?? INLINE_DIMS ?? existingMeta.dims,
+      ...opts,
+    });
+    if (outcome.save) {
+      const dims = outcome.corpus.find((o) => Array.isArray(o.embedding) && o.embedding.length > 0)?.embedding?.length;
+      const meta = {
+        builtAt: new Date().toISOString(),
+        note: "Local corpus refresh (npm run data:refresh) — gitignored, never committed. Read by lib/corpus/store.ts.",
+        count: outcome.corpus.length,
+        embeddingModel: INLINE_SPACE ? INLINE_MODEL : existingMeta.embeddingModel,
+        dims: dims ?? existingMeta.dims,
+      };
+      await writeAtomic(LOCAL_OPPS, JSON.stringify(outcome.corpus));
+      await writeAtomic(LOCAL_META, JSON.stringify(meta, null, 2));
+      console.log(`\ndata:refresh stopped by user during embedding — saved ${outcome.corpus.length} records.`);
+    } else if (opts.duringEmbedding && opts.fullReembed) {
+      console.log(
+        "\ndata:refresh stopped by user during a full re-embed — corpus left unchanged " +
+          "to avoid mixing embedding models or dimensionalities.",
+      );
+    } else {
+      console.log("\ndata:refresh stopped by user — corpus unchanged.");
+    }
+    writeRefreshStatus(outcome.status);
+  }
+
+  try {
+    await mkdir(RAW_DIR, { recursive: true });
+    const rawEnv = { RAW_DIR };
+    reportProgress("grants.gov search");
+    const grantsRun = FETCH_FEDERAL
+      ? run(
+          "grants.gov (everything open)",
+          "scripts/1-fetch.mjs",
+          { ...rawEnv, GRANTS_FETCH_MODE: "all", GRANTS_ONLY: "1" },
+          { tsx: true },
+        )
+      : { stopped: false };
+    if (grantsRun.stopped) return await applyStop({});
+
+    const grantsFound = new Set((await readJson(join(RAW_DIR, "grants.json"), [])).map((g) => g.id)).size;
+
+    reportProgress("sam.gov", { foundCount: grantsFound });
+    if (isStopRequested()) return await applyStop({});
+    if (FETCH_FEDERAL) run("SAM.gov assistance (everything open)", "scripts/1-fetch-sam-assistance.mjs", { ...rawEnv, SAM_FETCH_MODE: "all" });
+
+    if (isStopRequested()) return await applyStop({});
+    if (wantsSource("ca-grants") && shouldFetchState("ca-grants")) run("California Grants Portal", "scripts/1-fetch-ca-grants.mjs", rawEnv);
+    if (wantsSource("il-grants") && shouldFetchState("il-grants")) run("Illinois CSFA", "scripts/1-fetch-il-grants.mjs", rawEnv);
+    if (wantsSource("nc-grants") && shouldFetchState("nc-grants")) run("North Carolina grant directory", "scripts/1-fetch-nc-grants.mjs", rawEnv);
+    if (wantsSource("ut-grants") && shouldFetchState("ut-grants")) run("Utah funding opportunities", "scripts/1-fetch-ut-grants.mjs", rawEnv);
+
+    if (isStopRequested()) return await applyStop({});
+
+    // A deselected source reads as [] here, NOT its (possibly stale,
+    // leftover-from-a-previous-run) raw JSON file -- this is what makes
+    // deselecting a source actually remove its records from the corpus on
+    // the next refresh, rather than merely stopping future re-fetching while
+    // old rows linger forever (the final corpus is built from this run's
+    // freshly-assembled `fresh` set, not merged with the full previous one).
+    const [grants, sbirSolicitations, samAssistance, caGrants, ilGrants, ncGrants, utGrants] = await Promise.all([
+      readJson(join(RAW_DIR, "grants.json"), []),
+      readJson(join(RAW_DIR, "sbir-solicitations.json"), []),
+      readJson(join(RAW_DIR, "sam-assistance.json"), []),
+      wantsSource("ca-grants") ? readJson(join(RAW_DIR, "ca-grants.json"), []) : [],
+      wantsSource("il-grants") ? readJson(join(RAW_DIR, "il-grants.json"), []) : [],
+      wantsSource("nc-grants") ? readJson(join(RAW_DIR, "nc-grants.json"), []) : [],
+      wantsSource("ut-grants") ? readJson(join(RAW_DIR, "ut-grants.json"), []) : [],
+    ]);
+
+    const existing = await readJson(LOCAL_OPPS, await readJson("data/opportunities.json", []));
+    existingMeta = await readJson(LOCAL_META, await readJson("data/corpus-meta.json", {}));
+    existingById = new Map(existing.map((o) => [o.id, o]));
+
+    // A failed detail fetch normalizes to a title-only record; keep the prior full one, with current dates.
+    const normalizedGrants = grants.map((g) => {
+      const norm = normalizeGrantsRecord(g);
+      const prior = !g._detail && existingById.get(norm.id);
+      return prior ? { ...prior, deadline: norm.deadline, forecasted: norm.forecasted } : norm;
+    });
+
+    let fresh = [
+      ...normalizedGrants,
+      ...sbirSolicitations.map(normalizeSbirSolicitation),
+      ...samAssistance.map(normalizeSamRow),
+      ...caGrants.map(normalizeCaRow),
+      ...ilGrants.map(normalizeIlRow),
+      ...ncGrants.map(normalizeNcRow),
+      ...utGrants.map(normalizeUtRow),
+    ].filter((o) => o && o.description && o.description.length >= 60);
+    fresh = dedupeById(fresh);
+    // Carry a record's first-ever retrieval timestamp forward across refreshes
+    // (a real "recently added" signal over time), source-agnostic -- stamps
+    // every genuinely-new record (including every CA/IL/NC row on their first
+    // run) with this run's timestamp.
+    const attemptAt = new Date().toISOString();
+    fresh = fresh.map((o) => ({ ...o, retrieved_at: existingById.get(o.id)?.retrieved_at ?? o.retrieved_at ?? attemptAt }));
+    fresh = dropExpiredOpportunities(fresh);
+    const foundCount = fresh.length;
+    console.log(`\nAssembled ${foundCount} open records (expired deadlines dropped).`);
+    reportProgress("selecting", { foundCount });
+
+    // Legacy past awards in `existing` aren't a source outage. Neither is a state
+    // source the user deliberately deselected this run (Settings' state-sources
+    // toggle) -- excludeDeselectedSources drops it from the prior-count baseline so
+    // its intentional 0 isn't read as the kind of unexplained drop this guard exists
+    // to catch. Every source that IS selected (or isn't toggleable at all, e.g.
+    // grants.gov/SBIR/SAM) stays fully covered, unchanged.
+    const priorCounts = excludeDeselectedSources(
+      countBySource(dropPastAwards(existing)),
+      TOGGLEABLE_STATE_SOURCES,
+      SELECTED_STATE_SOURCES,
+    );
+    const unhealthy = findUnhealthySources(priorCounts, countBySource(fresh));
+    if (unhealthy.length) {
+      throw new Error(`refresh aborted — source count dropped sharply: ${unhealthy.join("; ")}`);
+    }
+
+    if (isStopRequested()) return await applyStop({});
+
+    fresh = selectCorpusWithinCap(fresh, MAX_CORPUS_SIZE);
+    const keptCount = fresh.length;
+    console.log(`Capped to ${keptCount} of the assembled set (max ${MAX_CORPUS_SIZE}).`);
+    reportProgress("selecting", { done: 1, total: 1, foundCount, keptCount });
+
+    if (isStopRequested()) return await applyStop({});
+
+    const priorById = new Map();
+    for (const o of existing) {
+      if (Array.isArray(o.embedding) && o.embedding.length > 0) {
+        priorById.set(o.id, { embedding: o.embedding, text: opportunityEmbedText(o) });
+      }
+    }
+    // Older corpora (incl. the committed snapshot) predate meta.dims.
+    const priorDims = existingMeta.dims ?? priorById.values().next().value?.embedding?.length;
+
+    // With search on the built-in model, inline vectors are only carried over for unchanged
+    // records (so switching back to OpenAI later still finds most of them); nothing is sent to
+    // an HTTP embedder, so no key is needed.
+    let plan = planEmbedding(
+      fresh,
+      priorById,
+      existingMeta.embeddingModel,
+      INLINE_SPACE ? INLINE_MODEL : (existingMeta.embeddingModel ?? INLINE_MODEL),
+      INLINE_SPACE ? (INLINE_DIMS ?? priorDims) : priorDims,
+      priorDims,
+    );
+    if (INLINE_SPACE) {
+      console.log(
+        `Embedding plan: ${plan.reused.length} reused, ${plan.toEmbed.length} to embed with ${INLINE_MODEL}` +
+          (plan.fullReembed ? " (embedding model or dimensions changed — full re-embed)" : ""),
+      );
+    }
+
+    // Built-in vectors, only when search uses them: an OpenAI refresh never spends CPU on them.
+    const builtinVectors = refreshEmbedsBuiltinVectors(SEARCH_SPACE) ? await refreshBuiltinVectors(fresh, { foundCount, keptCount }) : null;
+    if (builtinVectors?.stopped) {
+      reportProgress("saving", { foundCount, keptCount });
+      const kept = plan.reused.concat(plan.toEmbed.map(withoutEmbedding));
+      await writeAtomic(LOCAL_OPPS, JSON.stringify(kept));
+      await writeAtomic(LOCAL_META, JSON.stringify(localMeta(kept, existingMeta), null, 2));
+      console.log(
+        `\ndata:refresh stopped by user during embedding — saved ${kept.length} records (${builtinVectors.entries.length} with search vectors).`,
+      );
+      writeRefreshStatus({ lastStoppedAt: new Date().toISOString(), stopped: true, savedCount: kept.length });
+      return;
+    }
+
+    if (!INLINE_SPACE) {
+      plan = { ...plan, toEmbed: [], reused: plan.reused.concat(plan.toEmbed.map(withoutEmbedding)) };
+    }
+    reportProgress("embedding", { done: 0, total: plan.toEmbed.length, foundCount, keptCount });
+
+    let result = await embedAll(plan.toEmbed, {
+      foundCount,
+      keptCount,
+      allowReembedEscalation: !plan.fullReembed,
+      priorDims,
+    });
+    if (result.escalate) {
+      console.warn(
+        "\n  embedder's actual output dims differ from the corpus's recorded dims — forcing a full " +
+          "re-embed so the corpus never mixes dimensions.",
+      );
+      plan = planEmbedding(fresh, priorById, existingMeta.embeddingModel, INLINE_MODEL, INLINE_DIMS ?? priorDims, priorDims, true);
+      reportProgress("embedding", { done: 0, total: plan.toEmbed.length, foundCount, keptCount });
+      result = await embedAll(plan.toEmbed, { foundCount, keptCount, allowReembedEscalation: false });
+    }
+    if (plan.toEmbed.length) process.stdout.write("\n");
+    const embedded = result.embedded;
+    const stoppedDuringEmbedding = result.stopped;
+
+    if (stoppedDuringEmbedding) {
+      const notYetEmbedded = plan.toEmbed.slice(embedded.length);
+      reportProgress("saving", { foundCount, keptCount });
+      return await applyStop({
+        duringEmbedding: true,
+        fullReembed: plan.fullReembed,
+        reused: plan.reused,
+        embeddedSoFar: embedded,
+        notYetEmbedded,
+        priorById: existingById,
+      });
+    }
+
+    reportProgress("saving", { foundCount, keptCount });
+
+    const final = [...plan.reused, ...embedded];
+    const removed = countRemoved(existing.map((o) => o.id), new Set(final.map((o) => o.id)));
+    const dims = final.find((o) => Array.isArray(o.embedding) && o.embedding.length > 0)?.embedding?.length;
+
+    const meta = { ...localMeta(final, existingMeta), dims: dims ?? existingMeta.dims };
+
+    await writeAtomic(LOCAL_OPPS, JSON.stringify(final));
+    await writeAtomic(LOCAL_META, JSON.stringify(meta, null, 2));
+
+    const durationS = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(
+      `\n→ corpus refreshed: ${final.length} total ` +
+        `(+${plan.added} added, ~${plan.updated} updated, -${removed} removed) in ${durationS}s`,
+    );
+    writeRefreshStatus({ lastCompletedAt: attemptAt });
+  } catch (e) {
+    console.error(`\ndata:refresh FAILED — ${e.message}`);
+    writeRefreshStatus({ lastAttemptAt: attemptAt, lastError: e.message });
+    logError("corpus-refresh", e);
+    process.exitCode = 1;
+  } finally {
+    releaseRefreshLock();
+    clearStopRequest();
+  }
+}
+
+function withoutEmbedding(o) {
+  const { embedding: _drop, ...rest } = o;
+  return rest;
+}
+
+function localMeta(records, existingMeta) {
+  return {
+    builtAt: new Date().toISOString(),
+    note: "Local corpus refresh (npm run data:refresh) — gitignored, never committed. Read by lib/corpus/store.ts.",
+    count: records.length,
+    embeddingModel: INLINE_SPACE ? INLINE_MODEL : existingMeta.embeddingModel,
+    dims: records.find((o) => Array.isArray(o.embedding) && o.embedding.length > 0)?.embedding?.length ?? existingMeta.dims,
+  };
+}
+
+/**
+ * Bring data/local/vectors/ (the built-in space) up to date for `records`, embedding only
+ * new or changed ones in this process. Only called when search uses these vectors, so the
+ * model is downloaded if missing and a failure fails the refresh.
+ */
+async function refreshBuiltinVectors(records, { foundCount, keptCount }) {
+  {
+    await ensureBuiltinModel((pct) => process.stdout.write(`\rdownloading the search model: ${pct}%`));
+    const name = BUILTIN_SPACE.vectors.name;
+    // The committed vectors cover the shipped corpus; a previous refresh's cover what it added.
+    // Only vectors from this model and revision are ever reused.
+    const usable = (f) => (compatibleVectorFile(f, BUILTIN_SPACE) ? f.vectors : new Map());
+    const prior = new Map([...usable(readVectorFile(COMMITTED_VECTORS, name)), ...usable(readVectorFile(LOCAL_VECTORS, name))]);
+    const result = await buildSpaceVectors(BUILTIN_SPACE, records, {
+      prior,
+      embed: (texts) => embedWithBuiltin(texts),
+      batch: 16,
+      shouldStop: isStopRequested,
+      onProgress: (done, total) => {
+        process.stdout.write(`\rsearch vectors: embedded ${done}/${total}`);
+        reportProgress("embedding", { done, total, foundCount, keptCount });
+      },
+    });
+    writeVectorFile(
+      LOCAL_VECTORS,
+      name,
+      { space: BUILTIN_SPACE.id, model: BUILTIN_SPACE.model, revision: BUILTIN_MODEL.revision, dims: BUILTIN_SPACE.dims },
+      result.entries,
+    );
+    console.log(`\nBuilt-in search vectors: ${result.reused} reused, ${result.embedded} embedded.`);
+    return result;
+  }
+}
+
+await main();

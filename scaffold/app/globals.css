@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The USWDS token palette is now the default look on this branch (the A/B
+ * "design" experiment). tokens.ts drives light + dark, so advertise both to
+ * the UA (native form controls, scrollbars) via color-scheme. */
+:root { color-scheme: light dark; }
+
+/* Base surface + text come straight from the design-token CSS variables below
+ * (canvas = 60% neutral, foreground = body text), so the whole app renders on
+ * the USWDS 60/30/10 palette by default instead of the old paper/ink look. */
+body {
+  background: var(--color-canvas);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * CON-02 design-token contract — CSS custom properties.
+ *
+ * These values must stay in sync with lib/design/tokens.ts (`colors.light`
+ * / `colors.dark`). This is a manual sync today (no build-time codegen in
+ * this slice) — see the CON-02 report for that tradeoff.
+ *
+ * v1 is unaffected: `body` above still reads `theme('colors.paper')` /
+ * `theme('colors.ink')`, and `:root { color-scheme: light }` is untouched.
+ * Nothing in v1 references these variables yet — FE-01 (slice 2) is where
+ * components start consuming them.
+ */
+:root {
+  --color-canvas: #f9f9f9;
+  --color-canvas-alt: #ecf1f7;
+  --color-foreground: #212121;
+  --color-structure-fill: #005ea2;
+  --color-structure-on-canvas: #005ea2;
+  --color-action: #538200;
+  --color-white: #ffffff;
+  --color-info: #00bde3;
+  --color-success: #04c585;
+  --color-warning: #ffbe2e;
+  --color-error: #e52207;
+
+  /*
+   * H8 — theme-INDEPENDENT dark ink for text sitting ON a semantic fill
+   * (info/success/warning chips and badges). The semantic fills are constant
+   * across themes, so a constant dark ink keeps badge text at the already-
+   * verified light-mode AA ratio in BOTH themes. Do NOT use --color-foreground
+   * for these badges: it flips to near-white (#f1f1f1) in dark mode, dropping
+   * badge contrast on the light fills to ~1.4-1.9:1. (error keeps white text.)
+   */
+  --color-on-semantic: #212121;
+
+  /*
+   * Elevation shadows (polish pass). Layered transparent shadows give cards /
+   * panels / icon controls depth without a hard navy border — "shadows for
+   * elevation, borders for structure." These are neutral black alphas (not a
+   * hex color and not a token color), so they read correctly on any surface.
+   * Light mode: a 1px ring + two soft ambient layers. Not gated by check:hex
+   * (rgba, no hex literal) and this file is the token source of truth anyway.
+   */
+  --shadow-card:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 1px 2px -1px rgba(0, 0, 0, 0.06),
+    0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --shadow-card-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.09),
+    0 2px 6px -1px rgba(0, 0, 0, 0.09),
+    0 8px 20px 0 rgba(0, 0, 0, 0.08);
+  --shadow-overlay:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 10px 24px -6px rgba(0, 0, 0, 0.22),
+    0 24px 48px -12px rgba(0, 0, 0, 0.28);
+}
+
+/*
+ * Dark theme. NOT mandated by R7.2 (which is written entirely in light-mode
+ * terms) — these are CON-02's own conservative, WCAG-AA-verified defaults,
+ * flagged for product sign-off before any surface actually ships a dark
+ * mode. `--color-structure-on-canvas` is the one value that MUST differ
+ * from light mode: raw #005ea2 text/borders directly on a dark canvas
+ * measure 2.56:1, failing both the 4.5:1 text and 3:1 non-text AA
+ * thresholds, so dark mode substitutes USWDS blue-30v (#73b3e7, 7.65:1 on
+ * --color-canvas) for that role only. `--color-structure-fill` keeps
+ * #005ea2 in both themes because it is a self-contained pairing (white
+ * text on a navy fill) whose ratio does not depend on the surrounding
+ * page background.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #1b1b1b;
+    --color-canvas-alt: #16232c;
+    --color-foreground: #f1f1f1;
+    --color-structure-fill: #005ea2;
+    --color-structure-on-canvas: #73b3e7;
+    --color-action: #538200;
+    --color-white: #ffffff;
+    --color-info: #00bde3;
+    --color-success: #04c585;
+    --color-warning: #ffbe2e;
+    --color-error: #e52207;
+    /* H8: identical to light on purpose — theme-independent (see :root). The
+     * semantic fills don't flip, so the badge ink must not flip either. */
+    --color-on-semantic: #212121;
+
+    /* Dark mode: layered black ambient shadows are invisible on a dark canvas,
+     * so depth comes from a subtle white ring instead (per the polish skill). */
+    --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.10);
+    --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.16);
+    --shadow-overlay:
+      0 0 0 1px rgba(255, 255, 255, 0.12),
+      0 16px 40px -8px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.eyebrow {
+  @apply font-mono text-[11px] uppercase tracking-eyebrow text-slate-550;
+}
+
+.spine { @apply absolute left-0 top-0 h-full w-[3px]; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+.reveal { animation: rise .4s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+
+/* ANALYZING ring (match-score badge, §5): slow rotation around the score
+ * while it may still change. The global prefers-reduced-motion rule above
+ * already disables this wholesale (a static ring, no rotation). */
+.score-pulse { animation: scorePulse 3s ease-in-out infinite; }
+@keyframes scorePulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 0.9; } }
+.analyzing-ring { animation: analyzing-spin 9s linear infinite; transform-origin: 50% 50%; }
+@keyframes analyzing-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/*
+ * Split-and-stagger hero entrance (polish skill §5). One-shot, page-load only —
+ * an infrequent staged entrance where sequence communicates hierarchy. Each
+ * direct child rises with a ~90ms offset. The prefers-reduced-motion rule above
+ * disables it wholesale (elements fall back to their normal, fully-visible
+ * computed style — the from{opacity:0} only applies while the animation runs).
+ */
+.stagger > * { animation: rise .5s cubic-bezier(.2,.7,.3,1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 90ms; }
+.stagger > *:nth-child(3) { animation-delay: 180ms; }
+.stagger > *:nth-child(4) { animation-delay: 270ms; }
+
+/*
+ * FE-07 — persistent left sidebar content shift. On desktop (>= md) the main
+ * content column pads left by the docked sidebar's width, carried in the
+ * `--app-sidebar-offset` custom property set by app/page.tsx (0 when collapsed).
+ * Below md the sidebar is an overlay drawer, so no shift applies. The transition
+ * animates collapse/expand; `--instant` drops it during a live resize drag so the
+ * column tracks the pointer. The global prefers-reduced-motion rule above already
+ * neutralizes the transition.
+ */
+@media (min-width: 768px) {
+  .app-content-shift {
+    padding-left: var(--app-sidebar-offset, 0px);
+    transition: padding-left .2s ease;
+  }
+  .app-content-shift.app-content-shift--instant { transition: none; }
+}
+
+/*
+ * lib/ui/printElement.ts's print-isolation pairs. "Export as PDF" sets
+ * body[data-print-target] to one of these values right before window.print();
+ * everything in <body> hides except the one element carrying the matching
+ * print-section-<target> class, which is pulled out of normal flow to fill
+ * the printed page on its own (no modal backdrop, no app chrome, no clipped
+ * overflow from the on-screen scrollable dialog it normally lives inside).
+ * A new printable section needs its own PrintTarget + its own pair here.
+ *
+ * The two print-section classes can be NESTED in the DOM (the grant-proposal
+ * prompt's section lives inside the competitor-analysis section, once
+ * revealed) — the position:absolute rule below is scoped per data-print-
+ * target value specifically so BOTH never get it at once: printing
+ * "competitor-analysis" while the prompt happens to be expanded must leave
+ * the nested prompt section in normal flow as part of that document, not
+ * ALSO absolutely-positioned to the page's top-left, which would land it on
+ * top of (overlapping) the analysis content around it. REGRESSION, found
+ * live: the original unscoped rule did exactly that.
+ */
+@media print {
+  @page {
+    /* Consistent breathing room on every printed page, including the top of
+       a page a section break lands on — not just the physical page edge a
+       0-margin layout would otherwise print flush against. */
+    margin: 0.75in;
+  }
+
+  body[data-print-target] * { visibility: hidden; }
+  body[data-print-target="competitor-analysis"] .print-section-competitor-analysis,
+  body[data-print-target="competitor-analysis"] .print-section-competitor-analysis * { visibility: visible; }
+  body[data-print-target="grant-proposal-prompt"] .print-section-grant-proposal-prompt,
+  body[data-print-target="grant-proposal-prompt"] .print-section-grant-proposal-prompt * { visibility: visible; }
+
+  body[data-print-target="competitor-analysis"] .print-section-competitor-analysis {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #fff;
+    color: #111;
+  }
+  body[data-print-target="grant-proposal-prompt"] .print-section-grant-proposal-prompt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: #fff;
+    color: #111;
+  }
+
+  /* On-screen-only controls (Export as PDF / Draft a prompt / Copy / the
+     copy-feedback status) are dead weight in a printed document — hide them
+     rather than print inert buttons, which also removes any chance of them
+     overlapping the content below once the fix above is in place. */
+  .no-print { display: none !important; }
+
+  /* Keep each card-like unit (an awardee, a recommendation, a gap, an info
+     box, the prompt text block) whole across a page break where it
+     reasonably fits, instead of being cut mid-card; never strand a section
+     heading alone at the bottom of a page with its content starting fresh
+     on the next. */
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid; /* older engines without break-inside support */
+  }
+  .print-section-competitor-analysis h3,
+  .print-section-grant-proposal-prompt h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* The prompt text's on-screen max-h-96 + overflow-auto (a scrollable box
+     so a long prompt doesn't push the on-screen page down too far) would
+     clip the SAME way on paper -- print never "unrolls" scrollable overflow
+     on its own -- silently cutting off the end of a long prompt in the
+     actual exported PDF. Printing needs every word, so the cap is lifted
+     here specifically. */
+  .print-section-grant-proposal-prompt pre {
+    max-height: none;
+    overflow: visible;
+  }
+}
