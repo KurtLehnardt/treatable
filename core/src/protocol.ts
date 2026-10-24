@@ -83,6 +83,33 @@ export const DELIVERY_POLICY = Object.freeze({
   retriesResendIdenticalBytes: true,
 } as const);
 
+/**
+ * Recorded OpenAI endpoints (docs/apps/openai-contracts.md, sections 10.2 and 10.7). Only the
+ * dispatcher builds URLs, and pipelines can only send through the dispatcher's send capability, so
+ * nothing can leave for any other URL. A session ID arrives inside a provider response and is
+ * validated with PROVIDER_ID_PATTERN before it is placed in a URL; that pattern allows no slash,
+ * question mark, fragment, or percent characters, so a hostile value cannot redirect a call.
+ */
+export const DECISIONS_URL = 'https://api.openai.com/v1/decisions';
+export const AGENTS_SESSIONS_URL = 'https://api.openai.com/v1/agents/sessions';
+/** Value of the `OpenAI-Beta` header on every /agents/ path, never on /v1/decisions. */
+export const AGENTS_BETA_HEADER_VALUE = 'agents=v1';
+
+function pinnedSessionId(sessionId: string): string {
+  if (!PROVIDER_ID_PATTERN.test(sessionId)) throw new CoreError('INVALID_API_RESPONSE');
+  return sessionId;
+}
+
+/** URL for one Agents session (deletion during cleanup uses this). */
+export function agentsSessionUrl(sessionId: string): string {
+  return `${AGENTS_SESSIONS_URL}/${pinnedSessionId(sessionId)}`;
+}
+
+/** URL for a session's events (tool results are posted here). */
+export function agentsEventsUrl(sessionId: string): string {
+  return `${agentsSessionUrl(sessionId)}/events`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Operations and fixed vocabularies
 // ---------------------------------------------------------------------------------------------
@@ -195,9 +222,11 @@ export function isSafeText(text: string, multiline = false): boolean {
 /**
  * Text that a user types or picks for a search or condition term must not look like a ZIP code,
  * phone number, email address, or URL. This is defense in depth on top of the field allowlists.
+ * Phone formats with separators (555-123-4567, (555) 123 4567, 9 0 2 1 0, +1 208 555 0100) are
+ * caught by removing common separators before looking for a run of five or more digits.
  */
 export function hasContactLikeContent(text: string): boolean {
-  return /\d{5,}/.test(text) || text.includes('@') || text.includes('://');
+  return /\d{5,}/.test(text.replace(/[\s().+-]/g, '')) || text.includes('@') || text.includes('://');
 }
 
 /** Request text: validated, then NFC-normalized and trimmed (as boundedText does). */
@@ -473,10 +502,18 @@ export const AgentsInputSchema = z.strictObject({
 });
 export type AgentsInput = z.infer<typeof AgentsInputSchema>;
 
+/**
+ * The `input` stream value must be the exact JSON.stringify form of the parsed value. Requiring
+ * round-trip equality rejects duplicate JSON keys (JSON.parse keeps the last value of a duplicated
+ * key, so the allowlist would never see the first value while the raw string would still be sent) and
+ * whitespace-padded text. Only the canonical serialization passes, so byte for byte of the string is
+ * exactly what the allowlist validated.
+ */
 function parseAgentsInput(text: string): AgentsInput | undefined {
   try {
-    const parsed = AgentsInputSchema.safeParse(JSON.parse(text));
-    return parsed.success ? parsed.data : undefined;
+    const value: unknown = JSON.parse(text);
+    const parsed = AgentsInputSchema.safeParse(value);
+    return parsed.success && JSON.stringify(value) === text ? parsed.data : undefined;
   } catch {
     return undefined;
   }

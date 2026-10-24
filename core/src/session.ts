@@ -2,18 +2,19 @@
  * In-memory session state. Nothing here is persisted, logged, or sent anywhere.
  *
  * A session holds the prepared consent, the registry of running operations, the request IDs seen
- * so far, the pinned subject digest, and typed slots that later tasks use for their own state
- * (records from task A2, screening inputs from task A1b). wipe() drops all of it: running
- * operations are cancelled, consent is cleared and closed, every slot and ID is removed, and the
- * session refuses further writes. endSession replaces the session object, so nothing reachable from
- * the core keeps a reference to the old state.
+ * so far, the public study records of the latest completed search, the pinned subject digest, and
+ * typed slots that later tasks use for their own state (screening inputs from task A1b). wipe()
+ * drops all of it: running operations are cancelled, consent is cleared and closed, every record,
+ * slot and ID is removed, and the session refuses further writes. endSession replaces the session
+ * object, so nothing reachable from the core keeps a reference to the old state.
  */
 import { createCancelSource, type CancelSource } from './cancel.ts';
 import { createConsentStore, type ConsentStore } from './consent/store.ts';
 import { isHex64 } from './bytes.ts';
 import { CoreError } from './errors.ts';
+import { deepFreeze, jsonClone, type JsonValue } from './json.ts';
 import type { CancelSignal, CorePorts } from './ports.ts';
-import { MAX_REQUESTS_PER_SESSION, PREVIEW_BUDGET_BYTES } from './protocol.ts';
+import { MAX_REQUESTS_PER_SESSION, NCT_ID_PATTERN, PREVIEW_BUDGET_BYTES, type StudyRecord } from './protocol.ts';
 
 /** A typed key for session state owned by one module. */
 export interface SlotKey<T> {
@@ -44,9 +45,14 @@ export interface Session {
    * consent, so a receipt prepared before the change can never execute after it.
    */
   mutate(): void;
-  /** The digest that consent preparations pin (task A2 sets it from the live record set). */
+  /** The digest that consent preparations pin (the dispatcher sets it from the live record set). */
   subjectDigest(): string | undefined;
   setSubjectDigest(digest: string | undefined): void;
+  /** The public study records held from the latest completed search, ordered by NCT ID. */
+  records(): readonly StudyRecord[];
+  recordById(nctId: string): StudyRecord | undefined;
+  /** Replaces the record set (a completed search) and invalidates any prepared consent. */
+  setRecords(records: readonly StudyRecord[]): void;
   get<T>(slot: SlotKey<T>): T | undefined;
   set<T>(slot: SlotKey<T>, value: T): void;
   delete<T>(slot: SlotKey<T>): void;
@@ -66,6 +72,7 @@ export function createSession(ports: Pick<CorePorts, 'sha256' | 'tokens' | 'cloc
   let ended = false;
   let revision = 0;
   let subject: string | undefined;
+  const heldRecords = new Map<string, StudyRecord>();
   const slots = new Map<string, unknown>();
   const seen = new Set<string>();
   const pending = new Map<string, { source: CancelSource; real: boolean }>();
@@ -100,6 +107,24 @@ export function createSession(ports: Pick<CorePorts, 'sha256' | 'tokens' | 'cloc
       if (digest !== undefined && !isHex64(digest)) throw new CoreError('INTERNAL_ERROR');
       if (digest === subject) return;
       subject = digest;
+      session.mutate();
+    },
+    records: () => [...heldRecords.values()].sort((a, b) => (a.nctId < b.nctId ? -1 : a.nctId > b.nctId ? 1 : 0)),
+    recordById: nctId => heldRecords.get(nctId),
+    setRecords(values) {
+      assertOpen();
+      // Full replacement: only the records of the latest completed search are held. Records arrive
+      // already validated by the dispatcher; each is cloned and deep-frozen, so no later writer can
+      // change what consent was prepared against.
+      const frozen = new Map<string, StudyRecord>();
+      for (const record of values) {
+        if (!NCT_ID_PATTERN.test(record.nctId) || frozen.has(record.nctId)) throw new CoreError('INTERNAL_ERROR');
+        frozen.set(record.nctId, deepFreeze(jsonClone(record as unknown as JsonValue) as StudyRecord));
+      }
+      heldRecords.clear();
+      for (const [id, record] of frozen) heldRecords.set(id, record);
+      // A new search result set invalidates any prepared consent, even when the records are
+      // identical: consent was confirmed against a review of the results shown before this search.
       session.mutate();
     },
     get<T>(slot: SlotKey<T>) {
@@ -146,6 +171,7 @@ export function createSession(ports: Pick<CorePorts, 'sha256' | 'tokens' | 'cloc
       consent.close();
       slots.clear();
       seen.clear();
+      heldRecords.clear();
       subject = undefined;
       revision += 1;
     },
