@@ -331,3 +331,80 @@ test('the ZIP table is loaded once per session and again after endSession', asyn
   okResult(await call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { location: { zip: '83702' } } }, 's3'));
   assert.equal(loads, 2, 'a new session loads the table again');
 });
+
+// -----------------------------------------------------------------------------------------------
+// Staleness never changes the bucket, follows the injected clock, and screening stays offline
+// (review PR-a1b, MINOR-5)
+// -----------------------------------------------------------------------------------------------
+
+test('[ported clinical.test.ts#9 "closed hidden and stale retained"] a stale record keeps its bucket and checks', () => {
+  const profiles: Profile[] = [
+    { ageYears: 45, sex: 'female' }, // every check met
+    {}, // unknown age and sex
+    { ageYears: 10, sex: 'female' }, // under the stated minimum age
+  ];
+  const expectedBuckets = ['no_known_mismatch', 'unknown', 'known_mismatch'];
+  profiles.forEach((profile, i) => {
+    const fresh = entry(record({ lastUpdatePostDate: '2026-09-30' }), profile);
+    const stale = entry(record({ lastUpdatePostDate: '2020-01-01' }), profile);
+    assert.equal(fresh.stale, false);
+    assert.equal(stale.stale, true);
+    assert.equal(stale.bucket, expectedBuckets[i], `profile ${i}`);
+    assert.equal(stale.bucket, fresh.bucket, `profile ${i}: staleness does not change the bucket`);
+    assert.deepEqual(stale.checks, fresh.checks, `profile ${i}: or any check`);
+  });
+});
+
+test('staleness follows the injected clock through core.handle, and the bucket stays the same', async () => {
+  const h = harness();
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  const payload = { nctIds: [FICTIONAL_IDS[0]], profile: { ageYears: 45, sex: 'female' } };
+  const before = okResult<Record<string, any>>(await h.call('screenLocal', payload));
+  assert.equal(before.results[0].stale, false, 'last updated 2026-09-30, clock at 2026-10-26');
+  // Three years later on the injected clock (no Date anywhere): the same record is now stale.
+  h.ports.clock.advance(3 * 365 * 86_400_000);
+  const after = okResult<Record<string, any>>(await h.call('screenLocal', payload));
+  assert.equal(after.results[0].stale, true);
+  assert.equal(after.results[0].bucket, before.results[0].bucket);
+  assert.deepEqual(after.results[0].checks, before.results[0].checks);
+});
+
+test('screenLocal with a ZIP, an exact age, and a sex makes zero transport calls and echoes none of them', async () => {
+  const h = harness();
+  const search = await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] });
+  okResult(search);
+  const profile = { ageYears: 47.25, sex: 'female', location: { zip: '83702' }, travelRadiusMiles: 25 };
+  const screened = await h.call('screenLocal', { nctIds: [...FICTIONAL_IDS.slice(0, 3)], profile });
+  const result = okResult<Record<string, any>>(screened);
+  assert.equal(result.results.length, 3);
+  assert.equal(h.ports.transport.calls.length, 0, 'no request was handed to the transport port');
+  assert.deepEqual(h.events, [], 'screening emits no events');
+
+  // The resolved centroid is the table's entry for 83702; neither it nor any profile value appears.
+  const centroid = { lat: 43.6, lon: -116.2 };
+  // The search response carries public study records (whose sites can be in Boise), so it is only
+  // checked for the profile values; the screening response is also checked for the resolved city.
+  const both = JSON.stringify([search, screened]);
+  for (const needle of ['83702', 'female', '47.25', 'ageYears', '"zip"', 'travelRadiusMiles']) {
+    assert.equal(both.includes(needle), false, `the responses do not contain ${needle}`);
+  }
+  const screenedText = JSON.stringify(screened);
+  for (const needle of ['Boise', '"city"', 'location', '"lat"', '"lon"']) {
+    assert.equal(screenedText.includes(needle), false, `the screening response does not contain ${needle}`);
+  }
+  const numbers: number[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === 'number') numbers.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value !== null && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  walk(screened);
+  for (const n of numbers) {
+    assert.notEqual(n, profile.ageYears, 'no number equals the exact age');
+    assert.ok(Math.abs(n - centroid.lat) > 0.5 && Math.abs(n - centroid.lon) > 0.5, `no number is a coordinate: ${n}`);
+  }
+
+  // An APO/FPO ZIP is a plain input error through the protocol too (review PR-a1b, MINOR-3).
+  assert.equal(errorCode(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { location: { zip: '34002' } } })), 'INVALID_REQUEST');
+  assert.equal(h.ports.transport.calls.length, 0);
+});

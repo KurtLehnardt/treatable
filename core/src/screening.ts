@@ -287,7 +287,8 @@ export function screenStudyRecord(
  * The built-in screenLocal pipeline: screens records this session returned against the shared
  * profile. A ZIP resolves through the locally bundled table (an unresolvable ZIP is
  * INVALID_REQUEST, and the host can offer screening without location); records and nctIds outside
- * this session are RECORD_NOT_IN_SESSION. Everything stays on-device.
+ * this session are RECORD_NOT_IN_SESSION. This function makes no network request: it reads only
+ * the session, the bundled table through the Loader port, and the injected clock.
  */
 export async function screenLocalPipeline(
   ctx: HandlerContext,
