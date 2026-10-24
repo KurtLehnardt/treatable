@@ -12,7 +12,8 @@
     "./node": "./node/ports.node.ts"
   },
   "scripts": {
-    "test": "tsx --test \"tests/**/*.test.ts\" \"strings/*.test.mjs\"",
+    "test": "tsx --test \"tests/**/*.test.ts\"",
+    "claims": "node --test strings/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.src.json",
     "drift-check": "node scripts/drift-check.mjs"
   },
