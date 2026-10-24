@@ -126,7 +126,7 @@ const EXEMPT_UNDER_TEST_DIR = /(?:^|\/)(?:test|tests|__tests__)\//i;
 // Folders whose contents are bundled into an app (source, assets, platform resources, web public files).
 const SHIPPED_SOURCE_DIR = /(?:^|\/)(?:src|assets|resources|res|app|public)\//i;
 
-export function validateExemptions(list, fileExists, ruleIds = RULES.map(r => r.id)) {
+export function validateExemptions(list, fileExists, ruleIds = [...RULES.map(r => r.id), MIXED_SCRIPT_ID]) {
   const problems = [];
   for (const entry of list) {
     const p = entry?.path;
@@ -746,11 +746,19 @@ const RULES = [
   },
 ];
 
+// The id under which a word that mixes Latin and Cyrillic letters is reported (see mixedScriptWords).
+const MIXED_SCRIPT_ID = 'mixed-script';
+
 // ---------------------------------------------------------------------------------------------
 // Normalization: undo tricks that split or disguise a phrase before any rule runs
 // ---------------------------------------------------------------------------------------------
 
-const INVISIBLE_CHARS = new RegExp(`[${cp(0xad)}${cp(0x200b)}-${cp(0x200d)}${cp(0x2060)}${cp(0xfeff)}]`, 'g');
+// Every format character (Unicode category Cf, for example zero-width characters, bidirectional overrides, invisible
+// operators, and tag characters) and every default-ignorable code point (soft hyphen, combining grapheme joiner,
+// variation selectors, Hangul fillers, the Mongolian vowel separator). None of them is visible inside a word.
+const INVISIBLE_CHARS = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+// Combining marks are removed after canonical decomposition, so an accent cannot disguise an English word.
+const COMBINING_MARKS = /\p{M}/gu;
 const DASH_CHARS = new RegExp(`[${cp(0x2010)}-${cp(0x2015)}${cp(0x2212)}]`, 'g');
 const NBSP_CHARS = new RegExp(`[${cp(0xa0)}${cp(0x202f)}]`, 'g');
 const SINGLE_QUOTE_CHARS = new RegExp(`[${cp(0x2018)}${cp(0x2019)}]`, 'g');
@@ -768,6 +776,7 @@ export function normalize(text) {
   }
   t = t.normalize('NFKC');
   t = t.replace(INVISIBLE_CHARS, '');
+  t = t.normalize('NFD').replace(COMBINING_MARKS, '').normalize('NFC');
   t = t.replace(DASH_CHARS, '-');
   t = t.replace(NBSP_CHARS, ' ');
   t = t.replace(SINGLE_QUOTE_CHARS, "'").replace(DOUBLE_QUOTE_CHARS, '"');
@@ -776,6 +785,81 @@ export function normalize(text) {
   // Emphasis underscores (_word_ and __word__) only. An underscore inside a name such as FLAG_SECURE stays.
   t = t.replace(/(^|[\s(\[])_+(?=\S)/g, '$1').replace(/(?<=\S)_+(?=[\s)\].,;:!?]|$)/g, '');
   return t;
+}
+
+// Escape sequences inside source string literals and resource files: \uXXXX, \UXXXX, \u{...}, \xHH, simple escapes
+// such as \" and \n, and a backslash before a line break (a line continuation). Each is replaced by what it stands for.
+export function decodeEscapes(text) {
+  return text.replace(/\\(?:u\{([0-9a-fA-F]{1,6})\}|[uU]([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|(\r?\n)|([nrt])|(.))/g, (whole, braced, u4, hex, lineBreak, control, other) => {
+    const code = braced ?? u4 ?? hex;
+    if (code !== undefined) {
+      const value = parseInt(code, 16);
+      return value <= 0x10ffff ? String.fromCodePoint(value) : whole;
+    }
+    if (lineBreak !== undefined) return '';
+    if (control !== undefined) return control === 't' ? '\t' : '\n';
+    return other;
+  });
+}
+
+// Markup tags, XML processing instructions, and CDATA markers are removed (not replaced by a space), so that a word
+// split by a tag (anony<b></b>mous) is read whole. HTML comments are handled before normalization, in textVariants.
+export function stripMarkup(text) {
+  return text.replace(/<!\[CDATA\[|\]\]>|<\?[^<>]*\?>|<\/?[A-Za-z][^<>]*>/g, '');
+}
+
+// Cyrillic and Greek letters that look like Latin letters, mapped to those Latin letters. Running the rules on this
+// "skeleton" catches a banned word written partly or wholly with look-alike letters. The table is keyed by code point
+// so the source stays readable.
+const LATIN_LOOK_ALIKES = new Map([
+  // Cyrillic small letters.
+  [0x0430, 'a'], [0x0432, 'b'], [0x0435, 'e'], [0x0451, 'e'], [0x043a, 'k'], [0x043c, 'm'], [0x043d, 'h'], [0x043e, 'o'],
+  [0x0440, 'p'], [0x0441, 'c'], [0x0442, 't'], [0x0443, 'y'], [0x0445, 'x'], [0x0455, 's'], [0x0456, 'i'], [0x0457, 'i'],
+  [0x0458, 'j'], [0x0501, 'd'], [0x04bb, 'h'], [0x051b, 'q'], [0x051d, 'w'], [0x04cf, 'l'], [0x044c, 'b'],
+  // Cyrillic capital letters.
+  [0x0410, 'A'], [0x0412, 'B'], [0x0415, 'E'], [0x041a, 'K'], [0x041c, 'M'], [0x041d, 'H'], [0x041e, 'O'], [0x0420, 'P'],
+  [0x0421, 'C'], [0x0422, 'T'], [0x0423, 'Y'], [0x0425, 'X'], [0x0405, 'S'], [0x0406, 'I'], [0x0408, 'J'], [0x051a, 'Q'],
+  [0x051c, 'W'], [0x04c0, 'I'],
+  // Greek small letters.
+  [0x03b1, 'a'], [0x03b3, 'y'], [0x03b5, 'e'], [0x03b9, 'i'], [0x03ba, 'k'], [0x03bd, 'v'], [0x03bf, 'o'], [0x03c1, 'p'],
+  [0x03c4, 't'], [0x03c5, 'u'], [0x03c7, 'x'], [0x03c9, 'w'],
+  // Greek capital letters.
+  [0x0391, 'A'], [0x0392, 'B'], [0x0395, 'E'], [0x0396, 'Z'], [0x0397, 'H'], [0x0399, 'I'], [0x039a, 'K'], [0x039c, 'M'],
+  [0x039d, 'N'], [0x039f, 'O'], [0x03a1, 'P'], [0x03a4, 'T'], [0x03a5, 'Y'], [0x03a7, 'X'],
+].map(([code, latin]) => [cp(code), latin]));
+const LOOK_ALIKE_PATTERN = new RegExp(`[${[...LATIN_LOOK_ALIKES.keys()].join('')}]`, 'g');
+const CYRILLIC_OR_GREEK = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+
+export function latinSkeleton(text) {
+  return text.replace(LOOK_ALIKE_PATTERN, ch => LATIN_LOOK_ALIKES.get(ch));
+}
+
+// Words that mix Latin letters with Cyrillic letters. Such a word has no honest use in English wording, so it fails the
+// scan whatever it says. Latin mixed with Greek is not reported on its own, because Greek letters appear inside Latin
+// words in medical and unit text (TNFα, Aβ, and µg, which normalization turns into a Greek mu); a Greek look-alike that
+// completes a banned word is caught by the skeleton variant instead.
+export function mixedScriptWords(text) {
+  const words = new Set();
+  for (const [word] of text.matchAll(/[\p{L}\p{M}]+/gu)) {
+    if (/\p{Script=Latin}/u.test(word) && /\p{Script=Cyrillic}/u.test(word)) words.add(word);
+  }
+  return [...words];
+}
+
+const ESCAPE_HINT = /\\(?:u\{?[0-9a-fA-F]|U[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r?\n|["'\\])/;
+const MARKUP_HINT = /<!\[CDATA\[|\]\]>|<\?[^<>]*\?>|<\/?[A-Za-z][^<>]*>/;
+
+// The normalized texts the rules run on. The first is the text itself. Further variants undo one more way of hiding a
+// phrase: escape sequences decoded, HTML comments removed, markup tags removed, and look-alike letters mapped to
+// Latin. Each variant can only add hits, so a phrase is caught if any reading of the text shows it.
+export function textVariants(raw) {
+  const sources = [raw];
+  if (ESCAPE_HINT.test(raw)) sources.push(decodeEscapes(raw));
+  for (const source of [...sources]) if (source.includes('<!--')) sources.push(source.replace(/<!--[\s\S]*?-->/g, ''));
+  const variants = new Set(sources.map(normalize));
+  for (const variant of [...variants]) if (MARKUP_HINT.test(variant)) variants.add(normalize(stripMarkup(variant)));
+  for (const variant of [...variants]) if (CYRILLIC_OR_GREEK.test(variant)) variants.add(latinSkeleton(variant));
+  return [...variants];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -908,26 +992,22 @@ export function jsxAttributeStrings(text) {
   return out.join('\n\n');
 }
 
-// Returns string values and keys of a JSON document. The one exception is the package field `"private": true`.
+// Returns every string token (keys and values) of a JSON document, decoded, in source order. The tokens are read from
+// the raw text, not from the parsed object, so a duplicate key cannot hide an earlier value that a first-wins parser
+// would show. The one exception is the package field `"private": true` (or false). Text that is not valid JSON is
+// returned whole.
 export function jsonRegions(text) {
-  let data;
   try {
-    data = JSON.parse(text);
+    JSON.parse(text);
   } catch {
     return text;
   }
   const out = [];
-  const visit = value => {
-    if (typeof value === 'string') out.push(value);
-    else if (Array.isArray(value)) value.forEach(visit);
-    else if (value && typeof value === 'object') {
-      for (const [key, member] of Object.entries(value)) {
-        if (!(key === 'private' && typeof member === 'boolean')) out.push(key);
-        visit(member);
-      }
-    }
-  };
-  visit(data);
+  for (const m of text.matchAll(/"(?:[^"\\]|\\.)*"/g)) {
+    const value = JSON.parse(m[0]);
+    const isPrivateFlag = value === 'private' && /^\s*:\s*(?:true|false)\b/.test(text.slice(m.index + m[0].length));
+    if (!isPrivateFlag) out.push(value);
+  }
   return out.join('\n\n');
 }
 
@@ -959,25 +1039,26 @@ function regionsFor(relPath, text) {
 // exemption lets this file trip; every other rule still applies.
 export function scanText(relPath, text, {ignoreRules = new Set()} = {}) {
   const regions = regionsFor(relPath, text);
-  const variants = [regions];
-  if (regions.all.includes('<!--') || regions.prose.includes('<!--')) {
-    // Second pass with HTML comments removed, so a phrase split by a comment is read as one phrase.
-    const strip = t => t.replace(/<!--[\s\S]*?-->/g, '');
-    variants.push({all: strip(regions.all), prose: strip(regions.prose)});
-  }
+  const allVariants = textVariants(regions.all);
+  const proseVariants = regions.prose === regions.all ? allVariants : textVariants(regions.prose);
+  const masked = new Map();
+  const maskedOf = variant => {
+    if (!masked.has(variant)) masked.set(variant, maskMechanismNames(variant));
+    return masked.get(variant);
+  };
   const hits = new Set();
-  for (const variant of variants) {
-    const allText = normalize(variant.all);
-    const proseText = normalize(variant.prose);
-    for (const rule of RULES) {
-      if (ignoreRules.has(rule.id)) continue;
-      const region = maskMechanismNames(rule.scope === 'prose' ? proseText : allText);
+  const report = (found, id) => hits.add(`${relPath}: "${found.replace(/\s+/g, ' ')}" [${id}]`);
+  for (const rule of RULES) {
+    if (ignoreRules.has(rule.id)) continue;
+    for (const variant of rule.scope === 'prose' ? proseVariants : allVariants) {
+      const region = maskedOf(variant);
       for (const m of region.matchAll(rule.re)) {
         if (rule.negatable && isNegated(region, m.index ?? 0)) continue;
-        hits.add(`${relPath}: "${m[0].replace(/\s+/g, ' ')}" [${rule.id}]`);
+        report(m[0], rule.id);
       }
     }
   }
+  if (!ignoreRules.has(MIXED_SCRIPT_ID)) for (const variant of allVariants) for (const word of mixedScriptWords(variant)) report(word, MIXED_SCRIPT_ID);
   return [...hits];
 }
 
@@ -1809,6 +1890,74 @@ test('self-test: a phrase split by an HTML comment is still caught', () => {
   assert.ok(scanText('a.md', 'Fully anon<!-- x -->ymous.').length > 0);
   assert.ok(scanText('a.md', '<!-- Your data is anonymous -->').length > 0);
   assert.deepEqual(scanText('a.md', 'Not PHI-<!-- note -->ready.'), []);
+});
+
+test('self-test: a phrase split by markup tags or CDATA sections is still caught', () => {
+  for (const file of ['a.html', 'a.xaml', 'a.xml', 'Info.plist', 'a.resx', 'a.svg', 'a.storyboard', 'a.xib', 'a.md', 'strings.xml', 'App.csproj']) {
+    assert.ok(scanText(file, '<p>HIPAA <span>compliant</span></p>').some(h => h.endsWith('[compliance-label]')), file);
+    assert.ok(scanText(file, 'Your data is anony<b></b>mous').some(h => h.endsWith('[anonymity]')), file);
+    assert.ok(scanText(file, '<string>Your data is <![CDATA[anony]]><![CDATA[mous]]></string>').some(h => h.endsWith('[anonymity]')), file);
+  }
+  // Entity-encoded tags, as Android string resources use them, are decoded first and then removed.
+  assert.ok(scanText('strings.xml', '<string name="a">Fully anony&lt;b&gt;&lt;/b&gt;mous</string>').length > 0);
+  assert.ok(scanText('a.ts', 'const s = "<b>anony</b>mous data";').some(h => h.endsWith('[anonymity]')));
+  assert.deepEqual(scanText('a.html', '<p>Research information, <b>not</b> medical advice.</p>'), []);
+  assert.deepEqual(scanText('a.md', 'Use a < b > c in a formula.'), []);
+});
+
+test('self-test: a duplicate JSON key cannot hide an earlier value', () => {
+  assert.ok(scanText('x.json', '{"title":"Your data is anonymous","title":"Hello"}').some(h => h.endsWith('[anonymity]')));
+  assert.ok(scanText('app.json', '{"expo":{"name":"A","description":"A HIPAA compliant app","description":"ok"}}').length > 0);
+  assert.ok(scanText('x.xcstrings', '{"strings":{"a":{"value":"Fully anonymous"},"a":{"value":"ok"}}}').length > 0);
+  // The package flag stays exempt, and a string value "private" elsewhere is still read.
+  assert.deepEqual(scanText('package.json', '{"name":"core","private":true,"private":false}'), []);
+  assert.ok(scanText('package.json', '{"keywords":["private"]}').length > 0);
+  assert.ok(scanText('package.json', '{"a":"\\u0061nonymous"}').length > 0, 'JSON escapes are decoded');
+});
+
+test('self-test: escape sequences in string literals and resource files do not hide a phrase', () => {
+  const cases = [
+    ['a.ts', 'const s = "Your data is \\u0061nonymous";'],
+    ['a.js', "const s = 'Your data is \\x61nonymous';"],
+    ['a.ts', 'const s = "Your data is \\u{61}nonymous";'],
+    ['a.swift', 'let s = "Your data is \\u{61}nonymous"'],
+    ['a.java', 'String s = "Your data is \\u0061nonymous";'],
+    ['a.kt', 'val s = "Your data is \\u0061nonymous"'],
+    ['a.cs', 'var s = "Your data is \\u0061nonymous";'],
+    ['a.rs', 'let s = "Your data is \\x61nonymous";'],
+    ['a.ts', 'const s = "Your data is anony\\\nmous";'],
+    ['a.ts', 'const s = "HIPAA\\u00A0compliant";'],
+    ['a.strings', '"title" = "Your data is \\U0061nonymous";'],
+    ['gradle.properties', 'app.tagline=Your data is \\u0061nonymous'],
+  ];
+  for (const [file, source] of cases) assert.ok(scanText(file, source).length > 0, `${file}: ${source}`);
+  assert.equal(decodeEscapes(String.raw`ab\x63\u{64}\
+e\"f\\g\n`), 'abcde"f\\g\n');
+  assert.deepEqual(scanText('a.ts', 'const s = "Research information, not medical advice.\\n";'), []);
+});
+
+test('self-test: invisible characters and look-alike letters do not hide a phrase', () => {
+  const hidden = [
+    0x2061, 0x2062, 0x2063, 0x2064, 0x180e, 0x3164, 0x115f, 0xffa0, 0x034f, 0xfe0f, 0xfe00, 0xe0041, 0xe0100, 0x202a, 0x202b,
+    0x202c, 0x202d, 0x202e, 0x2066, 0x2069, 0x061c, 0x200e, 0x200f,
+  ];
+  const misses = hidden.filter(code => !scanText('a.md', `Your data is anony${cp(code)}mous.`).some(h => h.endsWith('[anonymity]')));
+  assert.deepEqual(misses.map(code => `U+${code.toString(16).toUpperCase()}`), []);
+  // An accent added with a combining mark.
+  assert.ok(scanText('a.md', `Your data is anonymou${cp(0x0301)}s.`).some(h => h.endsWith('[anonymity]')));
+  // Look-alike letters: a Cyrillic a, a whole word in Cyrillic and Greek look-alikes, and Greek omicrons.
+  const cyrillicA = `Your data is ${cp(0x0430)}nonymous.`;
+  assert.ok(scanText('a.md', cyrillicA).some(h => h.endsWith('[anonymity]')));
+  assert.ok(scanText('a.md', cyrillicA).some(h => h.endsWith('[mixed-script]')), 'a word that mixes Latin and Cyrillic fails on its own');
+  const cyrillicHipaa = `${cp(0x041d, 0x0406, 0x0420, 0x0410, 0x0410)} compliant`;
+  assert.ok(scanText('a.md', cyrillicHipaa).some(h => h.endsWith('[compliance-label]')), 'a word written wholly in look-alike letters');
+  assert.ok(!scanText('a.md', cyrillicHipaa).some(h => h.endsWith('[mixed-script]')));
+  assert.ok(scanText('a.md', `HIPAA c${cp(0x03bf)}mpliant`).some(h => h.endsWith('[compliance-label]')));
+  assert.ok(scanText('a.md', `Fully ${cp(0x0441)}ertified.`).some(h => h.endsWith('[mixed-script]')));
+  // Greek letters inside Latin words are normal in medical and unit text, and whole Cyrillic words are not mixed.
+  assert.deepEqual(scanText('a.md', `Dose 5 ${cp(0xb5)}g of anti-TNF${cp(0x03b1)} for A${cp(0x03b2)} plaques.`), []);
+  assert.deepEqual(scanText('a.md', `${cp(0x041c, 0x043e, 0x0441, 0x043a, 0x0432, 0x0430)} site, not medical advice.`), []);
+  assert.deepEqual(mixedScriptWords(`K${cp(0x043e)}bner and Moscow`), [`K${cp(0x043e)}bner`]);
 });
 
 test('self-test: named mechanism text passes and unnamed claims are still caught', () => {
