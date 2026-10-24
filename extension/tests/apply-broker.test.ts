@@ -1,0 +1,65 @@
+import test from'node:test';import assert from'node:assert/strict';import{readFileSync}from'node:fs';
+import{installSiteAssistant}from'../src/site-background';import{installApplyBroker,APPLY_PORT}from'../src/apply-background';import{FAILURE_COPY}from'../src/failures';
+import{rawStudy,preparedFixture,agentFixture,TOKEN,DIGEST}from'./apply-fixture';
+class Events{listeners:((...v:any[])=>void)[]=[];addListener=(f:(...v:any[])=>void)=>this.listeners.push(f);removeListener=()=>{};emit=(...v:any[])=>{for(const f of this.listeners)f(...v)}}
+const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))};
+const STUDY='https://clinicaltrials.gov/study/NCT07254806';
+function harness(url=STUDY,options:{fetchStudyJson?:(id:string)=>Promise<unknown>;now?:()=>number}={}){
+ const connect=new Events(),messages=new Events(),updates=new Events(),removed=new Events(),scripts:any[]=[],natives:any[]=[],origin='chrome-extension://test';let tabUrl=url;
+ const snap=()=>({generation:'doc-1',url:tabUrl,nctIds:[],diagnostic:'No result cards on this page.',supported:false});
+ const api:any={runtime:{id:'test',lastError:undefined as any,getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages,connectNative:()=>{const n={sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v))},disconnect(){this.closed=true}};natives.push(n);return n}},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:tabUrl}),update:async()=>{},sendMessage:async(_id:number,m:any)=>({ok:true,result:['snapshot','availability','clearAvailability','restore'].includes(m.type)?snap():{}}),onUpdated:updates,onRemoved:removed},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async()=>({id:2,tabs:[{id:9}]})}};
+ const site=installSiteAssistant(api,{lookupPublicStatus:async()=>'RECRUITING'}),broker=installApplyBroker(api,site,{fetchStudyJson:options.fetchStudyJson??(async()=>rawStudy()),now:options.now??(()=>Date.UTC(2026,9,24,15,15))});
+ const frame=(over:any={})=>({id:'test',tab:{id:1,url:tabUrl},frameId:2,documentId:'frame-doc',url:origin+'/overlay.html',...over});
+ function port(name:string,sender:any){const p={name,sender,sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v))},disconnect(){if(this.closed)return;this.closed=true;this.onDisconnect.emit()}};connect.emit(p);return p}
+ async function overlay(){await site.launch({id:1,url:tabUrl});const capability=scripts.at(-1).args[0].capability,p=port('treatable.site.overlay.v1',frame());p.onMessage.emit({type:'site.authenticate',capability});await flush();return p}
+ async function apply(sender=frame()){const p=port(APPLY_PORT,sender);await flush();return p}
+ const send=async(p:any,request:any)=>{p.onMessage.emit({kind:'applyNative',request});await flush()};
+ const reply=async(n:any,v:any)=>{n.onMessage.emit(structuredClone(v));await flush()};
+ return{api,site,broker,natives,overlay,apply,send,reply,frame,updates,removed,setUrl:(v:string)=>{tabUrl=v}};
+}
+const replies=(p:any)=>p.sent.filter((v:any)=>v.reply).map((v:any)=>v.reply);
+test('site.ready carries the study ID from the validated tab URL, and SPA navigation updates it',async()=>{
+ const h=harness(),o=await h.overlay(),ready=o.sent.find((v:any)=>v.type==='site.ready');assert.deepEqual(ready.study,{nctId:'NCT07254806'});
+ h.setUrl('https://clinicaltrials.gov/search?cond=back+pain');h.updates.emit(1,{url:'https://clinicaltrials.gov/search?cond=back+pain'},{id:1});assert.deepEqual(o.sent.at(-1),{type:'site.study',study:null});
+ const s=harness('https://clinicaltrials.gov/search?cond=pain'),so=await s.overlay();assert.equal(so.sent.find((v:any)=>v.type==='site.ready').study,null);
+});
+test('only the authenticated overlay frame on a study page may open the apply channel',async()=>{
+ const h=harness();const before=await h.apply();assert.equal(before.closed,true,'no overlay registered yet');
+ await h.overlay();for(const over of [{id:'other'},{frameId:0},{frameId:3},{documentId:'other-doc'},{url:'chrome-extension://test/panel.html'},{url:'https://clinicaltrials.gov/overlay.html'},{tab:{id:7,url:STUDY}}]){const p=await h.apply(h.frame(over));assert.equal(p.closed,true,JSON.stringify(over))}
+ const ok=await h.apply();assert.equal(ok.closed,false);assert.deepEqual(ok.sent[0],{kind:'applyReady',nctId:'NCT07254806'});assert.equal(h.natives.length,0,'nothing reaches native on connect');
+ const s=harness('https://clinicaltrials.gov/search?cond=pain');await s.overlay();const search=await s.apply();assert.equal(search.closed,true,'search pages have no apply channel');
+ ok.onMessage.emit({kind:'applyNative',request:{id:'x',type:'prepareApply',payload:{nctId:'NCT07254806',name:'Morgan'}}});await flush();assert.equal(ok.closed,true,'invalid request shape ends the channel');assert.equal(h.natives.length,0);
+});
+test('prepare is bound to the tab study; execute needs the stored one-use receipt; replies are revalidated',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();
+ await h.send(p,{id:'w',type:'prepareApply',payload:{nctId:'NCT00000001'}});assert.deepEqual(replies(p).at(-1),{id:'w',type:'result',ok:false,code:'NOT_STUDY_PAGE',error:FAILURE_COPY.NOT_STUDY_PAGE});assert.equal(h.natives.length,0);
+ await h.send(p,{id:'e0',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','no receipt before prepare');assert.equal(h.natives.length,0);
+ await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});const n=h.natives[0];assert.deepEqual(n.sent,[{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}}]);
+ await h.reply(n,{id:'p1',type:'result',ok:true,result:preparedFixture()});assert.equal(replies(p).at(-1).result.kind,'preparedApply');
+ await h.send(p,{id:'e1',type:'executeApply',payload:{token:'U'.repeat(43),digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT');assert.equal(n.sent.length,1);
+ await h.send(p,{id:'e2',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.deepEqual(n.sent.at(-1),{id:'e2',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});
+ await h.reply(n,{id:'e2',type:'result',ok:true,result:agentFixture({digest:'e'.repeat(64)})});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH');
+ await h.send(p,{id:'e3',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','receipt is one-use');assert.equal(n.sent.length,2);
+ await h.send(p,{id:'p2',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p2',type:'result',ok:true,result:preparedFixture()});await h.send(p,{id:'e4',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});await h.reply(n,{id:'e4',type:'result',ok:true,result:agentFixture()});assert.equal(replies(p).at(-1).result.kind,'applyAgent');
+ await h.send(p,{id:'p3',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p3',type:'result',ok:false,code:'API_ERROR',error:'PRIVATE_CANARY'.repeat(10)});assert.deepEqual(replies(p).at(-1),{id:'p3',type:'result',ok:false,code:'API_ERROR',error:FAILURE_COPY.API_ERROR});
+ await h.send(p,{id:'p4',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p4',type:'result',ok:true,result:{...preparedFixture(),extra:1}});assert.equal(replies(p).at(-1).code,'INVALID_NATIVE_REPLY');
+ await h.reply(n,{id:'unsolicited',type:'result',ok:true});assert.ok(!replies(p).some((r:any)=>r.id==='unsolicited'));
+});
+test('expired receipts are refused locally; a missing helper reports its specific code',async()=>{
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
+ await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture(now+1000)});now+=2000;
+ await h.send(p,{id:'e1',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.deepEqual(replies(p).at(-1),{id:'e1',type:'result',ok:false,code:'APPLY_EXPIRED',error:FAILURE_COPY.APPLY_EXPIRED});assert.equal(h.natives[0].sent.length,1);
+ await h.send(p,{id:'p2',type:'prepareApply',payload:{nctId:'NCT07254806'}});h.api.runtime.lastError={message:'Specified native messaging host not found.'};h.natives[0].onDisconnect.emit();await flush();assert.equal(replies(p).at(-1).code,'NATIVE_HOST_MISSING');
+});
+test('official-record fallback uses the background fetch and the shared normalizer; failures are specific',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();p.onMessage.emit({kind:'applyRecord',id:'r1'});await flush();const r=replies(p).at(-1);assert.equal(r.type,'record');assert.equal(r.ok,true);assert.equal(r.record.nctId,'NCT07254806');assert.equal(r.record.sites.length,4);assert.equal(h.natives.length,0);
+ const f=harness(STUDY,{fetchStudyJson:async()=>{throw Error('offline')}});await f.overlay();const q=await f.apply();q.onMessage.emit({kind:'applyRecord',id:'r2'});await flush();assert.deepEqual(replies(q).at(-1),{id:'r2',type:'result',ok:false,code:'RECORD_UNAVAILABLE',error:FAILURE_COPY.RECORD_UNAVAILABLE});
+ const w=harness(STUDY,{fetchStudyJson:async()=>rawStudy()});await w.overlay();const x=await w.apply();w.setUrl('https://clinicaltrials.gov/study/NCT00000001');x.onMessage.emit({kind:'applyRecord',id:'r3'});await flush();assert.equal(replies(x).at(-1).code,'NOT_STUDY_PAGE');
+});
+test('closing the frame or navigating to another study revokes the receipt and ends the channel',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});const n=h.natives[0];await h.reply(n,{id:'p1',type:'result',ok:true,result:preparedFixture()});
+ h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT07254806#contacts'},{id:1});assert.equal(p.closed,false,'same study, different anchor');
+ h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'},{id:1});assert.equal(p.closed,true);assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.deepEqual(n.sent.at(-1).type,'revokeApply');assert.deepEqual(n.sent.at(-1).payload,{token:TOKEN});
+ const g=harness();await g.overlay();const q=await g.apply();await g.send(q,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await g.reply(g.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture()});q.disconnect();assert.equal(g.natives[0].sent.at(-1).type,'revokeApply');assert.equal(g.broker.sessionCount(),0);
+});
+test('built background routes the apply port to its broker, not the legacy panel',()=>{const bundle=readFileSync(new URL('../dist/background.js',import.meta.url),'utf8');assert.ok(bundle.includes('treatable-apply-v1'));assert.ok(bundle.includes('applyReady'))});
