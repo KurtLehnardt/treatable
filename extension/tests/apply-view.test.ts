@@ -78,7 +78,7 @@ test('production overlay entry presents the public brief before search, never mo
  for(const[key,value]of Object.entries({window:win,document:doc,chrome:{runtime},navigator:{userActivation:{isActive:true}}}))Object.defineProperty(globalThis,key,{configurable:true,value});captureSiteActivations(win);let renderer!:TestRenderer.ReactTestRenderer;
  try{await act(async()=>{renderer=TestRenderer.create(React.createElement(OverlayAssistant));const e=new Event('message');Object.assign(e,{source:parent,origin:'https://clinicaltrials.gov',data:{type:'treatable.site.activate',purpose:'overlay',capability:'a'.repeat(64)}});win.dispatchEvent(e);await flush()});const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Understand this study'));assert.ok(text.indexOf('Understand this study')<text.indexOf('Search for other studies'));assert.doesNotMatch(text,/Find my matches|Confirm what you|Review what you will share/);assert.equal(privatePorts,0);assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false);
  await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n)==='Generate study brief')!.props.onClick();await flush()});
- assert.match(renderedText(renderer.root),/public study review complete/);assert.match(renderedText(renderer.root),/questions classified/);
+ assert.match(renderedText(renderer.root),/Study review complete/);assert.match(renderedText(renderer.root),/Questions sorted/);
  const editor=()=>renderer.root.findAllByType('textarea').find(n=>n.props.className==='apply-email')!;
  await act(async()=>{editor().props.onChange({target:{value:'My reviewed enquiry from the production entry.'}});await flush()});
  assert.equal(editor().props.value,'My reviewed enquiry from the production entry.');
@@ -240,4 +240,17 @@ test('the intro tour points at the right Treatable controls on a study page and 
   assert.equal(env.document.querySelector('[data-treatable-guide-host]'),null);
   assert.equal(clicks,1*6,'only the six Next presses made by the test; the tour clicked no Treatable control');
  }finally{await settle(8);env.teardown()}
+});
+
+test('the brief status line is plain: study review and question sorting, with no API names',async()=>{
+ const h=harness(),m=mount(h);
+ try{
+  await generate(m);
+  const status=renderedText(nodesWith(m,'brief-status')[0]).replace(/\s+/g,' ');
+  assert.ok(status.includes('Study review complete · Questions sorted'),status);
+  assert.doesNotMatch(status,/Agents|Decisions/);
+  const failed=html({...m.ref.vm!,result:{...res(m)!,agentStatus:'failed',decisionStatus:'failed'}} as ApplyController).replaceAll('<!-- -->','');
+  assert.ok(failed.includes('Study review unavailable · Question sorting unavailable'));
+  assert.doesNotMatch(failed.slice(failed.indexOf('brief-status')),/Agents:|Decisions:/);
+ }finally{m.unmount()}
 });
