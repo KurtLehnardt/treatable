@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import TestRenderer,{act} from 'react-test-renderer';
-import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';
+import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {SITE_FILTERS} from '../src/site-filter-catalog';import {OverlayView} from '../src/overlay-view';import {installDom,settle} from './dom-harness';
 import {normalizeApplyRecord,normalizeStudyBrief,studyPurposeText,PURPOSE_MAX_EXCERPTS} from '../shared/apply-record.mjs';import type {StudyBriefResult,PreparedStudyBrief} from '../shared/apply-contract.mjs';
 const IDS=['NCT99999990','NCT99999991'],NOW=Date.UTC(2026,9,24,15),EXPIRES=NOW+300000,TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
 let PURPOSE='A synthetic controlled study.',DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.';
@@ -206,3 +206,38 @@ test('request details stay in memory only: ending, reselecting studies or a new 
  }finally{m.unmount()}
 });
 async function generate2(m:ReturnType<typeof mount>){await act(async()=>{m.ref.vm!.requestReview();await flush()})}
+
+test('the intro tour points at the right Treatable controls on a study page and presses nothing',async()=>{
+ const h=harness(),m=mount(h);let markup='';
+ try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  const view:any={connected:true,ended:false,busy:false,error:'',fields:{},catalog:SITE_FILTERS,snapshot:{generation:'g',url:'https://clinicaltrials.gov/study/NCT99999990',nctIds:[],diagnostic:'',supported:false},records:[],collapsed:false,setField(){},search(){},refresh(){},fetchRecords(){},setCollapsed(){},restore(){},openPrivate(){},close(){},guide:{active:false,canSearchHelp:false,startSearchHelp(){},replayIntro(){}}};
+  markup=renderToStaticMarkup(React.createElement(OverlayView,{vm:view,apply:React.createElement(ApplyView,{vm:m.ref.vm!})}));
+ }finally{m.unmount()}
+ const env=installDom('<!doctype html><html><body><div id="root">'+markup+'</div></body></html>','https://clinicaltrials.gov/study/NCT99999990');
+ try{
+  const {createPanelGuide}=await import('../src/guide-panel');
+  const guide=createPanelGuide(()=>env.document,{mode:'open',css:''});
+  const dialog=()=>env.document.querySelector('[data-treatable-guide-host]')!.shadowRoot!;
+  let clicks=0;env.document.addEventListener('click',()=>clicks++,true);
+  const expectations:[Parameters<typeof guide.show>[0],string,RegExp,RegExp][]=[
+   ['appearance','button[aria-label="Treatable settings"]',/Make Treatable look the way you like/,/Popup is a window in the middle of the page/],
+   ['understand','.apply-section .section-intro',/Understand this study/,/public study data/],
+   ['brief','.brief-generate button.apply-big',/Generate study brief/,/You choose when to press this button/],
+   ['personalize','details.apply-local-details > summary',/Personalize your email/,/stays on your device/],
+   ['draft','section[aria-labelledby="apply-send"]',/Edit your email draft/,/subject and message/],
+   ['send','.apply-actions[data-treatable-guide="send"]',/You send the email, not Treatable/,/Treatable never sends the email/],
+  ];
+  for(const [id,selector,title,text] of expectations){
+   const pending=guide.show(id,{allowBack:true});await settle();
+   const target=env.document.querySelector(selector)!;assert.ok(target,selector);
+   assert.deepEqual([...env.document.querySelectorAll('[data-treatable-guide-highlight]')],[target],id+' highlights exactly its control');
+   assert.match(dialog().querySelector('.swal2-title')!.textContent!,title);assert.match(dialog().querySelector('.swal2-popup')!.textContent!,text);
+   (dialog().querySelector('.swal2-confirm') as HTMLButtonElement).click();assert.equal(await pending,'next');
+  }
+  assert.equal(env.document.querySelectorAll('[data-treatable-guide="send"]').length,1);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Open draft in my email app|Copy message and open email app/);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Copy message/);
+  guide.close();await settle();
+  assert.equal(env.document.querySelectorAll('[data-treatable-guide-highlight]').length,0,'closing removes the highlight');
+  assert.equal(env.document.querySelector('[data-treatable-guide-host]'),null);
+  assert.equal(clicks,1*6,'only the six Next presses made by the test; the tour clicked no Treatable control');
+ }finally{await settle(8);env.teardown()}
+});

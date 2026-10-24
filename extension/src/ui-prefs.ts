@@ -9,7 +9,7 @@ export const THEMES = ['system', 'light', 'dark'] as const;
 export type DisplayMode = typeof DISPLAY_MODES[number];
 export type Theme = typeof THEMES[number];
 export interface UiPrefs {displayMode: DisplayMode; theme: Theme}
-export const DEFAULT_UI_PREFS: Readonly<UiPrefs> = Object.freeze({displayMode: 'overlay', theme: 'system'});
+export const DEFAULT_UI_PREFS: Readonly<UiPrefs> = Object.freeze({displayMode: 'popup', theme: 'system'});
 /** The only storage operations this module performs: read and write the single preferences key. */
 export interface UiPrefsArea {
  get: (key: string) => Promise<unknown>;

@@ -13,7 +13,7 @@ import {captureSiteActivations} from '../src/overlay-port';
 import {SITE_FILTERS} from '../src/site-filter-catalog';
 
 const flush = async () => {await new Promise<void>(r => setImmediate(r)); await new Promise<void>(r => setImmediate(r))};
-const DEFAULTS: UiPrefs = {displayMode: 'overlay', theme: 'system'};
+const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system'};
 const SAVED: UiPrefs = {displayMode: 'popup', theme: 'dark'};
 
 /** In-memory stand-in for chrome.storage.local. Values are cloned like Chrome's JSON storage, and every call is recorded. */
@@ -239,7 +239,7 @@ test('End session clears the search but keeps the display preferences, and no se
  assert.equal(latest.connected, false);
  assert.equal(latest.ended, true);
  assert.equal(latest.theme, 'dark', 'ending the session does not reset the theme');
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'overlay', theme: 'dark'});
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'popup', theme: 'dark'});
  assert.deepEqual([...area.store.keys()], [UI_PREFS_KEY]);
  assert.doesNotMatch(JSON.stringify([...area.store]), /PRIVATE_QUERY_CANARY/);
  assert.ok(area.calls.every(call => call === 'set:' + UI_PREFS_KEY || call === 'get:' + UI_PREFS_KEY), area.calls.join());
@@ -297,8 +297,8 @@ test('overlay frame is created already laid out for the saved display mode and t
   [{displayMode: 'popup', theme: 'dark'}, (f: Fake) => {assert.equal(f.styles.top, '50%'); assert.match(f.styles.transform, /translate\(-50%/); assert.equal(f.style.colorScheme, 'dark')}],
   [{displayMode: 'sidebar', theme: 'light'}, (f: Fake) => {assert.equal(f.styles.top, '0'); assert.equal(f.styles.right, '0'); assert.equal(f.styles.height, '800px'); assert.equal(f.style.colorScheme, 'light')}],
   [{displayMode: 'overlay', theme: 'dark'}, (f: Fake) => {assert.equal(f.styles.top, '16px'); assert.equal(f.style.colorScheme, 'dark')}],
-  [{displayMode: 'fullscreen', theme: 'neon'}, (f: Fake) => {assert.equal(f.styles.top, '16px', 'invalid layout falls back to the overlay'); assert.equal(f.style.colorScheme, 'light', 'invalid theme falls back to the system theme')}],
-  [{}, (f: Fake) => assert.equal(f.styles.top, '16px')],
+  [{displayMode: 'fullscreen', theme: 'neon'}, (f: Fake) => {assert.equal(f.styles.top, '50%', 'invalid layout falls back to the default popup'); assert.equal(f.style.colorScheme, 'light', 'invalid theme falls back to the system theme')}],
+  [{}, (f: Fake) => assert.equal(f.styles.top, '50%', 'no saved choice gives the default popup')],
  ] as Array<[any, (f: Fake) => void]>) {
   const {controller, frame} = contentHarness(t);
   controller.activate({purpose: 'overlay', capability: 'a'.repeat(64), ...prefs});

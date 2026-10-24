@@ -1,0 +1,320 @@
+{
+  "capturedOn": "2026-10-24",
+  "capturedWith": "Google Chrome 156.0.8078.47, headless (--headless=new), driven over the Chrome DevTools Protocol from a Node script with a throwaway user-data-dir. Each element was read only after the Angular app had rendered it. The only interactions were clicking the filters toggle, the modal close button and the desktop Hide button.",
+  "urls": {
+    "home": {
+      "requested": "https://clinicaltrials.gov/",
+      "rendered": "https://clinicaltrials.gov/"
+    },
+    "search": {
+      "requested": "https://clinicaltrials.gov/search?cond=asthma",
+      "rendered": "https://clinicaltrials.gov/search?cond=asthma&viewType=Card"
+    }
+  },
+  "pageTitles": {
+    "home": "Home | ClinicalTrials.gov",
+    "search": "Search ClinicalTrials.gov for: asthma | Card Results | ClinicalTrials.gov"
+  },
+  "viewportsTested": [
+    "1400x1000",
+    "768x1024",
+    "390x844",
+    "plus a width sweep from 390 to 1400 at a height of 900"
+  ],
+  "consentOrCookieBanner": "No cookie or consent wall appeared and nothing blocked rendering. The page shows the standard section.usa-banner government banner and a div.usa-alert.usa-alert--warning disclaimer. Neither was interacted with.",
+  "filtersBreakpoint": {
+    "desktopPanelFromWidthPx": 1024,
+    "modalDrawerUpToWidthPx": 1023,
+    "evidence": "Fresh page loads at 1023 and 1024 pixels, a downward resize sweep from 1400 to 390 and an upward resize sweep from 390 to 1280 all switched at exactly the same place. At 1024 pixels and wider the page renders ctg-focus-your-search-panel (a sidebar with a Hide or Show button). At 1023 pixels and narrower that panel is not in the DOM and ctg-focus-your-search-mobile-modal renders a Focus Your Search button that opens a modal. 768x1024 behaves exactly like 390x844. The home page has no such switch: its form is rendered inline at 390, 768 and 1400 pixels."
+  },
+  "targets": {
+    "conditionInput": {
+      "selector": "input#advcond",
+      "alternativeSelectors": [
+        "input[name=\"advcond\"]",
+        "input[aria-label=\"Condition/disease\"]"
+      ],
+      "matchCountPerPage": 1,
+      "tag": "input",
+      "type": "search",
+      "id": "advcond",
+      "name": "advcond",
+      "ariaLabel": "Condition/disease",
+      "placeholder": "The placeholder attribute is present but empty.",
+      "labelText": "Condition/disease",
+      "labelSelector": "label[for=\"advcond\"]",
+      "role": "combobox (Angular Material autocomplete)",
+      "foundOn": {
+        "home": "Found and visible at 1400x1000, 768x1024 and 390x844.",
+        "search": "Found and visible at 1400x1000. At 768x1024 and 390x844 it is in the DOM but hidden while the filters modal is closed, and visible after the modal is opened."
+      }
+    },
+    "locationInput": {
+      "selector": "input#location-input",
+      "alternativeSelectors": [
+        "input[name=\"location-input\"]",
+        "input[aria-label=\"In country, state, or city\"]",
+        "ctg-location-picker input[type=\"search\"]"
+      ],
+      "matchCountPerPage": 1,
+      "tag": "input",
+      "type": "search",
+      "id": "location-input",
+      "name": "location-input",
+      "ariaLabel": "In country, state, or city",
+      "placeholder": "There is no placeholder attribute.",
+      "labelText": "The visible label reads \"Location\" but it is label[for=\"location-search\"], and no element with id location-search exists, so that label is not associated with the input. The input has an empty hidden label[for=\"location-input\"]. The accessible name therefore comes from aria-label.",
+      "role": "combobox (Angular Material autocomplete)",
+      "parentElement": "ctg-location-picker with attributes labelid=\"location-input\" and label=\"In country, state, or city\"",
+      "foundOn": {
+        "home": "Found and visible at 1400x1000, 768x1024 and 390x844.",
+        "search": "Found and visible at 1400x1000. At 768x1024 and 390x844 it is in the DOM but hidden while the filters modal is closed, and visible after the modal is opened."
+      }
+    },
+    "recruitingCheckbox": {
+      "selector": "input#adv-check0-status1",
+      "alternativeSelectors": [
+        "ctg-checkbox-tree-filter#adv-check-status input[type=\"checkbox\"][value=\"rec\"]"
+      ],
+      "matchCountPerPage": 1,
+      "tag": "input",
+      "type": "checkbox",
+      "id": "adv-check0-status1",
+      "value": "rec",
+      "name": "The input has no name attribute.",
+      "ariaLabel": "The input has no aria-label.",
+      "labelSelector": "label[for=\"adv-check0-status1\"]",
+      "labelText": "Recruiting, followed by <span class=\"agg-count\">(374)</span>. The label textContent is \"Recruiting (374)\" and the count changes with the search, so match with a prefix or with the value attribute rather than exact text.",
+      "note": "The checkbox is visually hidden by USWDS styling (it is positioned about 15000 pixels off screen), so the visible target for highlighting or clicking is the label.",
+      "foundOn": {
+        "search": "Found at 1400x1000 and visible. At 768x1024 and 390x844 it is in the DOM but hidden while the filters modal is closed, and visible after the modal is opened.",
+        "home": "Not present. The home page has no status checkbox. On the home page the equivalent control is a radio, input#adv-radio-status1, with value \"not rec\", name \"Recruiting and not yet recruiting studies\" and label text \"Recruiting and not yet recruiting studies\". It sits in ctg-radio-group-filter#adv-check-status, and the sibling radio input#adv-radio-status0 has value \"all\" and label \"All studies\"."
+      }
+    },
+    "interventionalCheckbox": {
+      "selector": "input#adv-check0-studyType0",
+      "alternativeSelectors": [
+        "ctg-checkbox-tree-filter#adv-check-studyType input[type=\"checkbox\"][value=\"int\"]"
+      ],
+      "matchCountPerPage": 1,
+      "tag": "input",
+      "type": "checkbox",
+      "id": "adv-check0-studyType0",
+      "value": "int",
+      "name": "The input has no name attribute.",
+      "ariaLabel": "The input has no aria-label.",
+      "labelSelector": "label[for=\"adv-check0-studyType0\"]",
+      "labelText": "Interventional, followed by <span class=\"agg-count\">(3,821)</span>. The label textContent is \"Interventional (3,821)\" and the count changes with the search.",
+      "note": "The id index is positional. studyType0 is Interventional and studyType1 is Observational, so do not assume studyType1 is Interventional.",
+      "foundOn": {
+        "search": "Found at 1400x1000 and visible, because the More Filters accordion (button[aria-controls=\"extended-form\"]) is expanded by default on the search page. At 768x1024 and 390x844 it is in the DOM but hidden while the filters modal is closed, and visible after the modal is opened.",
+        "home": "The input exists in the DOM at 1400, 768 and 390 pixels, but it is not rendered because it lives inside div#extended-form, which has the hidden attribute until the More Filters button (aria-expanded=\"false\" on the home page) is clicked."
+      }
+    },
+    "filtersToggleButton": {
+      "desktop": {
+        "selector": "ctg-focus-your-search-panel .filters-panel-header button.expand-button",
+        "appliesAtWidthPx": "1024 and wider",
+        "tag": "button",
+        "id": "The button has no id.",
+        "ariaLabel": "The button has no aria-label.",
+        "ariaExpanded": "The button has no aria-expanded attribute.",
+        "ariaControls": "The button has no aria-controls attribute.",
+        "accessibleNameSource": "Its text content, which is \"Hide\" when the panel is expanded and \"Show\" when it is collapsed. The icon is an svg with aria-hidden=\"true\".",
+        "classes": "usa-button usa-button--unstyled expand-button",
+        "behavior": "Clicking Hide removes the filters panel content and the Clear Filters and Apply Filters footer from the DOM, so ctg-checkbox-tree-filter#adv-check-status, ctg-checkbox-tree-filter#adv-check-studyType, input#advcond and input#location-input are all absent until Show is clicked. The panel div.filters-panel loses its expanded class. The panel is expanded by default."
+      },
+      "narrow": {
+        "selector": "ctg-focus-your-search-mobile-modal button[aria-controls=\"focus-your-search-modal\"]",
+        "appliesAtWidthPx": "1023 and narrower",
+        "tag": "button",
+        "id": "The button has no id while the modal is closed. After it is opened, the modal library assigns a random id of the form modal-123456, so never select by id.",
+        "ariaLabel": "The button has no aria-label.",
+        "ariaExpanded": "The button has no aria-expanded attribute in either state.",
+        "ariaControls": "focus-your-search-modal",
+        "accessibleNameSource": "Its content: an img with alt=\"Focus Your Search\" followed by the text \"Focus Your Search (1)\". The number in parentheses is the count of active filters and is absent when no filters are active, so match the prefix \"Focus Your Search\".",
+        "classes": "text-btn text-bold",
+        "otherAttributes": "data-open-modal=\"\"",
+        "modalWrapper": "div#focus-your-search-modal.usa-modal-wrapper with role=\"dialog\", aria-labelledby=\"modal-1-heading\" (no element with that id exists) and aria-describedby=\"modal-1-description\". It is a direct child of body. Class is-hidden means closed and class is-visible means open. After opening, the wrapper gets data-opener set to the toggle button id.",
+        "modalCloseButton": "button.usa-modal__close with aria-label=\"Close button for Narrow your search\" and data-close-modal=\"\"",
+        "modalFooterButtons": "Clear Filters: button.usa-button.secondary-button.clear-btn. Apply Filters: button.usa-button.primary-button, which carried the disabled attribute in the captured state, where no filter had been changed. On the desktop panel these two buttons have ids clear-filters and apply-filters, but the modal copies have no ids.",
+        "statusAndTypeGroupsWhenClosed": "Both groups are still in the DOM while the modal is closed, but they are not rendered (the modal wrapper has visibility hidden), so a visibility check fails until the toggle is clicked. Inside the opened modal the More Filters accordion is already expanded, so Study Type is visible without a second click."
+      }
+    }
+  },
+  "filterGroups": {
+    "studyStatus": {
+      "wrapperSelector": "ctg-checkbox-tree-filter#adv-check-status",
+      "groupSelector": "div.filter-group (the nearest ancestor of the wrapper)",
+      "legend": "legend.usa-legend.text-bold.padding-left-0.margin-top-0.group-title with text \"Study Status\". The legend is a direct child of div.filter-group and there is no fieldset.",
+      "checkboxes": [
+        {
+          "id": "adv-check0-status0",
+          "value": "not",
+          "label": "Not yet recruiting"
+        },
+        {
+          "id": "adv-check0-status1",
+          "value": "rec",
+          "label": "Recruiting"
+        },
+        {
+          "id": "adv-check1-status0",
+          "value": "act",
+          "label": "Active, not recruiting"
+        },
+        {
+          "id": "adv-check1-status1",
+          "value": "com",
+          "label": "Completed"
+        },
+        {
+          "id": "adv-check1-status2",
+          "value": "ter",
+          "label": "Terminated"
+        },
+        {
+          "id": "adv-check2-status0",
+          "value": "enr",
+          "label": "Enrolling by invitation"
+        },
+        {
+          "id": "adv-check2-status1",
+          "value": "sus",
+          "label": "Suspended"
+        },
+        {
+          "id": "adv-check2-status2",
+          "value": "wit",
+          "label": "Withdrawn"
+        },
+        {
+          "id": "adv-check2-status3",
+          "value": "unk",
+          "label": "Unknown"
+        },
+        {
+          "id": "adv-check3-status0",
+          "value": "ava",
+          "label": "Available",
+          "note": "Inside the collapsed Expanded access sub-accordion (div#accordion-Expanded-access, hidden)."
+        },
+        {
+          "id": "adv-check3-status1",
+          "value": "nla",
+          "label": "No longer available",
+          "note": "Inside the collapsed Expanded access sub-accordion."
+        },
+        {
+          "id": "adv-check3-status2",
+          "value": "tna",
+          "label": "Temporarily not available",
+          "note": "Inside the collapsed Expanded access sub-accordion."
+        },
+        {
+          "id": "adv-check3-status3",
+          "value": "afm",
+          "label": "Approved for marketing",
+          "note": "Inside the collapsed Expanded access sub-accordion."
+        }
+      ],
+      "labelCountsNote": "Every label ends with a span.agg-count that holds the live result count, for example \"(374)\".",
+      "onHomePage": "On the home page the same id adv-check-status is on a different element, ctg-radio-group-filter, containing the two radios described under recruitingCheckbox. A selector that includes ctg-checkbox-tree-filter will therefore only match the search page."
+    },
+    "studyType": {
+      "wrapperSelector": "ctg-checkbox-tree-filter#adv-check-studyType",
+      "groupSelector": "div.filter-group (the nearest ancestor of the wrapper), which lives inside div#extended-form.usa-accordion__content, the body of the More Filters accordion",
+      "legend": "legend.usa-legend.text-bold.padding-left-0.margin-top-0.group-title with text \"Study Type\". The legend is a direct child of div.filter-group and there is no fieldset.",
+      "checkboxes": [
+        {
+          "id": "adv-check0-studyType0",
+          "value": "int",
+          "label": "Interventional",
+          "level": "parent"
+        },
+        {
+          "id": "adv-check0-studyType1",
+          "value": "obs",
+          "label": "Observational",
+          "level": "parent"
+        },
+        {
+          "id": "adv-check0-studyType1-0",
+          "value": "obs_patreg",
+          "label": "Patient registries",
+          "level": "child of Observational"
+        },
+        {
+          "id": "adv-check0-studyType2",
+          "value": "exp",
+          "label": "Expanded access",
+          "level": "parent"
+        },
+        {
+          "id": "adv-check0-studyType2-0",
+          "value": "exp_indiv",
+          "label": "Individual patients",
+          "level": "child of Expanded access"
+        },
+        {
+          "id": "adv-check0-studyType2-1",
+          "value": "exp_inter",
+          "label": "Intermediate-size population",
+          "level": "child of Expanded access"
+        },
+        {
+          "id": "adv-check0-studyType2-2",
+          "value": "exp_treat",
+          "label": "Treatment IND/Protocol",
+          "level": "child of Expanded access"
+        }
+      ],
+      "markupNote": "Parent checkboxes are in div.usa-checkbox.group-checkbox and child checkboxes are in div.usa-checkbox.child-checkbox. Every label ends with a span.agg-count that holds the live result count."
+    }
+  },
+  "differencesFromUserSuppliedStatusMarkup": "The user-supplied description matches the live DOM: a div.filter-group contains legend.group-title \"Study Status\" and ctg-checkbox-tree-filter#adv-check-status, and the Recruiting checkbox has id adv-check0-status1 and value rec. The exact original markup text was not available to this capture, so a character-level diff could not be made. Details that the live DOM adds are these: every element carries Angular _ngcontent-ng-c and _nghost-ng-c attributes and many empty comment nodes; every label has a trailing span.agg-count with the live count, so the label text is \"Recruiting (374)\" for this query; the group contains a second legend (\"Expanded access\", class font-body-md) with a collapsed sub-accordion of four more checkboxes; and the checkbox inputs are visually hidden off screen by USWDS styling.",
+  "fixtures": [
+    {
+      "file": "home-search-form.html",
+      "bytes": 67167,
+      "description": "Host element ctg-home-search-panel from the home page at 1400x1000. Its only child is div.home-search-panel. It holds the Condition/disease, Other terms, Intervention/treatment and Location fields, the Study Status radio group, the collapsed More Filters accordion (with the Study Type group inside the hidden div#extended-form), and the Search button."
+    },
+    {
+      "file": "search-page-form.html",
+      "bytes": 7263,
+      "description": "The first div.filter-group of ctg-search-filters-form on /search at 1400x1000. It is the smallest container that holds the Condition/disease, Other terms, Intervention/treatment and Location inputs. After removing Angular scoped attributes and comments and collapsing whitespace, its text is identical to the same group on the home page, because both pages render the same ctg-search-filters-form component."
+    },
+    {
+      "file": "search-filter-status.html",
+      "bytes": 8950,
+      "description": "The div.filter-group that holds legend.group-title \"Study Status\" and ctg-checkbox-tree-filter#adv-check-status, from /search at 1400x1000."
+    },
+    {
+      "file": "search-filter-type.html",
+      "bytes": 4416,
+      "description": "The div.filter-group that holds legend.group-title \"Study Type\" and ctg-checkbox-tree-filter#adv-check-studyType, from /search at 1400x1000."
+    },
+    {
+      "file": "search-filters-panel-narrow-closed.html",
+      "bytes": 77545,
+      "description": "At 390x844, ctg-focus-your-search-mobile-modal (which contains the toggle button) followed by div#focus-your-search-modal in its closed state. In the live page the modal wrapper is a direct child of body, not a child of the toggle host. The status and type groups are present inside the closed modal but are not rendered."
+    },
+    {
+      "file": "search-filters-panel-narrow-open.html",
+      "bytes": 77591,
+      "description": "The same two elements at 390x844 after clicking the toggle button. The modal wrapper has class is-visible and the filters are rendered. The 768x1024 capture was identical apart from the random modal id, so it was not saved separately."
+    },
+    {
+      "file": "search-filters-panel-desktop-expanded.html",
+      "bytes": 76264,
+      "description": "Extra file. The whole ctg-focus-your-search-panel at 1400x1000 in its default expanded state, including the header with the Hide button and the footer with the Clear Filters and Apply Filters buttons."
+    },
+    {
+      "file": "search-filters-panel-desktop-collapsed.html",
+      "bytes": 1082,
+      "description": "Extra file. The same ctg-focus-your-search-panel at 1400x1000 after clicking the Hide button. Only the header and the Show button remain, and all filter groups and inputs are removed from the DOM."
+    }
+  ],
+  "fixtureCleaning": "Only script, style and noscript elements, the d attribute of svg path elements, and inline base64 data were removed, and a one-sentence HTML comment was added at the top of each file. No script, style, noscript or base64 content was present inside the captured elements, so nothing else changed. Angular scoped attributes and empty comment nodes were deliberately left in place.",
+  "proseNotes": "On /search the filters are a sidebar at 1024 pixels and wider and a \"Focus Your Search\" modal at 1023 pixels and narrower. The sidebar has a Hide or Show button that adds and removes the whole filter content from the DOM. The modal keeps its content in the DOM at all times and only toggles the is-hidden and is-visible classes on div#focus-your-search-modal, so a guided walkthrough must click button[aria-controls=\"focus-your-search-modal\"] first and then wait for the wrapper to have is-visible before highlighting the Recruiting or Interventional labels. The home page has no collapsing panel, but its Study Type group stays hidden until the More Filters button is clicked, and its status control is a pair of radios rather than checkboxes."
+}
