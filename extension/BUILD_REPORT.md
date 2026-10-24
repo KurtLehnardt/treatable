@@ -6,7 +6,7 @@ The current extension supports local panel-memory screening, a default fictional
 - Both current builds remove Save/Remember and gate entry on deletion-only legacy cleanup. Profiles, notices/receipts, tokens, exact previews, results and traces live in active session memory only.
 - Real analysis requires scroll-bottom acknowledgment, explicit acceptance, minimized public selections, native local preparation, and a separate exact-payload confirmation for each operation. Execution uses the pinned expiring token/digest only.
 - Current packages are treatable-version-a-current.zip and treatable-version-b-current.zip. Original A packages are historical PRE-PRIVACY BASELINE — NOT CURRENT, never current secure downloads.
-- Independent combined security review is pending at this checkpoint; earlier UI-only approval does not approve the new cloud/privacy implementation. Canonical integration and live credential setup remain separate.
+- Fresh independent source and automated-boundary security review passed for 29f126b; see SECURITY_REVIEW.md. Earlier UI-only approval is separate. Canonical integration is complete; live credential setup and API execution remain unverified.
 
 ## Historical local/Ollama prototype report — not current behavior
 

@@ -71,7 +71,7 @@ Agents keeps provider state until deletion and is not a zero-data-retention endp
 
 ## Verification
 
-The combined real-consent checkpoint passes 49 extension tests, 21 native tests, typecheck and both builds. Gates include scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Independent combined security review follows implementation.
+The combined real-consent checkpoint passes 49 extension tests, 21 native tests, typecheck and both builds. Gates include scroll/checkbox, exact-token, expiry, one-use, canary and lifecycle regressions. Tests include legacy deletion failure, real-profile canary non-egress, no storage reads/writes, malformed messages, distinct panel ownership, real close-event handlers, stale result suppression, form submission, preview/consent and cleanup failures. Provider tests use stub transports; **no live API key/access or actual Chrome installation is verified**. Fresh independent source and automated-boundary review passed; see [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 
 [North star and 3-minute demo](NORTHSTAR.md) · [Version B design evidence](VERSION_B_REVIEW.md)
 
