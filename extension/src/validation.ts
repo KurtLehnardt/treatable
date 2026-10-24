@@ -10,6 +10,20 @@ export function boundedText(value:unknown,label:string,max:number,{multiline=fal
  if(typeof value!=='string'||value.length>max||CONTROLS.test(value)||LONE_SURROGATE.test(value)||(!multiline&&SINGLE_LINE.test(value)))throw new Error(`${label} contains unsupported text or exceeds its limit.`);
  const text=value.normalize('NFC').trim();if(!empty&&!text)throw new Error(`${label} is required.`);return text;
 }
+/** Longest prefix of at most `max` UTF-16 units that ends on a code-point boundary (never a lone high surrogate). */
+export function cutCodePoints(value:string,max:number):string{let out=value.length>max?value.slice(0,max):value;const last=out.charCodeAt(out.length-1);if(last>=0xd800&&last<=0xdbff)out=out.slice(0,-1);return out;}
+// Controls, format/bidi/zero-width/tag characters, every default-ignorable code point and (with /u) lone surrogates.
+const PAGE_INVISIBLE=/[\p{Cc}\p{Cf}\p{Cs}\p{Default_Ignorable_Code_Point}]/gu;
+/** Display-only text read from an exact-origin study page (never model input). Harmless invisible or control characters are
+ * stripped instead of rejected, and the result is cut on a code-point boundary; an overlong single-line value ends in an
+ * ellipsis. Callers type-check first: anything other than a primitive string, or a raw value over `rawMax`, is rejected. */
+export function sanitizePageText(value:unknown,label:string,max:number,{multiline=false,rawMax=100000}:{multiline?:boolean;rawMax?:number}={}):string{
+ if(typeof value!=='string'||value.length>rawMax)throw new Error(`${label} contains unsupported text or exceeds its limit.`);
+ let text=value.replace(/\r\n?|[\u2028\u2029]/g,'\n');if(!multiline)text=text.replace(/[\n\t]+/g,' ');
+ text=text.replace(PAGE_INVISIBLE,ch=>ch==='\n'||ch==='\t'?ch:'').normalize('NFC').trim();
+ if(text.length<=max)return text;
+ return multiline?cutCodePoints(text,max).trimEnd():cutCodePoints(text,max-1).trimEnd()+'\u2026';
+}
 export function withinMessageBudget(value:unknown):void{let body:string|undefined;try{body=JSON.stringify(value)}catch{throw new Error('Unsupported local message.')}if(!body||new TextEncoder().encode(body).byteLength>MAX_MESSAGE_BYTES)throw new Error('Local message exceeds its size limit.');}
 export function parseFormInput(value:unknown):FormInput{
  if(!record(value))throw new Error('Check your profile fields.');const fields=['condition','notes','age','sex','zip','radius'];exactKeys(value,fields);if(fields.some(key=>!Object.prototype.hasOwnProperty.call(value,key)))throw new Error('Check your profile fields.');
