@@ -26,13 +26,13 @@ test('detection: Ollama is found only at absolute known locations that hold an e
   assert.equal(await findOllama([path.join(root,'missing'),notExec,'relative/ollama',root,'ollama']),undefined);
   assert.equal(await findOllama([path.join(root,'missing'),notExec,link,exec]),await realpath(exec),'symlinks resolve to the real file');
   const saved=process.env.PATH;process.env.PATH=root;try{assert.equal(await findOllama([path.join(root,'nope')]),undefined,'PATH is not searched')}finally{process.env.PATH=saved}
- }finally{await rm(root,{recursive:true,force:true})}
+ }finally{await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('installed weights must be local manifests whose model blobs exist with the recorded sizes',async()=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'treatable-weights-'));try{const dir=await modelsDir(root,['qwen3.5:9b','gemma4:latest','mirror:latest'],{badBlob:['gemma4:latest']});
   assert.equal(await hasLocalWeights(dir,'qwen3.5:9b'),true);assert.equal(await hasLocalWeights(dir,'gemma4:latest'),false,'blob size mismatch');assert.equal(await hasLocalWeights(dir,'mirror:latest'),false,'remote manifest');assert.equal(await hasLocalWeights(dir,'qwen3:32b'),false,'missing');assert.equal(await hasLocalWeights(dir,'../../x'),false);
- }finally{await rm(root,{recursive:true,force:true})}
+ }finally{await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('machine profile: Apple Silicon unified memory, CPU brand, free disk; only fixed fields, no identifiers',async()=>{
@@ -86,11 +86,11 @@ test('dedicated runtime: own ephemeral 127.0.0.1 port, minimal env with cloud di
   const pid=Number(await readFile(fake.pidFile,'utf8')),home=rt.home;assert.ok(alive(pid));
   await rt.stop();assert.equal(alive(pid),false,'stopped');await assert.rejects(stat(home),'private HOME removed');
   userDaemon.close();
- }finally{await rt?.stop();await rm(root,{recursive:true,force:true})}
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('runtime failures: exit on start, never listening (timeout), invalid version and ownership loss are LOCAL_RUNTIME_FAILED; the child is killed',async()=>{
- for(const start of['exit','hang','badVersion']){const root=await mkdtemp(path.join(os.tmpdir(),'treatable-runtime-fail-'));let rt;try{const fake=await fakeOllama(root,{start}),dir=await modelsDir(root,['qwen3.5:9b']);rt=new OllamaRuntime({binary:fake.binary,modelsDir:dir,startTimeoutMs:1500});const t=Date.now();await assert.rejects(rt.ensure(),{code:'LOCAL_RUNTIME_FAILED'},start);assert.ok(Date.now()-t<4000,start);const pid=Number(await readFile(fake.pidFile,'utf8').catch(()=>'0'));if(pid)await poll(()=>!alive(pid),3000);assert.equal(rt.child,undefined);}finally{await rt?.stop();await rm(root,{recursive:true,force:true})}}
+ for(const start of['exit','hang','badVersion']){const root=await mkdtemp(path.join(os.tmpdir(),'treatable-runtime-fail-'));let rt;try{const fake=await fakeOllama(root,{start}),dir=await modelsDir(root,['qwen3.5:9b']);rt=new OllamaRuntime({binary:fake.binary,modelsDir:dir,startTimeoutMs:1500});const t=Date.now();await assert.rejects(rt.ensure(),{code:'LOCAL_RUNTIME_FAILED'},start);assert.ok(Date.now()-t<4000,start);const pid=Number(await readFile(fake.pidFile,'utf8').catch(()=>'0'));if(pid)await poll(()=>!alive(pid),3000);assert.equal(rt.child,undefined);}finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}}
  // A listener that is not our child process is never trusted.
  const impostor=net.createServer().listen(0,'127.0.0.1');await new Promise(r=>impostor.once('listening',r));const sleeper=spawn('/bin/sleep',['30']);try{const rt=new OllamaRuntime({binary:'/bin/sleep',modelsDir:'/tmp'});Object.assign(rt,{child:sleeper,serverPid:sleeper.pid,port:impostor.address().port});assert.equal(await rt.ownsListener(),false);}finally{sleeper.kill('SIGKILL');impostor.close();}
  await assert.rejects(MISSING_RUNTIME.ensure(),{code:'LOCAL_NOT_INSTALLED'});
@@ -133,7 +133,7 @@ test('local pipeline against the fake runtime: validated brief and routes, model
   s.clear();
   // No confidence from the model: none is shown or invented.
   await fake.set({confidence:false});await rt.stop();const again=await pinnedLocal();const r2=await runLocalStudyBrief(rt,again.pin);assert.equal(r2.decisionStatus,'complete');assert.deepEqual(r2.local.confidences,[]);again.s.clear();
- }finally{await rt?.stop();await rm(root,{recursive:true,force:true})}
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('local failures: invalid JSON falls back to the OpenAI-path defaults, timeouts and missing models are labeled, and Stop cancels',async()=>{
@@ -150,7 +150,7 @@ test('local failures: invalid JSON falls back to the OpenAI-path defaults, timeo
   ({s,pin}=await pinnedLocal('nomic-embed-text:latest'));r=await runLocalStudyBrief(rt,pin);assert.deepEqual(r.failureCodes,['LOCAL_MODEL_UNAVAILABLE'],'an embedding model cannot write a brief');s.clear();
   ({s,pin}=await pinnedLocal());r=await runLocalStudyBrief(MISSING_RUNTIME,pin);assert.deepEqual(r.failureCodes,['LOCAL_NOT_INSTALLED']);assert.equal(r.local.version,null);s.clear();
   await fake.set({chat:'slow',chatDelay:20000});({s,pin}=await pinnedLocal());const controller=new AbortController();setTimeout(()=>controller.abort(),400);t=Date.now();await assert.rejects(runLocalStudyBrief(rt,pin,{signal:controller.signal}),{code:'CANCELLED'});assert.ok(Date.now()-t<3000);s.clear();
- }finally{await rt?.stop();await rm(root,{recursive:true,force:true})}
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('contract: local engine and local model checks are strict; OpenAI stays the default',()=>{
@@ -183,7 +183,7 @@ test('stdio: local check and local brief never read the key or call OpenAI; cana
   assert.equal((await host.call({id:'again',type:'executeStudyBrief',payload:{token:prep.result.token,digest:prep.result.digest}})).code,'INVALID_APPLY_RECEIPT');
   // Chrome may SIGKILL the helper; the watchdog still stops the dedicated runtime because the helper's pipe closes.
   const pid=Number(await readFile(fake.pidFile,'utf8')),runtimeHome=ollamaLog.find(x=>x.event==='start').env.HOME;assert.ok(alive(pid));host.child.kill('SIGKILL');await host.exit;host=undefined;await poll(()=>!alive(pid),5000);await poll(async()=>!(await stat(runtimeHome).catch(()=>false)),5000);
- }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true})}
+ }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('stdio: Ollama missing gives a not-installed check with a pull suggestion, and a local brief reports LOCAL_NOT_INSTALLED without touching OpenAI',async()=>{
@@ -193,7 +193,7 @@ test('stdio: Ollama missing gives a not-installed check with a pull suggestion, 
   const prep=await host.call({id:'prep',type:'prepareStudyBrief',payload:{nctIds:ids,provider:'local',model:'qwen3.5:9b'}});assert.equal(prep.ok,true,prep.code);
   const run=await host.call({id:'run',type:'executeStudyBrief',payload:{token:prep.result.token,digest:prep.result.digest}});assert.equal(run.ok,true,run.code);assert.deepEqual(run.result.failureCodes,['LOCAL_NOT_INSTALLED']);assert.equal(run.result.agentStatus,'failed');
   assert.equal((await readLines(installed.log)).filter(x=>x.host==='api.openai.com').length,0);host.child.stdin.end();await host.exit;host=undefined;
- }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true})}
+ }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 test('installer: Ollama overrides are refused outside an isolated test home, before anything is written',()=>{
@@ -232,5 +232,5 @@ test('ranking against the fake runtime: ten studies in input order, per-study va
   r=await runLocalRanking(MISSING_RUNTIME,{profile:PROFILE,studies:studies.slice(0,2),model:'qwen3.5:9b'});assert.ok(r.studies.every(s=>s.failure==='LOCAL_NOT_INSTALLED'));
   await fake.set({rank:'slow',chatDelay:20000});const controller=new AbortController();setTimeout(()=>controller.abort(),400);await assert.rejects(runLocalRanking(rt,{profile:PROFILE,studies,model:'qwen3.5:9b'},{signal:controller.signal}),{code:'CANCELLED'});
   await assert.rejects(runLocalRanking(rt,{profile:{conditions:['x'],name:'PATIENT_CANARY'},studies,model:'qwen3.5:9b'}));
- }finally{await rt?.stop();await rm(root,{recursive:true,force:true})}
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });

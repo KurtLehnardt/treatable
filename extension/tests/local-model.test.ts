@@ -63,7 +63,7 @@ test('canary: a local study brief runs through the real broker, native helper an
   assert.equal(openai.length,0,'nothing was sent to OpenAI');let reads='';try{reads=await readFile(installed.reads,'utf8')}catch{}assert.equal(reads,'','no Keychain read');
   assert.equal(ollamaLog.filter((x:any)=>x.path==='/api/chat').length,2);assert.ok(native.sent.some(v=>v.type==='prepareStudyBrief'&&v.payload.provider==='local'&&v.payload.model===model));
   await act(async()=>ref.vm!.end());
- }finally{if(renderer)act(()=>renderer!.unmount());try{host?.child.stdin.end()}catch{}host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true})}
+ }finally{if(renderer)act(()=>renderer!.unmount());try{host?.child.stdin.end()}catch{}host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 
 /* Broker: the engine must be echoed exactly, a local result must come from a local preparation, and the model check carries no input. */

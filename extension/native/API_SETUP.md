@@ -1,6 +1,6 @@
 # Consented OpenAI native bridge
 
-The Chrome extension’s matching window uses a stdio-only native helper registered for its pinned extension ID. There is no localhost HTTP inference listener or Ollama daemon. The browser cannot provide credentials, prompts, endpoints, model settings or tool definitions.
+The Chrome extension’s matching window uses a stdio-only native helper registered for its pinned extension ID. The helper has no HTTP listener of its own. When the user chooses Settings → Model provider → Local model, the helper starts a private `ollama serve` for that purpose only (see [Local model](#local-model-ollama-on-this-device)); it never uses the user's own Ollama daemon. The browser cannot provide credentials, prompts, endpoints, model settings or tool definitions.
 
 ## Setup on macOS
 
@@ -52,6 +52,18 @@ The protected `private-match.html` window is non-web-accessible and must match i
 - `agentLive` uses `POST https://api.openai.com/v1/agents/sessions`, `OpenAI-Beta: agents=v1`, `gpt-6-astra`, `environment.type: none` and one read-only `get_public_trial_evidence` function restricted to the selected 1–2 NCT IDs. It must read each study, complete its turn, and return known study/question/caution IDs. Trusted templates render the result. Agents does not consume Decisions scores.
 
 There is no Responses-API substitution or fabricated live mode. Stub transports return `mode: test`; production results require validated provider responses. Public text is untrusted data and model authority is bounded; this is not an absolute guarantee against influence on allowed choices.
+
+## Local model (Ollama on this device)
+
+The `localModels` operation takes no input. It finds Ollama only at `/opt/homebrew/bin/ollama`, `/usr/local/bin/ollama` or `/Applications/Ollama.app/Contents/Resources/ollama` (never through PATH), profiles the machine (total memory, CPU brand and architecture, Apple Silicon unified memory, free disk), lists installed models that can generate text and recommends one, or suggests an `ollama pull` command. It never downloads anything.
+
+A local brief is prepared like an OpenAI brief (`prepareStudyBrief` with `provider: 'local'` and an installed model name), and the first local request is pinned and digested at preparation. Execution reads no credential. The helper starts `ollama serve` through `local-watchdog.mjs` with `OLLAMA_HOST=127.0.0.1:<ephemeral port>`, `OLLAMA_NO_CLOUD=1`, `OLLAMA_NOPRUNE=1`, `OLLAMA_MODELS=~/.ollama/models`, one loaded model, a minimal environment (`PATH=/usr/bin:/bin` and a private empty `HOME`), and checks with `lsof` that the listening socket on that port belongs to the process it started before every request. Requests go straight to that loopback port with no proxy. Step 1 has a 150-second limit and step 2 a 75-second limit; Stop cancels the request. The watchdog stops the runtime and removes its private home when the helper's pipe closes, so a helper that Chrome kills does not leave the runtime behind; the helper also stops it after five idle minutes.
+
+Reinstall the helper after updating native source so the local model files are copied:
+
+```sh
+node extension/native/install.mjs --manifest extension/dist/manifest.json
+```
 
 ## Retained fictional and snapshot paths
 
