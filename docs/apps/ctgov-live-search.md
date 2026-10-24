@@ -89,7 +89,7 @@ Pagination: `searchTrials` returns `nextPageToken` when more pages exist. A late
 - Structured values (ages, roles, ZIP codes, coordinates, emails, dates) must match strict patterns or are dropped, so missing information stays unknown.
 - Only United States locations are kept (at most 500), and contacts (at most 20) come from central contacts, overall officials, and contacts of United States locations. Contacts and locations are shown to the user locally; they are not part of any model-bound payload.
 - `sourceUrl` is built from the NCT ID (`https://clinicaltrials.gov/study/NCT...`), never taken from the response. `retrievedAt` is the clock-port time at which the record's page arrived.
-- Each record is fitted to 40 KiB; every field shortened on the way is listed in `truncatedFields`. The full record is at `sourceUrl`.
+- Each record is fitted to 40 KiB in a fixed order: locations (those in the chosen state first), then criteria, summary, contacts, MeSH terms, and conditions. Every field shortened on the way is listed in `truncatedFields`. The full record is at `sourceUrl`. Known limit: when the fields other than locations alone exceed 40 KiB (seen only in constructed test records), every location is dropped before other fields are cut.
 
 ## 5. Cache
 

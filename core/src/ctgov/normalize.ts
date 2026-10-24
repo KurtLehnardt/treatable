@@ -247,14 +247,19 @@ function fitRecord(record: StudyRecord, stateName: string | undefined, flags: Se
     eligibility: { ...current.eligibility, criteria: truncateUtf8(criteria, n).text },
   });
   const criteriaBytes = largest(utf8ByteLength(criteria), n => fits(withCriteria(n)));
-  current = withCriteria(criteriaBytes);
-  flags.add('criteria');
+  if (criteriaBytes < utf8ByteLength(criteria)) {
+    current = withCriteria(criteriaBytes);
+    flags.add('criteria');
+  }
   if (fits(current)) return current;
 
   const summary = current.summary;
   const withSummary = (n: number): StudyRecord => ({ ...current, summary: truncateUtf8(summary, n).text });
-  current = withSummary(largest(utf8ByteLength(summary), n => fits(withSummary(n))));
-  flags.add('summary');
+  const summaryBytes = largest(utf8ByteLength(summary), n => fits(withSummary(n)));
+  if (summaryBytes < utf8ByteLength(summary)) {
+    current = withSummary(summaryBytes);
+    flags.add('summary');
+  }
   if (fits(current)) return current;
 
   for (const field of ['contacts', 'meshTerms', 'conditions'] as const) {

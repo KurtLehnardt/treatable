@@ -564,6 +564,18 @@ test('normalization keeps missing information unknown and caps lists (mocked)', 
   assert.equal(capped.record.locations.length <= 500, true);
   assert.equal(capped.record.contacts.length, 20);
   assert.ok(capped.record.truncatedFields.includes('locations') && capped.record.truncatedFields.includes('contacts'));
+  // Only fields that were actually shortened are flagged (empty criteria and summary are not).
+  const termHeavy = rawStudy(fictionalId(84), s => {
+    s.protocolSection.descriptionModule.briefSummary = '';
+    s.protocolSection.eligibilityModule.eligibilityCriteria = '';
+    s.protocolSection.conditionsModule.conditions = Array.from({ length: 100 }, (_, i) => `${i} ${'語'.repeat(290)}`);
+    s.derivedSection.conditionBrowseModule.meshes = Array.from({ length: 100 }, (_, i) => ({ term: `${i} ${'術'.repeat(290)}` }));
+  });
+  const heavy = normalizeStudy(termHeavy, ctx);
+  assert.ok(heavy.ok);
+  assert.ok(utf8ByteLength(JSON.stringify(heavy.record)) <= MAX_STUDY_RECORD_BYTES);
+  assert.ok(!heavy.record.truncatedFields.includes('criteria') && !heavy.record.truncatedFields.includes('summary'), heavy.record.truncatedFields.join(','));
+  assert.ok(heavy.record.truncatedFields.includes('meshTerms') || heavy.record.truncatedFields.includes('conditions'));
   assert.deepEqual(normalizeStudy('nope', ctx), { ok: false, reason: 'not_object' });
   assert.deepEqual(normalizeStudy(rawStudy(fictionalId(83), s => delete s.protocolSection.identificationModule.briefTitle && delete s.protocolSection.identificationModule.officialTitle), ctx), { ok: false, reason: 'title' });
 });
