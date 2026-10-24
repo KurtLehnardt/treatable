@@ -20,7 +20,9 @@
  *
  * Task A2 wires two built-in pipelines (see the "A2 built-ins" block in createCore): searchTrials is
  * the live ClinicalTrials.gov search (src/ctgov), and the prepareReal builder is record-set pinning
- * (src/pinning). Hosts may still pass their own pipelines (tests do), but prepareReal always runs
+ * (src/pinning). Both are wired only in 'live' mode, the mode that declares the transport port
+ * reaches the real network; mocked and test cores stay NOT_IMPLEMENTED unless the host passes
+ * pipelines. Hosts may still pass their own pipelines (tests do), but prepareReal always runs
  * verifyPinnedPreview on the built preview, so no builder can bypass the session record-set pin
  * (docs/apps/record-set-pinning.md).
  */
@@ -164,11 +166,16 @@ export function createCore(portsInput: CorePorts, options: CoreOptions): Core {
   if (!(MODES as readonly string[]).includes(options?.mode) || !(RUNTIMES as readonly string[]).includes(options?.runtime)) {
     throw new TypeError('Treatable core requires a mode and a runtime.');
   }
-  // A2 built-ins: live ClinicalTrials.gov search and the record-set pinned preview builder.
-  const builtins: Partial<Pipelines> = {
-    searchTrials: createSearchTrialsPipeline(ports),
-    buildPreview: async (ctx, packet) => buildPinnedPreview(ctx.session, packet),
-  };
+  // A2 built-ins, live mode only: the live ClinicalTrials.gov search and the record-set pinned
+  // preview builder. In 'mocked' and 'test' modes nothing is wired, so a host with a fake transport
+  // can never start a live search by mistake.
+  const builtins: Partial<Pipelines> =
+    options.mode === 'live'
+      ? {
+          searchTrials: createSearchTrialsPipeline(ports),
+          buildPreview: async (ctx, packet) => buildPinnedPreview(ctx.session, packet),
+        }
+      : {};
   const pipelines: Partial<Pipelines> = { ...builtins, ...(options.pipelines ?? {}) };
   const sessionOptions = options.consentTtlMs !== undefined ? { ttlMs: options.consentTtlMs } : {};
   let session = createSession(ports, sessionOptions);

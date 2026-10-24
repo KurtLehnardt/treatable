@@ -322,16 +322,30 @@ test('status, search, and screening results are strict and bounded; records carr
     sponsor: null, locations: [{ city: 'Boise', state: 'Idaho', country: 'United States', geo: { lat: 43.6, lon: -116.2 } }],
     contacts: [{ name: 'Fictional Study Team', phone: '555-0100', email: 'team@example.invalid' }],
     lastUpdatePostDate: '2026-09', sourceUrl: `https://clinicaltrials.gov/study/${FICTIONAL_IDS[0]}`, retrievedAt: '2026-10-24T08:00:00Z',
+    truncatedFields: [],
   };
   assert.equal(StudyRecordSchema.safeParse(record).success, true);
-  for (const bad of [{ ...record, retrievedAt: undefined }, { ...record, sourceUrl: 'https://clinicaltrials.gov/study/NCT00000000' }, { ...record, rank: 1 }, { ...record, contacts: Array(21).fill({ name: 'x' }) }]) {
+  const badRecords = [
+    { ...record, retrievedAt: undefined },
+    { ...record, sourceUrl: 'https://clinicaltrials.gov/study/NCT00000000' },
+    { ...record, rank: 1 },
+    { ...record, contacts: Array(21).fill({ name: 'x' }) },
+    { ...record, truncatedFields: undefined },
+    { ...record, truncatedFields: 'title' },
+    { ...record, truncatedFields: ['title', 'title'] },
+    { ...record, truncatedFields: ['locations', 'freeText'] },
+  ];
+  for (const bad of badRecords) {
     assert.equal(StudyRecordSchema.safeParse(bad).success, false);
   }
-  const search = { records: [record], nextPageToken: 'NF0g5JKG', retrievedAt: '2026-10-24T08:00:00Z', source: 'live', query: { conditionTerms: ['asthma'], state: 'ID', country: 'US' } };
+  const search = { records: [record], nextPageToken: 'NF0g5JKG', retrievedAt: '2026-10-24T08:00:00Z', source: 'live', skippedRecords: 0, query: { conditionTerms: ['asthma'], state: 'ID', country: 'US' } };
   assert.equal(SearchTrialsResultSchema.safeParse(search).success, true);
   assert.equal(SearchTrialsResultSchema.safeParse({ ...search, query: { ...search.query, zip: '83702' } }).success, false);
   assert.equal(SearchTrialsResultSchema.safeParse({ ...search, records: [record, record] }).success, false);
   assert.equal(SearchTrialsResultSchema.safeParse({ ...search, source: 'snapshot' }).success, false);
+  assert.equal(SearchTrialsResultSchema.safeParse({ ...search, skippedRecords: undefined }).success, false);
+  assert.equal(SearchTrialsResultSchema.safeParse({ ...search, skippedRecords: -1 }).success, false);
+  assert.equal(SearchTrialsResultSchema.safeParse({ ...search, skippedRecords: 76 }).success, false);
   const screen = { results: [{ nctId: FICTIONAL_IDS[0], bucket: 'unknown', checks: [{ rule: 'age', status: 'met' }, { rule: 'sex', status: 'unknown' }], distanceMiles: null, outOfRadius: false, stale: false }] };
   assert.equal(RESULT_SCHEMAS.screenLocal.safeParse(screen).success, true);
   assert.equal(RESULT_SCHEMAS.screenLocal.safeParse({ results: [{ ...screen.results[0], bucket: 'eligible' }] }).success, false);

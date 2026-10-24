@@ -16,6 +16,7 @@ import {
 } from '../../src/protocol.ts';
 import { testPorts, type TestPorts } from './fakes.ts';
 import { FICTIONAL_IDS } from './preview.ts';
+import { buildPinnedPreview } from '../../src/pinning/preview.ts';
 import { prepareRecordMerge } from '../../src/pinning/record-set.ts';
 
 export const receipt = { policyVersion: CONSENT_POLICY_VERSION, accepted: true } as const;
@@ -112,6 +113,8 @@ export function harness(opts: HarnessOptions = {}) {
         query: { conditionTerms: payload.conditionTerms, ...(payload.state ? { state: payload.state } : {}), country: 'US' },
       };
     },
+    // Same pinned builder the 'live' core uses, so mocked tests run the real record-set pinning.
+    buildPreview: async (ctx, packet) => buildPinnedPreview(ctx.session, packet),
     executeReal: ctx => (opts.execute ?? defaultExecute)(ctx, log),
     ...(opts.pipelines ?? {}),
   };
