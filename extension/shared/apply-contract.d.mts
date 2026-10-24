@@ -9,7 +9,7 @@ export interface ApplyRecord{nctId:string;title:string;officialTitle:string|null
 export interface PreparedApply{kind:'preparedApply';token:string;digest:string;expiresAt:number;nctId:string;record:ApplyRecord;preview:{agentsRequest:Record<string,unknown>;toolResults:{section:ApplyToolSection;output:string}[]}}
 export interface ApplyResult{kind:'applyAgent';mode:'live'|'test';nctId:string;digest:string;questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];flagIds:ApplyFlagId[];sectionsRead:ApplyToolSection[];toolCalls:number;cleanup:'deleted'|'failed'}
 export type ApplyRequest={id:string}&({type:'prepareApply';payload:{nctId:string}}|{type:'executeApply';payload:{token:string;digest:string}}|{type:'revokeApply';payload:{token?:string}});
-export const APPLY_REQUEST_TYPES:readonly string[];export const APPLY_TOKEN_TTL_MS:number;export const APPLY_MAX_SITES:number;export const APPLY_MAX_SITE_CONTACTS:number;export const APPLY_MAX_CENTRAL_CONTACTS:number;export const APPLY_MAX_OFFICIALS:number;export const APPLY_TOOL_SECTIONS:readonly ApplyToolSection[];
+export const APPLY_REQUEST_TYPES:readonly string[];export const APPLY_TOKEN_TTL_MS:number;export const APPLY_MAX_SITES:number;export const APPLY_MAX_SITE_CONTACTS:number;export const APPLY_MAX_CENTRAL_CONTACTS:number;export const APPLY_MAX_OFFICIALS:number;export const APPLY_RECORD_MAX_BYTES:number;export const APPLY_TOOL_SECTIONS:readonly ApplyToolSection[];
 export const APPLY_QUESTION_TEMPLATES:Readonly<Record<ApplyQuestionId,string>>;export const APPLY_PRESCREEN_TEMPLATES:Readonly<Record<ApplyPrescreenId,string>>;export const APPLY_FLAG_TEMPLATES:Readonly<Record<ApplyFlagId,string>>;
 export function applyNctId(v:unknown):string;
 export function parseApplyRecord(v:unknown):ApplyRecord;

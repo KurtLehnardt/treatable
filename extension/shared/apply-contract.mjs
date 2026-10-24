@@ -7,6 +7,8 @@ export const APPLY_MAX_SITES=150;
 export const APPLY_MAX_SITE_CONTACTS=4;
 export const APPLY_MAX_CENTRAL_CONTACTS=4;
 export const APPLY_MAX_OFFICIALS=6;
+// Upper bound for a normalized record (unchanged value); normalizeApplyRecord drops trailing sites to stay within a budget instead of failing.
+export const APPLY_RECORD_MAX_BYTES=MAX_MESSAGE_BYTES-8*1024;
 export const APPLY_TOOL_SECTIONS=Object.freeze(['overview','eligibility','design','locations_contacts']);
 // Questions the patient can ask the study team. Rendered only from this table.
 export const APPLY_QUESTION_TEMPLATES=Object.freeze({
@@ -67,7 +69,7 @@ export function parseApplyRecord(v){
  if(!Array.isArray(v.officials)||v.officials.length>APPLY_MAX_OFFICIALS||!v.officials.every(official))throw Error('Invalid study officials');
  if(!Array.isArray(v.sites)||v.sites.length>APPLY_MAX_SITES||!v.sites.every(site))throw Error('Invalid study sites');
  const contacts=[...v.centralContacts,...v.sites.flatMap(s=>s.contacts)];if(!uniqueIds(contacts)||!uniqueIds(v.officials)||!uniqueIds(v.sites))throw Error('Duplicate record part IDs');
- if(utf8Bytes(v)>MAX_MESSAGE_BYTES-8*1024)throw Error('Public apply record too large');return v;
+ if(utf8Bytes(v)>APPLY_RECORD_MAX_BYTES)throw Error('Public apply record too large');return v;
 }
 export function parseApplyRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid apply operation');const p=v.payload;
