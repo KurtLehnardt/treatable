@@ -9,7 +9,7 @@ export const LIVE_POLICY_VERSION=REAL_POLICY_VERSION;
 const HASH=/^[a-f0-9]{64}$/,TOKEN=/^[A-Za-z0-9_-]{43}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export const LIVE_REQUEST_TYPES=Object.freeze(['liveCatalog','prepareLive','executeLive','revokeLive']);
 export function liveNctIds(v,max=LIVE_MAX_STUDIES){if(!Array.isArray(v)||!v.length||v.length>max||new Set(v).size!==v.length||v.some(x=>typeof x!=='string'||!/^NCT[0-9]{8}$/.test(x)))throw Error('Choose a bounded unique set of public NCT IDs');return [...v];}
-export function parseLiveSource(v){if(!exactKeys(v,['generation','queryKey'])||!validId(v.generation)||typeof v.queryKey!=='string'||!HASH.test(v.queryKey))throw Error('Invalid current-page source binding');return structuredClone(v);}
+export function parseLiveSource(v){if(!exactKeys(v,['generation','queryKey'])||!validId(v.generation)||typeof v.queryKey!=='string'||!HASH.test(v.queryKey))throw Error('Invalid current-page source binding');return {generation:v.generation,queryKey:v.queryKey};}
 export function parseLivePacket(v){
  if(!exactKeys(v,['ageBand','state','sex','conditionIds','selectedNctIds','agentNctIds'])||!AGE_BANDS.includes(v.ageBand))throw Error('Invalid minimized live profile');
  if(v.state!==undefined&&!US_STATES.includes(v.state))throw Error('Invalid optional US state');
