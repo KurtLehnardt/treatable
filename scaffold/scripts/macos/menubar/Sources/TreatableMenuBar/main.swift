@@ -263,7 +263,9 @@ final class TreatableMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
   private var signalSources: [DispatchSourceSignal] = []
 
   override init() {
-    port = Int(env("TREATABLE_PORT") ?? "") ?? 0
+    let configuredPort = Int(env("TREATABLE_PORT") ?? "") ?? 0
+    guard configuredPort > 0 else { fatalError("Launch the menu bar through treatable-tray.sh with the configured application port") }
+    port = configuredPort
     trayScript = env("TREATABLE_TRAY_SCRIPT") ?? ""
     logFile = env("TREATABLE_LOG_FILE") ?? ""
     statusPath = env("TREATABLE_STATUS_FILE")
@@ -272,7 +274,7 @@ final class TreatableMenuBar: NSObject, NSApplicationDelegate, NSMenuDelegate {
     iconPath = env("TREATABLE_MENUBAR_ICON")
     settingsPath =
       env("TREATABLE_SETTINGS_PATH") ?? "\(NSHomeDirectory())/Library/Application Support/Treatable/settings.json"
-    url = "http://localhost:\(Int(env("TREATABLE_PORT") ?? "") ?? 0)"
+    url = "http://localhost:\(configuredPort)"
     super.init()
   }
 

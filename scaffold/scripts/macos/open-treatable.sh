@@ -267,12 +267,13 @@ fi
 # browser argument or confuse `open`. Exactly what the Windows script refuses:
 # anything that isn't http(s), and anything containing whitespace or a quote.
 if [ -z "$URL" ]; then usage; exit 64; fi
+# shellcheck disable=SC1003 # Literal quote/backslash characters are intentionally rejected.
 case "$URL" in
   http://*|https://*) ;;
   *) printf 'open-treatable.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
 esac
+# shellcheck disable=SC1003 # Literal quote/backslash characters are intentionally rejected.
 case "$URL" in
-  # shellcheck disable=SC1003 # Literal quote/backslash characters are intentionally rejected.
   *[[:space:]]*|*'"'*|*"'"*|*'\'*|*'`'*|*'$'*)
     printf 'open-treatable.sh: --url must be an http(s) URL\n' >&2; exit 64 ;;
 esac
