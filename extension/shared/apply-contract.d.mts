@@ -19,7 +19,7 @@ export function parseApplyResult(v:unknown):ApplyResult;
 export function parseApplyReply(v:unknown,expectedId:string):{id:string;type:'result';ok:boolean;result?:PreparedApply|ApplyResult|PreparedStudyBrief|StudyBriefResult;code?:string;error?:string};
 
 export type StudySourceCategory='overview'|'timeline'|'design'|'eligibility'|'contact';
-export interface StudySourceItem{id:string;category:StudySourceCategory;label:string;field:string;text:string;sourceUrl:string}
+export interface StudySourceItem{id:string;category:StudySourceCategory;label:string;field:string;text:string;sourceUrl:string;context?:'inclusion'|'exclusion'|'eligibility_unspecified'|'registry_milestone'|'participant_schedule';dateType?:'ACTUAL'|'ESTIMATED'|'UNSPECIFIED'}
 export interface PublicStudyBrief{nctId:string;sourceUrl:string;fetchedAt:number;items:StudySourceItem[];unknowns:string[];claims?:StudyBriefClaim[]}
 export interface PreparedStudyBrief{kind:'preparedStudyBrief';token:string;digest:string;expiresAt:number;records:ApplyRecord[];briefs:PublicStudyBrief[]}
 export interface StudyQuestionRoute{questionId:ApplyQuestionId;route:'answered_by_record'|'ask_patient'|'ask_coordinator';evidenceIds:string[]}
