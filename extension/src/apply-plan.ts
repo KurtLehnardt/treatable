@@ -2,6 +2,7 @@
  * local fields and fixed catalog IDs. No text here comes from a model; patient details never enter the .ics reminder. */
 import{haversineMiles}from'../../scaffold/lib/eligibility/hardFilters';
 import{siteLocationStatus,validLocalOrigin,type LocalOrigin}from'./local-distance';
+import{dialNumber,isNanpCountry,TEL_HREF,type DialNumber}from'./phone';
 import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplyResult,type ApplySite}from'../shared/apply-contract.mjs';
 export const DEFAULT_QUESTION_IDS:readonly ApplyQuestionId[]=Object.freeze(['still_enrolling','prescreen_fit','visits','costs','next_steps']);
 export const DEFAULT_PRESCREEN_IDS:readonly ApplyPrescreenId[]=Object.freeze(['diagnosis_details','symptom_duration','recent_imaging','prior_treatments','medication_list']);
@@ -11,7 +12,9 @@ export interface ApplyPatient{name:string;phone:string;email:string;bestTimes:st
 export const blankPatient=():ApplyPatient=>({name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}});
 export type PlanContact=ApplyContact&{source:'site'|'central'};
 export interface SiteOption{site:ApplySite;distanceMiles?:number}
-export interface ApplyPlan{nctId:string;title:string;sourceUrl:string;site?:ApplySite;distanceMiles?:number;siteReason:'chosen'|'nearest'|'only'|'none';siteOptions:SiteOption[];primary?:PlanContact;backups:PlanContact[];investigator?:ApplyOfficial;flagIds:ApplyFlagId[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];answerIds:ApplyPrescreenId[];subject:string;body:string;phoneScript:string;followUpDate:string;followUpLabel:string;followUpSteps:string[];followUp:string;mailto?:string;tel?:string;missing:string[]}
+/** A listed contact with a phone number, and its dial link when the number is a complete, checkable phone number. */
+export interface CallContact{contact:PlanContact;dial?:DialNumber}
+export interface ApplyPlan{nctId:string;title:string;sourceUrl:string;site?:ApplySite;distanceMiles?:number;siteReason:'chosen'|'nearest'|'only'|'none';siteOptions:SiteOption[];primary?:PlanContact;backups:PlanContact[];investigator?:ApplyOfficial;flagIds:ApplyFlagId[];questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];answerIds:ApplyPrescreenId[];subject:string;body:string;phoneScript:string;callContacts:CallContact[];followUpDate:string;followUpLabel:string;followUpSteps:string[];followUp:string;followUpCall?:CallContact;mailto?:string;tel?:string;missing:string[]}
 const clean=(v:unknown,max=200)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,max):'';
 const norm=(v:string|null|undefined)=>(v||'').trim().toUpperCase().replace(/[\s-]+/g,'_');
 const reachable=(c:ApplyContact)=>!!(c.email||c.phone);
@@ -97,8 +100,10 @@ export function composePhoneScript(record:ApplyRecord,site:ApplySite|undefined,p
  return[`Say: Hello, my name is ${name}. I am calling about the study ${record.nctId}, ${clean(record.title,300)}${where?`, at ${where}`:''}. I found it on ClinicalTrials.gov and would like to know if I could take part.`,'','Questions to ask:',...questionIds.map((id,i)=>`${i+1}. ${APPLY_QUESTION_TEMPLATES[id]}`),'','If they ask, have this ready:',...prescreenIds.map(id=>`- ${APPLY_PRESCREEN_TEMPLATES[id]}`),'',`Before you hang up: ${reachLine(patient).replace(/^You can reach me/,'tell them they can reach you').replace(/\bme\b/g,'you')}`,'Write down the name of the person you spoke with and the date.'].join('\n');
 }
 const contactName=(c:{name:string|null}|undefined,fallback:string)=>clean(c?.name,160)||fallback;
+/** First listed contact with a phone number, in contact-chain order: the one the follow-up plan suggests calling. */
+export const followUpCallable=(primary:PlanContact|undefined,backups:PlanContact[])=>[primary,...backups].find((c):c is PlanContact=>!!c?.phone);
 export function followUpSteps(primary:PlanContact|undefined,backups:PlanContact[],investigator:ApplyOfficial|undefined){
- const steps:string[]=[],callable=[primary,...backups].find(c=>c?.phone),emailable=backups.find(c=>c.email&&c.email.toLowerCase()!==(primary?.email||'').toLowerCase());
+ const steps:string[]=[],callable=followUpCallable(primary,backups),emailable=backups.find(c=>c.email&&c.email.toLowerCase()!==(primary?.email||'').toLowerCase());
  if(callable)steps.push(`call ${contactName(callable,'the study contact')} at ${callable.phone}${callable.phoneExt?` ext. ${callable.phoneExt}`:''}`);
  if(emailable)steps.push(`email ${contactName(emailable,'the backup contact')} at ${emailable.email}`);
  if(investigator?.name)steps.push(`contact ${investigator.name}${investigator.affiliation?` at ${investigator.affiliation}`:''} (the study's principal investigator)`);
@@ -144,8 +149,21 @@ export function mailtoUrl(email:string|null|undefined,subject:string,draftBody:s
  return `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body.replace(/\r?\n/g,'\r\n'))}`;
 }
 /** Link target for a contact action: only a mailto: or tel: URL built above, never any other scheme. */
-export function contactHref(value:string|undefined,scheme:'mailto:'|'tel:'){return typeof value==='string'&&value.startsWith(scheme)&&!/[\s<>"]/.test(value)?value:undefined}
-export function telUrl(phone:string|null|undefined){const d=phoneDigits(phone);return d?`tel:${d}`:undefined}
+export function contactHref(value:string|undefined,scheme:'mailto:'|'tel:'){return typeof value==='string'&&value.startsWith(scheme)&&!/[\s<>"]/.test(value)&&(scheme!=='tel:'||TEL_HREF.test(value))?value:undefined}
+/** tel: link for a structured record phone field; undefined unless the number checks out (see phone.ts). */
+export function telUrl(phone:string|null|undefined,phoneExt?:string|null,country?:string|null){return dialNumber(phone,phoneExt,country)?.href}
+/** Country used for a record's central contacts: NANP when every listed site is in a +1 country (US default for US
+ * records), the single listed country when all sites share one, otherwise unknown (only +-prefixed numbers dial). */
+export function recordCountry(record:ApplyRecord):string|undefined{
+ const countries=record.sites.map(s=>s.country).filter((c):c is string=>!!c);if(!countries.length)return;
+ if(countries.every(isNanpCountry))return 'United States';
+ const first=countries[0].trim().toLowerCase();return countries.every(c=>c.trim().toLowerCase()===first)?countries[0]:undefined;
+}
+/** Phone contacts in contact-chain order, each with a dial link only from its own structured fields and listing country. */
+export function callContacts(record:ApplyRecord,site:ApplySite|undefined,contacts:PlanContact[]):CallContact[]{
+ const central=recordCountry(record);
+ return contacts.filter(c=>c.phone).map(contact=>{const dial=dialNumber(contact.phone,contact.phoneExt,contact.source==='site'?site?.country??central:central);return{contact,...(dial?{dial}:{})}});
+}
 export function missingInput(patient:ApplyPatient){const out:string[]=[],phone=clean(patient.phone,40),email=clean(patient.email,254);
  if(!clean(patient.name,120))out.push('Enter your name.');
  if(!phone&&!email)out.push('Enter a phone number or an email address so the study team can reach you.');
@@ -158,6 +176,7 @@ export function buildApplyPlan({record,patient,origin,siteId,agent,today}:{recor
  const subject=emailSubject(record),body=composeEmail(record,choice.site,chain.primary,patient,questionIds,prescreenIds);
  const due=addBusinessDays(localDay(today),FOLLOW_UP_BUSINESS_DAYS),steps=followUpSteps(chain.primary,chain.backups,chain.investigator),label=longDay(due);
  const followUp=steps.length?`If no reply by ${label}: ${steps.map((s,i)=>i?`then ${s}`:s).join('; ')}.`:`If no reply by ${label}: contact the study again using the details on its ClinicalTrials.gov page.`;
- const mailto=mailtoUrl(chain.primary?.email,subject,body),tel=telUrl(chain.primary?.phone);
- return{nctId:record.nctId,title:record.title,sourceUrl:record.sourceUrl,...(choice.site?{site:choice.site}:{}),...(choice.distanceMiles!==undefined?{distanceMiles:choice.distanceMiles}:{}),siteReason:choice.reason,siteOptions:choice.options,...(chain.primary?{primary:chain.primary}:{}),backups:chain.backups,...(chain.investigator?{investigator:chain.investigator}:{}),flagIds,questionIds,prescreenIds,answerIds:answerIds(prescreenIds,patient),subject,body,phoneScript:composePhoneScript(record,choice.site,patient,questionIds,prescreenIds),followUpDate:isoDay(due),followUpLabel:label,followUpSteps:steps,followUp,...(mailto?{mailto}:{}),...(tel?{tel}:{}),missing:missingInput(patient)};
+ const calls=callContacts(record,choice.site,[...(chain.primary?[chain.primary]:[]),...chain.backups]),callable=followUpCallable(chain.primary,chain.backups),followUpCall=calls.find(c=>c.contact===callable);
+ const mailto=mailtoUrl(chain.primary?.email,subject,body),tel=calls.find(c=>c.contact===chain.primary)?.dial?.href;
+ return{nctId:record.nctId,title:record.title,sourceUrl:record.sourceUrl,...(choice.site?{site:choice.site}:{}),...(choice.distanceMiles!==undefined?{distanceMiles:choice.distanceMiles}:{}),siteReason:choice.reason,siteOptions:choice.options,...(chain.primary?{primary:chain.primary}:{}),backups:chain.backups,...(chain.investigator?{investigator:chain.investigator}:{}),flagIds,questionIds,prescreenIds,answerIds:answerIds(prescreenIds,patient),subject,body,phoneScript:composePhoneScript(record,choice.site,patient,questionIds,prescreenIds),callContacts:calls,followUpDate:isoDay(due),followUpLabel:label,followUpSteps:steps,followUp,...(followUpCall?{followUpCall}:{}),...(mailto?{mailto}:{}),...(tel?{tel}:{}),missing:missingInput(patient)};
 }
