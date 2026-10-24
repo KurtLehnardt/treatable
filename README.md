@@ -1,17 +1,19 @@
 # Treatable
 <img width="1536" height="985" alt="image" src="https://github.com/user-attachments/assets/c6090c73-ccef-48ec-9d12-c9aa7236fed5" />
 
-> **Demoed product:** the Treatable Chrome extension in [`extension/`](extension/README.md), with its local native host in [`extension/native/`](extension/native/API_SETUP.md). Version B is the primary build at `extension/dist`: a search-first ClinicalTrials.gov overlay with optional protected current-page matching. The rest of this README describes the legacy `scaffold/` web app, which is not part of the demo.
->
-> **Security:** [SECURITY.md](SECURITY.md) (vulnerability reporting, scope, release gate) · [Threat model](docs/security/THREAT_MODEL.md) · [Demo-day checklist](docs/security/DEMO_DAY_CHECKLIST.md). Treatable is not a HIPAA-covered product, no compliance or certification is claimed, and minimized health data is not anonymous.
-
 Find US clinical studies and expanded-access programs that may relate to pain and hard-to-control symptoms.
 
-**Treatable does not give medical advice. It cannot decide whether a study is right for you. Your care team and the study team must check.** A match score measures search relevance, not eligibility, benefit, or a chance of enrollment.
+**Treatable provides research information, not medical advice. It cannot decide whether a study is right for you. Your care team and the study team must check.** In the standalone web app, a match score measures search relevance, not eligibility, benefit, or a chance of enrollment.
+
+> **Chrome extension (primary interface):** [`extension/`](extension/README.md), with its local native helper in [`extension/native/`](extension/native/API_SETUP.md). It adds a search-first overlay to ClinicalTrials.gov. On a study, **Understand this study** shows the official record, and **Generate study brief** produces a cited brief, three questions to ask the study team, the listed contacts, and an editable email, call script and follow-up. The rest of this README describes the earlier standalone web app in `scaffold/`.
+>
+> **Security and privacy:** [SECURITY.md](SECURITY.md) (vulnerability reporting, scope, release gate) · [Threat model](docs/security/THREAT_MODEL.md) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html). Treatable is not a HIPAA-covered product, no compliance or certification is claimed, and minimized health data is not anonymous.
+
+**How the extension uses OpenAI.** Generate study brief is the only extension action that contacts OpenAI, and it runs through the local native helper, which uses your own OpenAI API key from the macOS Keychain. The helper first calls the OpenAI Agents API, where an agent with no patient information reads pinned excerpts of the selected public study records through one restricted tool and selects exact quotes plus standard questions from fixed lists; any quote that does not match the record exactly discards the agent's output. It then calls the OpenAI Decisions API to sort each question into answered in the record, only the patient can answer, or ask the study team. Only public study IDs and public record text are sent; your name, contact details, ZIP code and drafts never are. If a call fails, Treatable names the failed stage and falls back to standard questions or routes every question to the study team. Treatable requests deletion of the Agents session afterwards and shows the result, but Agents sessions are not zero-data-retention and deletion is not guaranteed. Details, request contents and checks are in [How Treatable uses OpenAI](extension/README.md#how-treatable-uses-openai).
 
 ## Quick links
 
-[ClinicalTrials.gov](https://clinicaltrials.gov/) · [NCI trial search](https://www.cancer.gov/about-cancer/treatment/clinical-trials/search) · [Privacy](#privacy) · [Troubleshooting](#troubleshooting)
+[ClinicalTrials.gov](https://clinicaltrials.gov/) · [NCI trial search](https://www.cancer.gov/about-cancer/treatment/clinical-trials/search) · [Privacy](#privacy) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html) · [Troubleshooting](#troubleshooting)
 
 ## Install on macOS
 

@@ -19,4 +19,4 @@ Provider retention and asynchronous physical deletion cannot be independently pr
 
 Current source notice: `src/privacy-notice.tsx`. Operator: Kurt Lehnardt - Developer of Treatable. Privacy contact: privacy.6vpc5@mailer.me. These are notice-only values, not model inputs; contact ownership was not independently verified.
 
-This documentation-only report does not change the reviewed executable source or current build artifacts. Setup and privacy boundaries are described in [README.md](README.md); presentation flow is in [NORTHSTAR.md](NORTHSTAR.md).
+This documentation-only report does not change the reviewed executable source or current build artifacts. Setup and privacy boundaries are described in [README.md](README.md).

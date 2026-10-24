@@ -1,6 +1,6 @@
 # Treatable current A/B build checkpoint
 
-The current extension supports local panel-memory screening, a default fictional OpenAI demo, and optional explicitly consented minimized real-data analysis. See README.md, NORTHSTAR.md and native/API_SETUP.md for current behavior. The standalone web prototype is separate.
+The current extension supports local panel-memory screening, a default fictional OpenAI demo, and optional explicitly consented minimized real-data analysis. See README.md and native/API_SETUP.md for current behavior. The standalone web prototype is separate.
 
 - Verification: 49 extension tests, 21 native tests, TypeScript and A/B builds pass. Native network tests intercept the real HTTPS serializer with fake credentials; no live OpenAI request, user credential access, Chrome installation or rendered browser verification occurred.
 - Both current builds remove Save/Remember and gate entry on deletion-only legacy cleanup. Profiles, notices/receipts, tokens, exact previews, results and traces live in active session memory only.
