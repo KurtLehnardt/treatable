@@ -1,3 +1,4 @@
+import{parseRealRequest,parseRealResult,parsePreparedResult}from './real-contract.mjs';
 // Public/fictional-only native contract. No patient fields or arbitrary prompts cross this boundary.
 export const FIXTURE_IDS = Object.freeze(['fibromyalgia', 'pancreatic', 'neuropathy']);
 export const MAX_MESSAGE_BYTES = 96 * 1024;
@@ -10,6 +11,7 @@ export function exactKeys(v,keys){return isRecord(v)&&Object.keys(v).every(k=>ke
 export function validId(v){return typeof v==='string'&&/^[A-Za-z0-9_-]{1,80}$/.test(v);}
 export function utf8Bytes(v){return new TextEncoder().encode(typeof v==='string'?v:JSON.stringify(v)).length;}
 export function parseDemoRequest(v){
+ if(['prepareReal','executeReal','revokeReal'].includes(v?.type))return parseRealRequest(v);
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw new Error('Invalid native request');
  if(v.type==='status'){if(Object.keys(v.payload).length)throw new Error('Invalid status');}
  else if(v.type==='cancel'){if(!exactKeys(v.payload,['requestId'])||!validId(v.payload.requestId))throw new Error('Invalid cancel');}
@@ -31,7 +33,7 @@ export function parseDemoReply(v,expectedId){
  }else if(v.type==='result'){
   if(!exactKeys(v,['id','type','ok','result','error','code']))throw new Error('Invalid result reply');
   if(!v.ok){if(typeof v.error!=='string'||v.error.length>300||typeof v.code!=='string'||!/^[A-Z_]{1,40}$/.test(v.code))throw new Error('Invalid error reply');}
-  else if(v.result!==undefined)parseDemoResult(v.result);
+  else if(v.result!==undefined){if(v.result?.kind==='preparedReal')parsePreparedResult(v.result);else if(['scoreReal','agentReal'].includes(v.result?.kind))parseRealResult(v.result);else parseDemoResult(v.result);}
  }else throw new Error('Invalid reply type');
  return v;
 }
@@ -47,3 +49,6 @@ export function parseDemoResult(v){
  }
  return v;
 }
+
+export const parseNativeRequest=parseDemoRequest;
+export const parseNativeReply=parseDemoReply;
