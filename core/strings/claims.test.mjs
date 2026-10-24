@@ -8,6 +8,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, readdirSync, existsSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
@@ -31,18 +33,21 @@ const DOCS_SCAN_DIR = 'apps';
 // "every folder is classified" test, so a platform folder with an unexpected name cannot be skipped silently.
 const NOT_OURS_ROOT_DIRS = new Set(['extension', 'scaffold', 'evals', 'installer', '.git', '.claude', '.codex', '.github', 'node_modules']);
 const NOT_OURS_DOCS_ENTRIES = new Set(['implementation']);
-// Root-level files from the extension era. Any other root-level file is scanned.
-const LEGACY_ROOT_FILES = new Set([
-  'build_report.md', 'readme.md', 'license', '.gitignore',
-  'install-linux.sh', 'install-macos.sh', 'install-windows.ps1', 'install-windows.tests.ps1',
-]);
+// Root-level files from the extension era that contain wording this scan bans. Each is skipped only while its content
+// is byte for byte what it was at base commit 48c569e (SHA-256 below). Any edit puts the file back into the scan.
+// Every other root-level file, including README.md, is scanned.
+const LEGACY_ROOT_FILE_DIGESTS = {
+  'BUILD_REPORT.md': '40442f4392893ad30035d4baa3e530ee7838709f19442b900a91cfe203e126fa',
+  'install-windows.ps1': 'f3add26ba2c1841f040c74d3094be9283dabe84b3dbc948de4877cdc0040bdb7',
+};
 
 // Source files: only string literals and comments are wording. Keywords and identifiers are not claims.
 const CODE_EXTENSIONS = new Set([
   '.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.swift', '.kt', '.kts', '.cs', '.java', '.rs', '.vala', '.c', '.h', '.gradle',
 ]);
 const REGEX_LITERAL_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']);
-const JSX_EXTENSIONS = new Set(['.tsx', '.jsx']);
+// JSX can appear in .js files (Expo's App.js) as well as .jsx and .tsx.
+const JSX_EXTENSIONS = new Set(['.tsx', '.jsx', '.js']);
 const JSON_EXTENSIONS = new Set(['.json', '.xcstrings']);
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.mdx']);
 // Files whose whole text is wording or may carry wording.
@@ -51,6 +56,9 @@ const PROSE_EXTENSIONS = new Set([
   '.wxs', '.wxl', '.appxmanifest', '.html', '.htm', '.txt', '.rtf', '.po', '.pot', '.in', '.spec', '.yml', '.yaml',
   '.sh', '.ps1', '.bat', '.cmd', '.py', '.svg', '.entitlements', '.storyboard', '.xib', '.config',
 ]);
+// Project and build files can carry user-visible text (INFOPLIST_KEY_* in a pbxproj, <Description> in a csproj).
+// Every rule runs on them except the ones for the everyday word "private", which these formats use as a keyword.
+const CONFIG_TEXT_EXTENSIONS = new Set(['.pbxproj', '.xcconfig', '.csproj', '.vbproj', '.props', '.targets', '.toml', '.properties']);
 // Files that are deliberately not scanned: media, binaries, archives, generated maps.
 const NON_TEXT_EXTENSIONS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.icns', '.bmp', '.tif', '.tiff', '.ttf', '.otf', '.woff', '.woff2', '.eot',
@@ -60,15 +68,14 @@ const NON_TEXT_EXTENSIONS = new Set([
 ]);
 // Build and tool configuration without user-facing wording.
 const CONFIG_EXTENSIONS = new Set([
-  '.csproj', '.vbproj', '.sln', '.slnx', '.props', '.targets', '.pbxproj', '.xcscheme', '.xcconfig', '.properties',
-  '.toml', '.lock', '.resolved', '.lockb', '.cfg', '.ini', '.conf', '.tsbuildinfo',
+  '.sln', '.slnx', '.xcscheme', '.lock', '.resolved', '.lockb', '.cfg', '.ini', '.conf', '.tsbuildinfo',
 ]);
 const SKIPPED_FILE_NAMES = new Set([
   'package-lock.json', '.ds_store', '.gitkeep', '.git', '.gitignore', '.gitattributes', '.gitmodules', '.npmrc', '.nvmrc', '.editorconfig',
   '.prettierrc', '.eslintrc', '.dockerignore',
 ]);
 
-// Returns 'code', 'json', 'markdown', 'prose', 'skip', or 'unknown'. An extensionless name is scanned as prose.
+// Returns 'code', 'json', 'markdown', 'prose', 'config', 'skip', or 'unknown'. An extensionless name is scanned as prose.
 export function classifyFile(relPath) {
   const name = path.posix.basename(relPath).toLowerCase();
   if (SKIPPED_FILE_NAMES.has(name)) return 'skip';
@@ -78,12 +85,13 @@ export function classifyFile(relPath) {
   if (JSON_EXTENSIONS.has(ext)) return 'json';
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown';
   if (PROSE_EXTENSIONS.has(ext)) return 'prose';
+  if (CONFIG_TEXT_EXTENSIONS.has(ext)) return 'config';
   if (NON_TEXT_EXTENSIONS.has(ext) || CONFIG_EXTENSIONS.has(ext)) return 'skip';
   return 'unknown';
 }
 
-// Generated and third-party directories, as repository-relative paths. These are matched by path, not by bare name,
-// so a source folder that happens to be called `bin` or `build` (for example desktop-helper/bin) is still scanned.
+// Generated and third-party directories, as repository-relative path patterns. A bare directory name is never enough:
+// a source folder that happens to be called `bin` or `build` (for example desktop-helper/bin) is still scanned.
 const IGNORED_DIRECTORY_PATTERNS = [
   /(?:^|\/)node_modules$/i,
   /(?:^|\/)\.git$/i,
@@ -101,28 +109,35 @@ export function isIgnoredDirectory(relDir) {
 
 // Recorded public registry responses (for example ClinicalTrials.gov fixtures) and test files that quote hostile text
 // can legitimately contain a phrase this scan bans. Such a file is not Treatable wording. Each entry is one exact
-// repository-relative path with a written reason, limited to test and fixture paths. Strings and documents are never
-// exempt. The list starts empty and every entry needs a reviewer's approval.
+// repository-relative path, the ids of the rules it may trip (the file is still scanned by every other rule), and a
+// written reason. Only test and fixture paths qualify, and strings and documents are never exempt. The list starts
+// empty and every entry needs a reviewer's approval.
 const EXEMPT_FILES = [];
-const EXEMPT_PATH_PATTERN = /(?:^|\/)(?:test|tests|fixtures)\/|\.test\./;
+const EXEMPT_PATH_PATTERN = /(?:^|\/)(?:test|tests|__tests__|fixtures)\/|\.test\./;
+const EXEMPT_UNDER_TEST_DIR = /(?:^|\/)(?:test|tests|__tests__)\//;
+const SHIPPED_SOURCE_DIR = /(?:^|\/)(?:src|assets)\//;
 
-export function validateExemptions(list, fileExists) {
+export function validateExemptions(list, fileExists, ruleIds = RULES.map(r => r.id)) {
   const problems = [];
   for (const entry of list) {
     const p = entry?.path;
     if (typeof p !== 'string' || !/^[A-Za-z0-9_./-]+$/.test(p)) problems.push(`${JSON.stringify(p)}: path must be an exact repository-relative path`);
     else {
       if (!EXEMPT_PATH_PATTERN.test(p)) problems.push(`${p}: only test and fixture paths can be exempt`);
+      if (SHIPPED_SOURCE_DIR.test(p) && !EXEMPT_UNDER_TEST_DIR.test(p)) problems.push(`${p}: a file under src/ or assets/ ships in the app, so it can be exempt only inside test/ or __tests__/`);
       if (/^core\/strings\//.test(p) || /^docs\//.test(p) || /\.mdx?$/.test(p)) problems.push(`${p}: strings and documents are never exempt`);
       if (!fileExists(p)) problems.push(`${p}: file does not exist`);
     }
     if (typeof entry?.reason !== 'string' || entry.reason.trim().length < 20) problems.push(`${p}: a written reason of at least 20 characters is required`);
+    if (!Array.isArray(entry?.rules) || entry.rules.length === 0) problems.push(`${p}: list the rule ids the file may trip`);
+    else for (const id of entry.rules) if (!ruleIds.includes(id)) problems.push(`${p}: unknown rule id ${JSON.stringify(id)}`);
   }
   return problems;
 }
 
-export function isExempt(relPath) {
-  return EXEMPT_FILES.some(entry => entry.path === relPath);
+export function exemptRulesFor(relPath) {
+  const entry = EXEMPT_FILES.find(e => e.path === relPath);
+  return entry ? new Set(entry.rules) : new Set();
 }
 
 // Problems with how top-level folders (and docs/ entries) are classified. Pure so it can be self-tested.
@@ -145,7 +160,7 @@ export function classifyTopLevel(rootEntries, docsEntries) {
 }
 
 function entriesOf(dir) {
-  return readdirSync(dir, {withFileTypes: true}).filter(e => !e.isSymbolicLink()).map(e => ({name: e.name, isDirectory: e.isDirectory(), isFile: e.isFile()}));
+  return readdirSync(dir, {withFileTypes: true}).map(e => ({name: e.name, isDirectory: e.isDirectory(), isFile: e.isFile(), isSymlink: e.isSymbolicLink()}));
 }
 
 function findChild(dir, name) {
@@ -154,11 +169,31 @@ function findChild(dir, name) {
 
 const toPosix = p => p.split(path.sep).join('/');
 
+// The files git knows about (tracked, or untracked and not ignored), as repository-relative paths with forward slashes.
+// A developer's editor folder or an ignored environment file is therefore not scanned. Null when git is unavailable,
+// in which case every file found on disk is considered.
+export function parseGitFileList(output) {
+  return new Set(output.split('\0').filter(Boolean));
+}
+
+function gitFileSet() {
+  try {
+    const out = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024});
+    return parseGitFileList(out);
+  } catch {
+    return null;
+  }
+}
+
+const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
+
 function walk(dir, found) {
   for (const entry of entriesOf(dir)) {
     const full = path.join(dir, entry.name);
     const rel = toPosix(path.relative(REPO_ROOT, full));
-    if (entry.isDirectory) {
+    if (entry.isSymlink) {
+      if (!found.gitFiles || found.gitFiles.has(rel)) found.symlinks.push(rel);
+    } else if (entry.isDirectory) {
       if (!isIgnoredDirectory(rel)) walk(full, found);
     } else if (entry.isFile) {
       considerFile(full, rel, found);
@@ -168,19 +203,25 @@ function walk(dir, found) {
 
 function considerFile(full, rel, found) {
   if (path.resolve(full) === SELF) return;
+  if (found.gitFiles && !found.gitFiles.has(rel)) return;
   const kind = classifyFile(rel);
   if (kind === 'skip') return;
   if (kind === 'unknown') found.unknown.push(rel);
-  else if (isExempt(rel)) found.exempt.push(rel);
-  else found.files.push({full, rel});
+  else found.files.push({full, rel, ignoreRules: exemptRulesFor(rel)});
 }
 
 function collectFiles() {
-  const found = {files: [], unknown: [], exempt: []};
+  const found = {files: [], unknown: [], symlinks: [], gitFiles: gitFileSet()};
   const rootEntries = entriesOf(REPO_ROOT);
   for (const e of rootEntries) {
-    if (e.isDirectory && SCAN_ROOT_DIRS.includes(e.name.toLowerCase())) walk(path.join(REPO_ROOT, e.name), found);
-    else if (e.isFile && !LEGACY_ROOT_FILES.has(e.name.toLowerCase())) considerFile(path.join(REPO_ROOT, e.name), e.name, found);
+    if (e.isSymlink) {
+      if (!found.gitFiles || found.gitFiles.has(e.name)) found.symlinks.push(e.name);
+    } else if (e.isDirectory && SCAN_ROOT_DIRS.includes(e.name.toLowerCase())) walk(path.join(REPO_ROOT, e.name), found);
+    else if (e.isFile) {
+      const pinned = LEGACY_ROOT_FILE_DIGESTS[e.name];
+      if (pinned && sha256(readFileSync(path.join(REPO_ROOT, e.name))) === pinned) continue;
+      considerFile(path.join(REPO_ROOT, e.name), e.name, found);
+    }
   }
   const docs = rootEntries.find(e => e.isDirectory && e.name.toLowerCase() === 'docs');
   if (docs) {
@@ -217,6 +258,23 @@ export function isNegated(text, index) {
 // Mechanism names that are not claims. Each is blanked out (same length) before the rules run.
 // Bare "secure store" and "secure storage" are not allowed: only the named platform features below.
 const MECHANISM_NAMES = [
+  {
+    // A named platform feature that does the encrypting is a mechanism, not a claim about Treatable's protection.
+    // This entry must come first so that "expo-secure-store encrypts" is masked before the bare package name is.
+    id: 'mechanism-encrypts',
+    re: /\b(?:DPAPI|Keychain|(?:Android\s+)?Keystore|Credential\s+Manager|Secret\s+Service|libsecret|TLS|HTTPS|expo-secure-store)\s+(?:also\s+)?encrypts?\b/gi,
+    ok: [
+      'Windows DPAPI encrypts the key for the current user.', 'TLS encrypts the request in transit.',
+      'expo-secure-store encrypts values with a key held in the Android Keystore.',
+    ],
+    bad: ['Treatable encrypts your data.', 'Your data is encrypted.', 'The app encrypts the preview.'],
+  },
+  {
+    id: 'private-key',
+    re: /\bprivate[-\s]keys?\b|\bprivate\.(?:pem|key|p8|p12)\b/gi,
+    ok: ['Store the App Store Connect private key outside the repository.', 'openssl genpkey -out private.pem'],
+    bad: ['Your private profile.', 'a private search', 'private notes'],
+  },
   {
     id: 'expo-secure-store',
     re: /\bexpo-secure-store\b/gi,
@@ -261,15 +319,16 @@ function maskMechanismNames(text) {
 const RULES = [
   {
     id: 'compliance-label',
-    re: /\b(?:HIPAA|GDPR|CCPA|HITRUST|SOC\s?2|ISO\s?27001)[-\s]+(?:complian(?:t|ce)|ready|eligible|safe|certified|approved|aligned)\b|\bcomplian(?:t|ce)\s+with\s+(?:HIPAA|GDPR|CCPA)\b|\b(?:meets?|satisf(?:y|ies)|fulfil(?:s|ls)?)\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b/gi,
+    re: /\b(?:HIPAA|GDPR|CCPA|HITRUST|SOC\s?2|ISO\s?27001)[-\s]+(?:complian(?:t|ce)|ready|eligible|safe|certified|approved|aligned|conformant|friendly|grade|level)\b|\bcomplian(?:t|ce)\s+with\s+(?:HIPAA|GDPR|CCPA)\b|\b(?:meets?|satisf(?:y|ies)|fulfil(?:s|ls)?|complies\s+with|adheres?\s+to|conforms?\s+to|built\s+for|designed\s+for)\s+(?:the\s+)?(?:HIPAA|GDPR|CCPA)\b|\b(?:fully\s+)?complian(?:t|ce)\s+with\s+(?:\w+\s+){0,2}(?:privacy|data[-\s]protection|health)\s+(?:laws?|regulations?|rules)\b/gi,
     negatable: true,
     bad: [
       'HIPAA compliant', 'a HIPAA-ready app', 'HIPAA eligible tool', 'SOC 2 certified', 'GDPR-compliant',
-      'supports HIPAA compliance', 'compliant with HIPAA', 'HIPAA-aligned', 'Meets HIPAA requirements.', 'HIPAA\ncompliant', `HIPAA${cp(0x2011)}compliant`,
+      'supports HIPAA compliance', 'compliant with HIPAA', 'HIPAA-aligned', 'Meets HIPAA requirements.', 'Complies with HIPAA.', 'Adheres to HIPAA.', 'HIPAA-conformant design.', 'Built for HIPAA.',
+      'HIPAA-friendly', 'HIPAA-grade privacy', 'Treatable is fully compliant with privacy laws.', 'HIPAA\ncompliant', `HIPAA${cp(0x2011)}compliant`,
     ],
     ok: [
       'Treatable is not HIPAA compliant.', 'Treatable makes no claim of HIPAA compliance or legal sufficiency.',
-      'Treatable does not claim HIPAA compliance.', 'No HIPAA compliance is claimed.', 'Treatable does not meet HIPAA requirements.',
+      'Treatable does not claim HIPAA compliance.', 'No HIPAA compliance is claimed.', 'Treatable does not meet HIPAA requirements.', 'Treatable does not adhere to HIPAA.',
     ],
   },
   {
@@ -288,11 +347,11 @@ const RULES = [
   },
   {
     id: 'secure',
-    re: /\bsecure(?:ly)?\b/gi,
+    re: /\bsecur(?:e|ed|es|ely)\b/gi,
     negatable: false,
     bad: [
       'Your data is secure.', 'a secure app', 'Secure by design', 'safe and secure', 'stored securely', 'in secure storage',
-      'a secure store', 'This is not secure.',
+      'a secure store', 'This is not secure.', 'Your data is secured.', 'Treatable secures your data.', 'Secured with platform storage.',
     ],
     ok: ['SecureStore', 'FLAG_SECURE', 'expo-secure-store', 'Apple Secure Enclave'],
   },
@@ -325,10 +384,10 @@ const RULES = [
   },
   {
     id: 'anonymity',
-    re: /\banonym(?:ous(?:ly)?|ized|ised|ization|isation)\b/gi,
+    re: /\b(?:anonym(?:ous(?:ly)?|ized|ised|ization|isation)|pseudonym(?:ous|ized|ised|ization|isation))\b/gi,
     negatable: true,
-    bad: ['Your data is anonymous.', 'anonymized data', 'fully anonymous', 'Anonymised results', 'ANONYMOUS'],
-    ok: ['Minimized health information is not anonymous.', 'The packet is not anonymized.', 'No anonymization is performed.'],
+    bad: ['Your data is anonymous.', 'anonymized data', 'fully anonymous', 'Anonymised results', 'ANONYMOUS', 'Your searches are pseudonymous.'],
+    ok: ['Minimized health information is not anonymous.', 'The packet is not anonymized.', 'No anonymization is performed.', 'The packet is not pseudonymized.'],
   },
   {
     id: 'de-identified',
@@ -339,15 +398,17 @@ const RULES = [
   },
   {
     id: 'data-stays-local',
-    re: /\b(?:nothing\s+(?:ever\s+)?leaves|no\s+(?:\w+\s+){0,2}(?:data|information|details)\s+(?:ever\s+)?leaves?|never\s+leaves?\s+(?:your|the|this)\s+\w+|(?:stays?|remains?)\s+(?:only\s+)?on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?device|stays?\s+local(?:ly)?|never\s+(?:sent|shared|uploaded|transmitted)\s+(?:anywhere|to\s+(?:anyone|any\s+server|the\s+cloud)))\b/gi,
+    re: /\b(?:nothing\s+(?:ever\s+)?leaves|no\s+(?:\w+\s+){0,2}(?:data|information|details)\s+(?:ever\s+)?leaves?|never\s+leaves?\s+(?:your|the|this)\s+\w+|(?:stays?|remains?)\s+(?:only\s+)?on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet)|(?:stored|kept|held|saved|processed)\s+(?:only\s+)?(?:locally|on[-\s]?(?:your\s+|the\s+|this\s+)?(?:\w+\s+)?(?:device|phone|computer|mac|pc|laptop|tablet))|stays?\s+local(?:ly)?|never\s+(?:sent|shared|uploaded|transmitted)\s+(?:anywhere|to\s+(?:anyone|any\s+server|the\s+cloud)))\b/gi,
     negatable: false,
     bad: [
       'Nothing leaves your phone.', 'no data leaves the app', 'Your data never leaves your device.', 'Everything stays on your device.',
       'No health data leaves your device.', 'Your notes never leave your device.', 'It remains on your device.',
       'Data stays on-device.', 'Everything stays local.', 'Data is processed locally and never sent anywhere.',
+      'Your data stays on your phone.', 'Everything stays on your computer.', 'Symptoms remain on your Mac.',
+      'Your data is stored only on your device.', 'Your data is processed locally.', 'Your health data is kept on-device.',
     ],
     ok: [
-      'Searching does not send anything to OpenAI.', 'Nothing you enter is saved.', 'OpenAI features stay locked.',
+      'Searching does not send anything to OpenAI.', 'Treatable does not save your health entries.', 'OpenAI features stay locked.',
       'The key stays locked until you unlock the credential system.', 'Study contact details are never sent to OpenAI.',
     ],
   },
@@ -372,6 +433,67 @@ const RULES = [
     ],
   },
   {
+    id: 'removal-promise',
+    re: /\b(?:promis(?:e|es|ed|ing)|assur(?:e|es|ed|ing|ance))\s+(?:\w+\s+){0,3}(?:eras|delet|remov|wip|destr|purg)\w*|\b(?:assured|guaranteed|complete|total|irreversible|permanent)\s+(?:eras|delet|remov|wip|destr|purg)\w*|\b(?:eras|delet|remov|wip|destr|purg)\w*\s+(?:forever|for\s+good|completely|entirely)\b|\bcompletely\s+(?:eras|delet|remov|wip|destr|purg)\w*/gi,
+    negatable: true,
+    bad: ['We promise your data is erased.', 'Assured deletion.', 'Complete deletion of your data.', 'Irreversible erasure.', 'We assure removal of all data.',
+      'Erased forever.', 'Completely deleted.', 'Deleted for good.'],
+    ok: [
+      'Treatable does not promise instant physical erasure.', 'Treatable cannot promise that OpenAI has erased the data.',
+      'Treatable makes no promise of deletion.',
+    ],
+  },
+  {
+    id: 'endorsement-claim',
+    re: /\b(?:doctor|physician|clinician|nurse|pharmacist|expert)s?[-\s]+(?:approved|recommended|endorsed|reviewed|verified|validated|tested|backed)\b/gi,
+    negatable: true,
+    bad: ['Doctor approved.', 'Physician-reviewed matching.', 'Doctor-recommended app.', 'Clinician validated scores.'],
+    ok: ['Treatable is not doctor approved.', 'The matching was not clinician reviewed.'],
+  },
+  {
+    id: 'collection-denial',
+    re: /\bno\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:collected|stored|retained|tracked|logged|kept)\b|\bwe\s+(?:never|don't|do\s+not)\s+(?:collect|store|track|log|sell|keep|see)\b|\bzero\s+data\s+collection\b|\bdata\s+not\s+collected\b|\bno\s+(?:data|information)\s+collection\b|\bnothing\s+is\s+(?:retained|stored|kept|saved|logged)\b|\b(?:keeps?|stores?|retains?)\s+nothing\b|\b(?:does\s+not|doesn't|never)\s+(?:store|keep|retain|log)\s+your\s+(?:data|information)\b|\bno\s+logs\s+(?:are\s+)?kept\b|\bno\s+(?:PII|personally[-\s]+identifiable(?:\s+information)?|personal\s+(?:data|information))\s+(?:is|are)\s+(?:ever\s+)?(?:sent|shared|collected|stored|transmitted)\b/gi,
+    negatable: false,
+    bad: [
+      'No personal data is collected.', 'We never collect your data.', 'We do not collect any personal information.', 'Zero data collection.',
+      'Data Not Collected', 'No tracking, no data collection.', 'Nothing is retained.', 'OpenAI keeps nothing.',
+      'OpenAI does not store your data.', 'No logs are kept.', 'No PII is sent.', 'No personally identifiable information is sent to OpenAI.', 'No data is stored.',
+    ],
+    ok: ['Treatable does not save your health entries, notes, searches, or profiles.', 'Study contact details are never sent to OpenAI.'],
+  },
+  {
+    id: 'invisibility-claim',
+    re: /\b(?:no\s*one|nobody)\s+can\s+(?:identify|see|access|read|trace)|\bonly\s+you\s+can\s+(?:see|read|access)|\b(?:cannot|can't|can\s+not)\s+be\s+(?:traced|tracked|linked)|\bincognito\b|\bnever\s+sees\s+who\s+you\s+are\b|\bidentity\s+is\s+(?:never\s+shared|hidden|masked)\b/gi,
+    negatable: false,
+    bad: [
+      'No one can identify you.', 'Nobody can see your searches.', 'Only you can see your results.',
+      'Your searches cannot be traced back to you.', 'Incognito search.', 'OpenAI never sees who you are.',
+      'Your identity is never shared.', 'Your identity is hidden.',
+    ],
+    ok: ['OpenAI can link these requests to your OpenAI account.', 'People who can view the logs of the project can see these traces.'],
+  },
+  {
+    id: 'eligibility-claim',
+    re: /\bfind\s+out\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b|\bsee\s+which\s+(?:trials|studies)\s+you(?:'re|\s+are)\s+eligible\s+for\b|\bchecks?\s+(?:if|whether)\s+you\s+(?:qualify|are\s+eligible)\b/gi,
+    negatable: true,
+    bad: ['Find out if you qualify.', 'See which trials you are eligible for.', 'Treatable checks whether you are eligible.'],
+    ok: ['Treatable does not check whether you qualify.', 'Only the study team can confirm eligibility.'],
+  },
+  {
+    id: 'accuracy-claim',
+    re: /\b\d{2,3}\s*%\s+(?:accurate|accuracy|reliable|correct|precise)\b|\baccuracy\s+of\s+\d{2,3}\s*%/gi,
+    negatable: true,
+    bad: ['Matches are 95% accurate.', 'An accuracy of 90 %.', '99 % reliable'],
+    ok: ['The score is not 100% accurate.'],
+  },
+  {
+    id: 'treatment-claim',
+    re: /\b(?:diagnos(?:es|e|ing)|cures?|prescribes?)\s+(?:your|you|conditions?|diseases?)\b/gi,
+    negatable: true,
+    bad: ['Treatable diagnoses your condition.', 'It cures disease.', 'The app prescribes you treatment.'],
+    ok: ['It does not diagnose conditions or recommend treatment.'],
+  },
+  {
     id: 'zero-data-retention-claim',
     re: /\b(?:ZDR|Zero[-\s]+Data[-\s]+Retention)[-\s]+(?:compatible|eligible|enabled|covered|ready)\b/gi,
     negatable: true,
@@ -380,11 +502,12 @@ const RULES = [
   },
   {
     id: 'protection-claim',
-    re: /\b(?:(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|privacy|identity)\s+(?:is|are|stays?|remains?)\s+(?:(?!not\b|never\b|no\b)\w+\s+)?(?:safe|protected|confidential)|we\s+(?:protect|safeguard)\s+your|(?:bank|enterprise)[-\s]+(?:level|grade)|no\s+one\s+can\s+(?:identify|see|access|read)|untraceable)\b/gi,
+    re: /\b(?:(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|privacy|identity)\s+(?:is|are|stays?|remains?)\s+(?:(?!not\b|never\b|no\b)\w+\s+)?(?:safe|protected|confidential)|(?:keeps?|kept|holds?)\s+(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|key|searches|entries|identity)\s+(?:safe|protected|confidential|secret)|we\s+(?:protect|safeguard)\s+your|(?:bank|enterprise)[-\s]+(?:level|grade)|untraceable|confidential)\b/gi,
     negatable: true,
     bad: [
       'Your data is safe.', 'Your data is protected.', 'We protect your privacy.', 'Bank-level security for your data.',
-      'Enterprise-grade security.', 'Searches are untraceable.', 'No one can identify you.', 'Your health information stays confidential.',
+      'Enterprise-grade security.', 'Searches are untraceable.', 'Your health information stays confidential.',
+      'We keep your data safe.', 'Treatable keeps your key protected.', 'Confidential search.',
     ],
     ok: [
       'Your data is not protected against a compromised operating system.', 'Treatable cannot protect your information.',
@@ -393,18 +516,18 @@ const RULES = [
   },
   {
     id: 'marketing-claims',
-    re: /\b(?:privacy[-\s]+(?:first|preserving|protected|focused|friendly|safe)|(?:military|bank)[-\s]+grade|100\s*%\s+(?:private|safe|secure|accurate|anonymous)|(?:FDA|CE)[-\s]+(?:approved|cleared))\b/gi,
+    re: /\b(?:privacy[-\s]+(?:first|preserving|protected|focused|friendly|safe|by[-\s]+design|respecting|conscious|centric)|(?:military|bank)[-\s]+grade|100\s*%\s+(?:private|safe|secure|accurate|anonymous)|(?:FDA|CE)[-\s]+(?:approved|cleared))\b/gi,
     negatable: true,
-    bad: ['privacy-first design', 'a privacy preserving app', 'military-grade protection', 'bank grade', '100% accurate', 'Your data is 100 % safe.', 'FDA approved'],
+    bad: ['privacy-first design', 'a privacy preserving app', 'Privacy by design.', 'A privacy-respecting app.', 'military-grade protection', 'bank grade', '100% accurate', 'Your data is 100 % safe.', 'FDA approved'],
     ok: ['Treatable is not FDA approved.', 'Treatable is not FDA cleared.'],
   },
   {
     id: 'private-prose',
-    re: /\bprivate\b/gi,
+    re: /\bprivat(?:e|ely)\b/gi,
     negatable: false,
     scope: 'prose',
-    bad: ['Your private profile', 'Private by design', 'a private search', 'private retention', 'a private link'],
-    ok: ['privacy contact', 'privately held'],
+    bad: ['Your private profile', 'Private by design', 'a private search', 'private retention', 'a private link', 'Privately search trials.'],
+    ok: ['privacy contact'],
   },
 ];
 
@@ -445,7 +568,8 @@ export function normalize(text) {
 // ---------------------------------------------------------------------------------------------
 
 // A "/" starts a regular expression literal after an operator, an opening bracket, or one of these keywords.
-const REGEX_CAN_START_AFTER = /(?:[(,=:[!&|?{};+\-*%<>~^]|\b(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await))\s*$/;
+// The angle brackets are left out on purpose: after "</" or "/>" in JSX a slash closes a tag and starts nothing.
+const REGEX_CAN_START_AFTER = /(?:[(,=:[!&|?{};+\-*%~^]|=>|\b(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await))\s*$/;
 
 // Returns the text of string literals and comments in C-like source code. Keywords and identifiers
 // (for example the `private` modifier or a variable named `encrypted`) are not claims, so they are dropped.
@@ -466,7 +590,7 @@ export function codeProse(text, {regexLiterals = false} = {}) {
       if (j < 0) j = n;
       out.push(text.slice(i + 2, j));
       i = j + 2;
-    } else if (c === '/' && regexLiterals && (text.slice(Math.max(0, i - 16), i).trim() === '' || REGEX_CAN_START_AFTER.test(text.slice(Math.max(0, i - 16), i)))) {
+    } else if (c === '/' && regexLiterals && d !== '>' && (text.slice(Math.max(0, i - 16), i).trim() === '' || REGEX_CAN_START_AFTER.test(text.slice(Math.max(0, i - 16), i)))) {
       // A regular expression literal can hold quote characters that are not string delimiters. Skip the whole literal.
       let j = i + 1;
       let inClass = false;
@@ -507,6 +631,8 @@ export function jsxText(text) {
   for (const m of text.matchAll(new RegExp(`${openTag}([^<>{}\`;=]{1,2000})(?=[<{])`, 'g'))) out.push(m[1]);
   for (const m of text.matchAll(/\}([^<>{}`;=]{1,2000})(?=<)/g)) out.push(m[1]);
   for (const m of text.matchAll(/(?:<\/[A-Za-z][\w.:-]*\s*>|\/>)([^<>{}`;=]{1,2000})(?=[<{])/g)) out.push(m[1]);
+  // Text that runs straight into a closing tag may hold ; and =, because a closing tag cannot be part of TypeScript generics.
+  for (const m of text.matchAll(/[>}]([^<>{}]{1,2000})(?=<\/)/g)) out.push(m[1]);
   return out.join('\n');
 }
 
@@ -552,23 +678,34 @@ function regionsFor(relPath, text) {
     return {all: strings, prose: strings};
   }
   if (kind === 'markdown') return {all: text, prose: markdownProse(text)};
+  if (kind === 'config') return {all: text, prose: ''};
   return {all: text, prose: text};
 }
 
-// Returns a list of readable hit descriptions. Empty means clean.
-export function scanText(relPath, text) {
+// Returns a list of readable hit descriptions. Empty means clean. `ignoreRules` holds rule ids that an approved
+// exemption lets this file trip; every other rule still applies.
+export function scanText(relPath, text, {ignoreRules = new Set()} = {}) {
   const regions = regionsFor(relPath, text);
-  const allText = normalize(regions.all);
-  const proseText = normalize(regions.prose);
-  const hits = [];
-  for (const rule of RULES) {
-    const region = maskMechanismNames(rule.scope === 'prose' ? proseText : allText);
-    for (const m of region.matchAll(rule.re)) {
-      if (rule.negatable && isNegated(region, m.index ?? 0)) continue;
-      hits.push(`${relPath}: "${m[0].replace(/\s+/g, ' ')}" [${rule.id}]`);
+  const variants = [regions];
+  if (regions.all.includes('<!--') || regions.prose.includes('<!--')) {
+    // Second pass with HTML comments removed, so a phrase split by a comment is read as one phrase.
+    const strip = t => t.replace(/<!--[\s\S]*?-->/g, '');
+    variants.push({all: strip(regions.all), prose: strip(regions.prose)});
+  }
+  const hits = new Set();
+  for (const variant of variants) {
+    const allText = normalize(variant.all);
+    const proseText = normalize(variant.prose);
+    for (const rule of RULES) {
+      if (ignoreRules.has(rule.id)) continue;
+      const region = maskMechanismNames(rule.scope === 'prose' ? proseText : allText);
+      for (const m of region.matchAll(rule.re)) {
+        if (rule.negatable && isNegated(region, m.index ?? 0)) continue;
+        hits.add(`${relPath}: "${m[0].replace(/\s+/g, ' ')}" [${rule.id}]`);
+      }
     }
   }
-  return hits;
+  return [...hits];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -600,7 +737,7 @@ const REQUIRED_KEYS = [
   'notice.title', 'notice.regionLabel', 'notice.scrollHint', 'notice.endMarker', 'notice.acknowledgmentLabel',
   'notice.acknowledgeButton', 'notice.acknowledgedStatus', 'notice.acknowledgmentSessionOnly', 'notice.declineButton',
   'consent.separateConfirmationNote', 'consent.prepareButton', 'consent.previewHeading', 'consent.previewExplanation',
-  'consent.previewNoCredentials', 'consent.digestLabel', 'consent.expiresLabel', 'consent.expiryNote',
+  'consent.previewNoCredentials', 'consent.digestLabel', 'consent.expiresLabel', 'consent.expiryNote', 'consent.resendNote',
   'consent.invalidationNote', 'consent.confirmLabel', 'consent.sendDecisions', 'consent.sendAgents',
   'consent.discardButton', 'consent.stopButton',
   'payload.heading', 'payload.conditionTerm', 'payload.ageBand', 'payload.state', 'payload.sex', 'payload.doNotShare',
@@ -626,14 +763,14 @@ const REQUIRED_KEYS = [
 
 // Sentence-level wording that is repeated inside the notice sections must stay identical to its source key.
 const NOTICE_COMPOSITION = {
-  '02': ['disclosure.ctgov.body', 'disclosure.ctgov.networkNote'],
+  '02': ['disclosure.ctgov.body', 'disclosure.ctgov.networkNote', 'disclosure.separation'],
   '03': ['disclosure.openai.body', 'disclosure.openai.conditionTerm', 'disclosure.openai.account', 'disclosure.openai.neverSent', 'disclosure.openai.studyContacts'],
   '04': ['disclaimer.notAnonymous', 'disclaimer.notPhiReady', 'disclaimer.noComplianceClaim'],
   '05': ['disclosure.agentsRetention', 'disclosure.agentsTracing', 'disclosure.agentsInterrupted', 'disclosure.cannotRetract'],
   '06': ['disclosure.decisionsRetention', 'disclosure.abuseMonitoring', 'disclosure.noTraining'],
   '07': ['disclosure.credentials'],
   '09': ['disclosure.limits'],
-  '10': ['consent.expiryNote', 'consent.invalidationNote'],
+  '10': ['consent.expiryNote', 'consent.resendNote', 'consent.invalidationNote'],
   '11': ['disclaimer.persistent', 'disclaimer.scoreMeaning', 'disclaimer.distance', 'disclaimer.unknownEligibility', 'disclaimer.aiOutput', 'disclaimer.participationDraftOnly'],
   '12': ['operator.name', 'operator.privacyContact', 'operator.noticeOnly', 'operator.noRecordLookup'],
 };
@@ -731,24 +868,37 @@ test('strings.en.json: required wording is present exactly', () => {
 
 test('strings.en.json: OpenAI provider retention wording is complete and sourced from the contract record', () => {
   const agents = strings['disclosure.agentsRetention'];
-  assert.match(agents, /retains session state/);
+  assert.match(agents, /retains session state until the session is deleted/);
   assert.match(agents, /not compatible with Zero Data Retention/);
-  assert.match(agents, /attempts to cancel .* delete the session, and it reports any failure/);
+  assert.match(agents, /data residency only in the United States/);
+  assert.match(agents, /attempts to cancel .* delete the session\./);
+  assert.match(agents, /While Treatable is running, it shows whether deletion failed/);
   assert.match(agents, /physical cleanup may continue/);
   assert.match(agents, /does not promise instant physical erasure/);
   const tracing = strings['disclosure.agentsTracing'];
-  assert.match(tracing, /tracing by default/);
-  assert.match(tracing, /inputs, outputs, and tool results/);
-  assert.match(tracing, /Logs, Agents/);
-  assert.match(tracing, /no per-session setting to turn tracing off/);
-  assert.match(tracing, /does not say whether deleting a session also removes its trace/);
-  assert.match(strings['disclosure.agentsInterrupted'], /closed or the device loses power/);
-  assert.match(strings['disclosure.agentsInterrupted'], /can remain in your OpenAI project until it is deleted/);
+  assert.match(tracing, /records a trace of each Agents session by default/);
+  assert.match(tracing, /inputs sent to the model, the tool calls and results, and the model's output/);
+  assert.match(tracing, /can see these traces in OpenAI's dashboard/);
+  assert.match(tracing, /API keys with trace or agents read permission for that project can export them/);
+  assert.match(tracing, /does not describe a way to turn this off for a session/);
+  assert.match(tracing, /does not say whether deleting the session removes its trace/);
+  const interrupted = strings['disclosure.agentsInterrupted'];
+  assert.match(interrupted, /closed, crashes, is stopped by the operating system, or loses power or its connection/);
+  assert.match(interrupted, /cannot delete that session afterwards and cannot tell you about it later/);
+  assert.match(interrupted, /stays in your OpenAI project until you delete it there/);
   assert.match(strings['disclosure.decisionsRetention'], /no stored application state .* other than prompt caching/);
-  assert.match(strings['disclosure.abuseMonitoring'], /up to 30 days/);
-  assert.match(strings['disclosure.abuseMonitoring'], /does not say that deleting an Agents session removes these logs/);
-  assert.match(strings['disclosure.noTraining'], /not used to train or improve its models unless the owner of the OpenAI account has opted in/);
+  const abuse = strings['disclosure.abuseMonitoring'];
+  assert.match(abuse, /abuse-monitoring logs, which can include prompts and responses/);
+  assert.match(abuse, /up to 30 days by default for Decisions and Agents requests/);
+  assert.match(abuse, /or longer when required by law or when OpenAI considers it reasonably necessary to protect its services or others from harm/);
+  assert.match(abuse, /does not say that deleting an Agents session removes these logs/);
+  const training = strings['disclosure.noTraining'];
+  assert.match(training, /not used to train its models unless the account holder has opted in to share data with OpenAI/);
+  assert.match(training, /cannot see whether your OpenAI organization has opted in/);
   assert.match(strings['disclosure.cannotRetract'], /cannot take back data that was already sent/);
+  assert.match(strings['consent.resendNote'], /temporary rate limit, an overload, or a server error, Treatable may send the same Decisions request a second time, unchanged/);
+  assert.match(strings['trace.cleanupStatus.deleted'], /trace or an abuse-monitoring log entry may remain/);
+  assert.match(strings['session.endDescription'], /trace or an abuse-monitoring log entry may remain after deletion/);
 });
 
 test('strings.en.json: ClinicalTrials.gov and OpenAI disclosures stay separate and complete', () => {
@@ -773,7 +923,8 @@ test('strings.en.json: ClinicalTrials.gov and OpenAI disclosures stay separate a
   assert.match(strings['disclosure.openai.account'], /under your own OpenAI API key, so OpenAI can link them to your OpenAI account/);
   assert.match(strings['disclosure.openai.account'], /OpenAI also sees your network address/);
   assert.match(strings['disclosure.openai.studyContacts'], /never sent to OpenAI/);
-  assert.match(strings['disclosure.openai.conditionTerm'], /never text that you typed/);
+  assert.match(strings['disclosure.openai.conditionTerm'], /chosen from that list, not copied from what you typed/);
+  assert.match(strings['session.nothingSaved'], /^Treatable does not save your health entries, notes, searches, or profiles\. The only thing it saves is your OpenAI API key, if you choose to save one\.$/);
 });
 
 test('strings.en.json: error messages cover every required failure and keep local results', () => {
@@ -823,12 +974,22 @@ test('claims scan: every top-level folder and docs entry is classified', () => {
   assert.deepEqual(problems, []);
 });
 
-test('claims scan: every file under a scan root has a known type and decodes as text', () => {
+test('claims scan: every file under a scan root has a known type, decodes as text, and is not a symlink', t => {
   const found = collectFiles();
   assert.deepEqual(found.unknown, [], 'classify these extensions in the test file (scanned, non-text, or config)');
-  // An extensionless file with NUL bytes is a binary (for example a built executable) and is skipped.
-  const unreadable = found.files.filter(f => path.posix.extname(f.rel) !== '' && decode(readFileSync(f.full)) === null).map(f => f.rel);
-  assert.deepEqual(unreadable, [], 'a file with a text extension contains NUL bytes');
+  assert.deepEqual(found.symlinks, [], 'a symlink under a scan root hides its target from the scan: replace it with a real file');
+  const undecodable = found.files.filter(f => decode(readFileSync(f.full)) === null).map(f => f.rel);
+  // An extensionless file with NUL bytes is a binary (for example a built executable). It is skipped, but reported.
+  const binaries = undecodable.filter(rel => path.posix.extname(rel) === '');
+  if (binaries.length > 0) t.diagnostic(`skipped as binary (extensionless, contains NUL bytes): ${binaries.join(', ')}`);
+  assert.deepEqual(undecodable.filter(rel => !binaries.includes(rel)), [], 'a file with a text extension contains NUL bytes');
+});
+
+test('claims scan: pinned legacy root files are listed by SHA-256 digest only', () => {
+  for (const [name, digest] of Object.entries(LEGACY_ROOT_FILE_DIGESTS)) {
+    assert.match(digest, /^[0-9a-f]{64}$/, name);
+    assert.ok(!['README.md', 'install-linux.sh', 'install-macos.sh'].includes(name), `${name} scans clean and must stay in the scan`);
+  }
 });
 
 test('claims scan: exemptions are exact, justified, and limited to test and fixture paths', () => {
@@ -844,7 +1005,7 @@ test('claims scan: shipped strings and docs make no banned compliance, security,
   const hits = [];
   for (const file of found.files) {
     const text = decode(readFileSync(file.full));
-    if (text !== null) hits.push(...scanText(file.rel, text));
+    if (text !== null) hits.push(...scanText(file.rel, text, {ignoreRules: file.ignoreRules}));
   }
   assert.deepEqual(hits, []);
 });
@@ -957,6 +1118,26 @@ test('self-test: JSX child text is scanned and ordinary TypeScript is not mistak
   assert.deepEqual(scanText('a.tsx', 'const F = () => <Text>Research information, not medical advice.</Text>;'), []);
 });
 
+test('self-test: JSX closing tags and self-closing tags do not hide a string', () => {
+  const cases = [
+    '<Text>{a}</Text><Text accessibilityLabel="Your data is anonymous">x</Text>',
+    '<Row><Text>{a}</Text><Button title="Encrypted and secure" /></Row>',
+    '<Text>{a}</Text>\n<Button title="Encrypted and secure" />',
+    '<Text style={s} /><Text accessibilityLabel="Your data is anonymous">x</Text>',
+    'const x = a </b/; const s = "Your data is anonymous";',
+    '<Text>We keep it simple; it is anonymous</Text>',
+    '<Text>Total = anonymous</Text>',
+    '<Text>We say {x}; it is anonymous</Text>',
+  ];
+  for (const ext of ['tsx', 'jsx', 'js']) {
+    for (const c of cases) assert.ok(scanText(`App.${ext}`, c).length > 0, `${ext}: ${c}`);
+  }
+  // A plain TypeScript division and a regular expression still behave.
+  assert.deepEqual(scanText('a.ts', 'const half = a / b; const re = /["\']/g; const ok = "Research information, not medical advice.";'), []);
+  assert.deepEqual(scanText('a.ts', 'const f = x => /["\']/.test(x);'), []);
+  assert.ok(scanText('a.ts', 'const f = x => /["\']/.test(x); const s = "Your data is anonymous";').length > 0);
+});
+
 test('self-test: JSON keys and values are scanned, the package private flag is not', () => {
   assert.deepEqual(scanText('package.json', '{"name":"core","private":true,"dependencies":{"expo-secure-store":"~14.0.0"}}'), []);
   assert.ok(scanText('package.json', '{"description":"A secure app"}').length > 0);
@@ -990,7 +1171,8 @@ test('self-test: file types are classified, and an unknown type is reported rath
     assert.notEqual(classifyFile(f), 'skip', f);
     assert.notEqual(classifyFile(f), 'unknown', f);
   }
-  for (const f of ['a.png', 'a.ttf', 'a.exe', 'a.deb', 'a.csproj', 'a.pbxproj', 'package-lock.json', '.DS_Store', 'x/.gitignore']) assert.equal(classifyFile(f), 'skip', f);
+  for (const f of ['a.png', 'a.ttf', 'a.exe', 'a.deb', 'a.sln', 'package-lock.json', '.DS_Store', 'x/.gitignore', '.git']) assert.equal(classifyFile(f), 'skip', f);
+  for (const f of ['a.csproj', 'a.vbproj', 'a.pbxproj', 'a.xcconfig', 'a.props', 'a.targets', 'a.toml', 'a.properties']) assert.equal(classifyFile(f), 'config', f);
   for (const f of ['a.zzz', 'a.frobnicate', '.mysterydotfile']) assert.equal(classifyFile(f), 'unknown', f);
 });
 
@@ -1016,17 +1198,71 @@ test('self-test: top-level folders and docs entries must be classified', () => {
   assert.equal(classifyTopLevel([dir('core')], [{name: 'NOTES.md', isDirectory: false, isFile: true}]).length, 1);
 });
 
-test('self-test: exemptions are accepted only for justified test and fixture paths', () => {
+test('self-test: exemptions are accepted only for justified test and fixture paths with named rules', () => {
   const exists = () => true;
-  const good = {path: 'core/test/fixtures/ctgov-real.json', reason: 'Recorded public registry response with sponsor wording.'};
+  const good = {path: 'core/test/fixtures/ctgov-real.json', reason: 'Recorded public registry response with sponsor wording.', rules: ['certified']};
   assert.deepEqual(validateExemptions([good], exists), []);
-  assert.deepEqual(validateExemptions([{...good, path: 'core/src/strings.ts'}], exists).length, 1);
+  assert.equal(validateExemptions([{...good, path: 'core/lib/strings.ts'}], exists).length, 1);
   assert.ok(validateExemptions([{...good, path: 'core/strings/fixtures/a.json'}], exists).length > 0);
   assert.ok(validateExemptions([{...good, path: 'docs/apps/fixtures/a.md'}], exists).length > 0);
   assert.ok(validateExemptions([{...good, path: 'mobile/test/readme.md'}], exists).length > 0);
   assert.ok(validateExemptions([{...good, reason: 'ok'}], exists).length > 0);
-  assert.ok(validateExemptions([{path: 'core/test/*.json', reason: good.reason}], exists).length > 0);
+  assert.ok(validateExemptions([{path: 'core/test/*.json', reason: good.reason, rules: good.rules}], exists).length > 0);
   assert.ok(validateExemptions([good], () => false).length > 0);
+  assert.ok(validateExemptions([{path: good.path, reason: good.reason}], exists).length > 0, 'rules are required');
+  assert.ok(validateExemptions([{...good, rules: []}], exists).length > 0, 'rules may not be empty');
+  assert.ok(validateExemptions([{...good, rules: ['no-such-rule']}], exists).length > 0, 'rule ids must exist');
+  // Shipped source folders: only inside test/ or __tests__/.
+  assert.ok(validateExemptions([{...good, path: 'core/src/fixtures/ctgov.json'}], exists).length > 0);
+  assert.ok(validateExemptions([{...good, path: 'mobile/assets/fixtures/ctgov.json'}], exists).length > 0);
+  assert.ok(validateExemptions([{...good, path: 'core/src/x.test.ts'}], exists).length > 0);
+  assert.deepEqual(validateExemptions([{...good, path: 'core/src/__tests__/x.test.ts'}], exists), []);
+  assert.deepEqual(validateExemptions([{...good, path: 'core/src/test/x.ts'}], exists), []);
+});
+
+test('self-test: an approved exemption silences only the named rules', () => {
+  const text = 'A certified tool. Your data is anonymous.';
+  assert.equal(scanText('t.md', text).length, 2);
+  const hits = scanText('t.md', text, {ignoreRules: new Set(['certified'])});
+  assert.equal(hits.length, 1);
+  assert.match(hits[0], /\[anonymity\]/);
+});
+
+test('self-test: project and build files are scanned for wording but may use the word private as a keyword', () => {
+  assert.deepEqual(scanText('App.csproj', '<ItemGroup><Reference Include="X"><Private>True</Private></Reference></ItemGroup>'), []);
+  assert.deepEqual(scanText('project.pbxproj', 'name = "Private Headers";\nINFOPLIST_KEY_CFBundleDisplayName = Treatable;'), []);
+  assert.ok(scanText('project.pbxproj', 'INFOPLIST_KEY_NSHumanReadableCopyright = "Your data is anonymous";').length > 0);
+  assert.ok(scanText('App.csproj', '<Description>HIPAA compliant study finder</Description>').length > 0);
+  assert.ok(scanText('Directory.Build.props', '<Product>A secure app</Product>').length > 0);
+  assert.ok(scanText('x.xcconfig', 'INFOPLIST_KEY_NSFaceIDUsageDescription = Fully anonymous results').length > 0);
+  assert.ok(scanText('gradle.properties', 'app.tagline=Nothing leaves your device').length > 0);
+  assert.ok(scanText('Cargo.toml', 'description = "Guaranteed deletion"').length > 0);
+});
+
+test('self-test: files git does not track or list are not part of the scan', () => {
+  const listed = parseGitFileList('core/a.ts\0mobile/b.tsx\0.vscode/settings.json\0');
+  assert.equal(listed.has('core/a.ts'), true);
+  assert.equal(listed.has('.vscode/settings.json'), true, 'an untracked file that is not ignored is listed');
+  assert.equal(listed.has('coverage/lcov.info'), false);
+  assert.equal(listed.size, 3);
+});
+
+test('self-test: a phrase split by an HTML comment is still caught', () => {
+  assert.ok(scanText('a.md', 'HIPAA<!-- x -->-compliant').length > 0);
+  assert.ok(scanText('a.md', 'HIPAA-<!-- -->compliant').length > 0);
+  assert.ok(scanText('a.md', 'Fully anon<!-- x -->ymous.').length > 0);
+  assert.ok(scanText('a.md', '<!-- Your data is anonymous -->').length > 0);
+  assert.deepEqual(scanText('a.md', 'Not PHI-<!-- note -->ready.'), []);
+});
+
+test('self-test: named mechanism text passes and unnamed claims are still caught', () => {
+  assert.deepEqual(scanText('a.md', 'Windows DPAPI encrypts the key for the current user.'), []);
+  assert.deepEqual(scanText('a.md', 'TLS encrypts the request in transit.'), []);
+  assert.deepEqual(scanText('a.md', 'Store the App Store Connect private key outside the repository.'), []);
+  assert.deepEqual(scanText('a.sh', 'openssl genpkey -algorithm EC -out private.pem'), []);
+  assert.ok(scanText('a.md', 'Treatable encrypts the request in transit.').length > 0);
+  assert.ok(scanText('a.md', 'The preview is encrypted.').length > 0);
+  assert.ok(scanText('a.md', 'Keep your private notes here.').length > 0);
 });
 
 test('self-test: the real wording that must pass does pass', () => {
