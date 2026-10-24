@@ -14,18 +14,40 @@ func finish(_ code: Int32, _ message: String) -> Never {
     if !message.isEmpty { FileHandle.standardError.write(Data((message + "\n").utf8)) }
     exit(code)
 }
+// sk- prefix, 20-503 bytes (the native reader accepts at most sk- plus 500), and only [A-Za-z0-9_-]: no whitespace or control characters.
+func acceptedKey(_ bytes: UnsafePointer<CChar>, _ length: Int) -> Bool {
+    guard length >= 20 && length <= 503,
+          bytes[0] == 0x73, bytes[1] == 0x6B, bytes[2] == 0x2D else { return false }
+    for index in 3..<length {
+        let c = UInt8(bitPattern: bytes[index])
+        let allowed = (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || c == 0x2D || c == 0x5F
+        if !allowed { return false }
+    }
+    return true
+}
 if operation == "configure" {
-    guard isatty(STDIN_FILENO) == 1, let pointer = getpass("OpenAI API key for Treatable (hidden): ") else {
+    // getpass truncates at 128 characters; sk-proj- keys are longer. readpassphrase reads from /dev/tty with echo off into a 1 KiB buffer.
+    let capacity = 1024
+    let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: capacity)
+    buffer.initialize(repeating: 0, count: capacity)
+    func wipe() { memset(buffer, 0, capacity) }
+    defer { wipe(); buffer.deallocate() }
+    guard isatty(STDIN_FILENO) == 1,
+          readpassphrase("OpenAI API key for Treatable (hidden): ", buffer, capacity, RPP_ECHO_OFF | RPP_REQUIRE_TTY) != nil else {
+        wipe()
         finish(1, "Run credential setup in an interactive terminal. No key was saved.")
     }
-    let length = strlen(pointer)
-    defer { memset(pointer, 0, length) }
-    guard length >= 13 && length <= 503,
-          let text = String(validatingUTF8: pointer),
-          text.range(of: "^sk-[A-Za-z0-9_-]{10,500}$", options: .regularExpression) != nil else {
+    var length = strlen(buffer)
+    while length > 0 && (buffer[length - 1] == 0x0A || buffer[length - 1] == 0x0D) {
+        length -= 1
+        buffer[length] = 0
+    }
+    guard acceptedKey(buffer, length) else {
+        wipe()
         finish(1, "The key format was not accepted. No key was saved.")
     }
-    var data = Data(bytes: pointer, count: length)
+    var data = Data(bytes: buffer, count: length)
+    wipe()
     defer { data.resetBytes(in: 0..<data.count) }
     let update = [kSecValueData as String: data]
     var status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
