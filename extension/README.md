@@ -2,6 +2,8 @@
 
 ClinicalTrials.gov study exploration for patients, with a panel-memory local workflow and a default **fictional OpenAI Decisions/Agents demo** and optional explicitly consented real-data analysis. Version B applies [make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better/tree/main/skills/make-interfaces-feel-better). The standalone web prototype on localhost:5556 is separate and unchanged.
 
+The sidebar is enabled only on `https://clinicaltrials.gov` and `https://www.clinicaltrials.gov`. It is disabled on other sites. After updating an unpacked build, use **Reload** on `chrome://extensions` and refresh the ClinicalTrials.gov tab so the updated manifest and service worker take effect.
+
 ## Current build and setup
 
 Requires Chrome **142+** (the documented `sidePanel.onClosed` event), Node 20+, macOS and Xcode command-line tools for the native Keychain helper.

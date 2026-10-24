@@ -16,7 +16,41 @@ function attachPanel(panel:any){
 }
 chrome.runtime.onConnect.addListener(attachPanel);
 async function readCurrentPage(){const[tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||typeof tab.url!=='string'||!isSupportedSite(tab.url))throw new Error('Unsupported page');const results=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readPage,args:[[...TRIAL_ORIGINS]]});return parsePageSource(results?.[0]?.result)}
-chrome.action.onClicked.addListener((tab:any)=>{if(tab?.windowId!==undefined)void chrome.sidePanel.open({windowId:tab.windowId})});
+// A manifest default_path is global. Keep the default disabled and opt in per tab.
+void chrome.sidePanel.setOptions({enabled:false}).catch(()=>{});
+void chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:false}).catch(()=>{});
+function configurePanel(tab:any){
+ if(!Number.isInteger(tab?.id)||tab.id<0)return Promise.resolve();
+ const enabled=typeof tab.url==='string'&&isSupportedSite(tab.url);
+ return chrome.sidePanel.setOptions(enabled?{tabId:tab.id,path:'panel.html',enabled:true}:{tabId:tab.id,enabled:false}).catch(()=>{});
+}
+let panelSequence=0;
+const panelRevisions=new Map<number,number>();
+function updatePanel(tab:any){if(Number.isInteger(tab?.id)&&tab.id>=0)panelRevisions.set(tab.id,++panelSequence);return configurePanel(tab)}
+async function initializePanels(){
+ const revision=panelSequence;
+ try{const tabs=await chrome.tabs.query({});
+ // Close only this extension's legacy global panels; tab panels use separate options.
+ for(const windowId of new Set(tabs.map((tab:any)=>tab.windowId).filter((id:any)=>Number.isInteger(id)&&id>=0)))void chrome.sidePanel.close({windowId}).catch(()=>{});
+ await Promise.all(tabs.filter((tab:any)=>(panelRevisions.get(tab.id)??0)<=revision).map(updatePanel));
+ }catch{}
+}
+void initializePanels();
+chrome.runtime.onInstalled.addListener(()=>{void initializePanels()});
+chrome.runtime.onStartup.addListener(()=>{void initializePanels()});
+chrome.tabs.onUpdated.addListener((tabId:number,change:any,tab:any)=>{void updatePanel({...tab,id:tabId,url:change.url??tab.url})});
+chrome.tabs.onActivated.addListener(({tabId}:{tabId:number})=>{
+ const revision=++panelSequence;panelRevisions.set(tabId,revision);
+ void chrome.tabs.get(tabId).then((tab:any)=>{if(panelRevisions.get(tabId)===revision)void configurePanel(tab)}).catch(()=>{if(panelRevisions.get(tabId)===revision)void configurePanel({id:tabId})});
+});
+chrome.tabs.onRemoved.addListener((tabId:number)=>{panelRevisions.delete(tabId)});
+chrome.action.onClicked.addListener((tab:any)=>{
+ if(!Number.isInteger(tab?.id)||tab.id<0)return;
+ if(typeof tab.url!=='string'||!isSupportedSite(tab.url)){void updatePanel({id:tab.id});return}
+ // Queue configuration before opening, without awaiting and losing the user gesture.
+ void updatePanel(tab);
+ void chrome.sidePanel.open({tabId:tab.id}).catch(()=>{});
+});
 // Chrome 142+: any closed panel ends all panel sessions, deliberately privacy-first.
 chrome.sidePanel.onClosed.addListener(()=>{for(const[panel,end]of [...panels]){try{panel.postMessage({kind:'endSession'})}catch{}end()}panels.clear()});
 chrome.runtime.onMessage.addListener((message:any,sender:any,respond:(v:unknown)=>void)=>{if(!allowedPanel(sender))return false;if(message?.kind==='readPage'){void readCurrentPage().then(source=>respond({ok:true,source})).catch(()=>respond({ok:false,error:'Open a supported ClinicalTrials.gov study page and retry.'}));return true}return false});

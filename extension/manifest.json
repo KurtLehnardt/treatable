@@ -18,9 +18,6 @@
   "action": {
     "default_title": "Open Treatable"
   },
-  "side_panel": {
-    "default_path": "panel.html"
-  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self'; base-uri 'none'; frame-src 'none'"
   }
