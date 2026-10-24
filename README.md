@@ -1,4 +1,5 @@
 # Treatable
+<img width="1536" height="985" alt="image" src="https://github.com/user-attachments/assets/c6090c73-ccef-48ec-9d12-c9aa7236fed5" />
 
 > **Demoed product:** the Treatable Chrome extension in [`extension/`](extension/README.md), with its local native host in [`extension/native/`](extension/native/API_SETUP.md). Version B is the primary build at `extension/dist`: a search-first ClinicalTrials.gov overlay with optional protected current-page matching. The rest of this README describes the legacy `scaffold/` web app, which is not part of the demo.
 >
