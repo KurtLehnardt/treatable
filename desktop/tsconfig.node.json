@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "types": ["node", "electron-vite/node"],
+    "baseUrl": ".",
+    "paths": {
+      "zod": ["node_modules/zod"]
+    }
+  },
+  "include": [
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
+    "src/shared/**/*.ts",
+    "electron.vite.config.ts",
+    "tests/**/*.ts",
+    "../scaffold/lib/contracts/patientProfile.ts",
+    "../scaffold/lib/contracts/study.ts",
+    "../scaffold/lib/contracts/studyMatch.ts",
+    "../scaffold/lib/eligibility/hardFilters.ts"
+  ]
+}

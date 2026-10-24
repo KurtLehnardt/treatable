@@ -1,0 +1,20 @@
+{
+  // Editor and tsx entry point. tsx reads only this file, so the zod path
+  // lives here too: tests that import the extension need the single copy.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "zod": ["node_modules/zod"]
+    }
+  },
+  "files": [],
+  "include": []
+}
