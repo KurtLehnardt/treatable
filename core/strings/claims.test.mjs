@@ -7,10 +7,13 @@
 // This file defines the banned patterns, so the scan skips this file itself.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync, readdirSync, existsSync} from 'node:fs';
+import {
+  readFileSync, readdirSync, existsSync, realpathSync, mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync, appendFileSync, symlinkSync,
+} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 
 // Look-alike and invisible characters are built from code points so the source stays readable.
@@ -31,7 +34,10 @@ const DOCS_SCAN_DIR = 'apps';
 
 // Folders that belong to earlier work and are not scanned. A new top-level folder that is in neither list fails the
 // "every folder is classified" test, so a platform folder with an unexpected name cannot be skipped silently.
-const NOT_OURS_ROOT_DIRS = new Set(['extension', 'scaffold', 'evals', 'installer', '.git', '.claude', '.codex', '.github', 'node_modules']);
+// Editor folders (.vscode, .idea) never ship, so a developer's local settings do not fail the scan.
+const NOT_OURS_ROOT_DIRS = new Set([
+  'extension', 'scaffold', 'evals', 'installer', '.git', '.claude', '.codex', '.github', 'node_modules', '.vscode', '.idea',
+]);
 const NOT_OURS_DOCS_ENTRIES = new Set(['implementation']);
 // Root-level files from the extension era that contain wording this scan bans. Each is skipped only while its content
 // is byte for byte what it was at base commit 48c569e (SHA-256 below). Any edit puts the file back into the scan.
@@ -113,9 +119,11 @@ export function isIgnoredDirectory(relDir) {
 // written reason. Only test and fixture paths qualify, and strings and documents are never exempt. The list starts
 // empty and every entry needs a reviewer's approval.
 const EXEMPT_FILES = [];
-const EXEMPT_PATH_PATTERN = /(?:^|\/)(?:test|tests|__tests__|fixtures)\/|\.test\./;
-const EXEMPT_UNDER_TEST_DIR = /(?:^|\/)(?:test|tests|__tests__)\//;
-const SHIPPED_SOURCE_DIR = /(?:^|\/)(?:src|assets)\//;
+// Folder names are matched without regard to case, because the repository is used on case-insensitive file systems.
+const EXEMPT_PATH_PATTERN = /(?:^|\/)(?:test|tests|__tests__|fixtures)\/|\.test\./i;
+const EXEMPT_UNDER_TEST_DIR = /(?:^|\/)(?:test|tests|__tests__)\//i;
+// Folders whose contents are bundled into an app (source, assets, platform resources, web public files).
+const SHIPPED_SOURCE_DIR = /(?:^|\/)(?:src|assets|resources|res|app|public)\//i;
 
 export function validateExemptions(list, fileExists, ruleIds = RULES.map(r => r.id)) {
   const problems = [];
@@ -124,8 +132,8 @@ export function validateExemptions(list, fileExists, ruleIds = RULES.map(r => r.
     if (typeof p !== 'string' || !/^[A-Za-z0-9_./-]+$/.test(p)) problems.push(`${JSON.stringify(p)}: path must be an exact repository-relative path`);
     else {
       if (!EXEMPT_PATH_PATTERN.test(p)) problems.push(`${p}: only test and fixture paths can be exempt`);
-      if (SHIPPED_SOURCE_DIR.test(p) && !EXEMPT_UNDER_TEST_DIR.test(p)) problems.push(`${p}: a file under src/ or assets/ ships in the app, so it can be exempt only inside test/ or __tests__/`);
-      if (/^core\/strings\//.test(p) || /^docs\//.test(p) || /\.mdx?$/.test(p)) problems.push(`${p}: strings and documents are never exempt`);
+      if (SHIPPED_SOURCE_DIR.test(p) && !EXEMPT_UNDER_TEST_DIR.test(p)) problems.push(`${p}: a file under src/, assets/, resources/, res/, app/, or public/ ships in the app, so it can be exempt only inside test/ or __tests__/`);
+      if (/^core\/strings\//i.test(p) || /^docs\//i.test(p) || /\.mdx?$/i.test(p)) problems.push(`${p}: strings and documents are never exempt`);
       if (!fileExists(p)) problems.push(`${p}: file does not exist`);
     }
     if (typeof entry?.reason !== 'string' || entry.reason.trim().length < 20) problems.push(`${p}: a written reason of at least 20 characters is required`);
@@ -169,64 +177,154 @@ function findChild(dir, name) {
 
 const toPosix = p => p.split(path.sep).join('/');
 
-// The files git knows about (tracked, or untracked and not ignored), as repository-relative paths with forward slashes.
-// A developer's editor folder or an ignored environment file is therefore not scanned. Null when git is unavailable,
-// in which case every file found on disk is considered.
-export function parseGitFileList(output) {
-  return new Set(output.split('\0').filter(Boolean));
+// The key used to compare a path on disk with a path that git reports. Names are compared in Unicode NFC form,
+// because macOS can report a decomposed (NFD) name on disk while git records the composed one. Case is ignored
+// when git ignores it (core.ignorecase), because a case-only rename on such a file system leaves git's view unchanged.
+export function pathKey(relPath, ignoreCase) {
+  const nfc = relPath.normalize('NFC');
+  return ignoreCase ? nfc.toLowerCase() : nfc;
 }
 
-function gitFileSet() {
+// Splits the NUL-separated output of `git ls-files -z` into paths.
+export function parseGitFileList(output) {
+  return output.split('\0').filter(Boolean);
+}
+
+// Parses `git ls-files -z -s` output ("<mode> <object> <stage><TAB><path>") into {mode, path} records.
+export function parseGitIndex(output) {
+  return parseGitFileList(output).map(record => ({mode: record.slice(0, record.indexOf(' ')), path: record.slice(record.indexOf('\t') + 1)}));
+}
+
+// What git says about the work tree, reduced to the questions the walk asks. `tracked` comes from the index.
+// `ignored` is the output of `git ls-files --others --ignored --exclude-standard --directory`: untracked paths that git
+// ignores, with a trailing slash on a folder that is ignored as a whole. The scan fails closed: it skips a path only
+// when git ignores it and nothing under it is tracked. A file that git lists under a different spelling, or does not
+// list at all, is still read.
+export function makeGitView({tracked, ignored, ignoreCase}) {
+  const key = p => pathKey(p, ignoreCase);
+  const trackedKeys = new Set(tracked.map(entry => key(entry.path)));
+  const ignoredFiles = new Set();
+  const ignoredDirs = [];
+  for (const p of ignored) {
+    if (p.endsWith('/')) ignoredDirs.push(key(p));
+    else ignoredFiles.add(key(p));
+  }
+  const isTracked = rel => trackedKeys.has(key(rel));
+  const hasTrackedUnder = rel => {
+    const prefix = `${key(rel)}/`;
+    for (const k of trackedKeys) if (k.startsWith(prefix)) return true;
+    return false;
+  };
+  const isIgnored = rel => {
+    const k = key(rel);
+    return ignoredFiles.has(k) || ignoredDirs.some(dir => `${k}/`.startsWith(dir));
+  };
+  return {
+    tracked, ignoreCase, isTracked, hasTrackedUnder,
+    skips: (rel, isDirectory) => isIgnored(rel) && !(isDirectory ? hasTrackedUnder(rel) : isTracked(rel)),
+  };
+}
+
+// Null when git is not installed or `root` is not the top of a git work tree (for example an exported copy).
+// Then every file under a scan root is considered, except the generated folders in IGNORED_DIRECTORY_PATTERNS.
+export function gitState(root) {
+  const run = args => execFileSync('git', args, {cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024});
   try {
-    const out = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024});
-    return parseGitFileList(out);
+    if (realpathSync(run(['rev-parse', '--show-toplevel']).trim()) !== realpathSync(root)) return null;
+    let ignoreCase = false;
+    try {
+      ignoreCase = run(['config', '--bool', 'core.ignorecase']).trim() === 'true';
+    } catch {
+      // An unset value means git compares paths with case.
+    }
+    const tracked = parseGitIndex(run(['ls-files', '-z', '-s']));
+    const ignored = parseGitFileList(run(['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']));
+    return makeGitView({tracked, ignored, ignoreCase});
   } catch {
     return null;
   }
 }
 
-const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
+// True for root-level files and for paths under a scan root or docs/apps, whatever their case or Unicode form.
+function inScanArea(relPath) {
+  const parts = relPath.normalize('NFC').toLowerCase().split('/');
+  if (parts.length === 1) return true;
+  if (SCAN_ROOT_DIRS.includes(parts[0])) return true;
+  return parts[0] === 'docs' && parts[1] === DOCS_SCAN_DIR && parts.length > 2;
+}
 
-function walk(dir, found) {
+const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
+const SELF_REAL = realpathSync.native(SELF);
+const isSelf = full => path.basename(full).toLowerCase() === path.basename(SELF).toLowerCase() && realpathSync.native(full) === SELF_REAL;
+
+// `onlyTracked` is set inside a generated or dependency folder: there, only files that git tracks are read.
+function walk(dir, found, onlyTracked) {
   for (const entry of entriesOf(dir)) {
     const full = path.join(dir, entry.name);
-    const rel = toPosix(path.relative(REPO_ROOT, full));
-    if (entry.isSymlink) {
-      if (!found.gitFiles || found.gitFiles.has(rel)) found.symlinks.push(rel);
+    const rel = toPosix(path.relative(found.root, full));
+    if (found.git?.skips(rel, entry.isDirectory)) continue;
+    if (onlyTracked && !(entry.isDirectory ? found.git.hasTrackedUnder(rel) : found.git.isTracked(rel))) continue;
+    if (entry.name.toLowerCase() === '.git') {
+      // A nested repository (or a submodule checkout) hides its files from git, so it is reported, not skipped.
+      found.nestedRepos.push(rel);
+    } else if (entry.isSymlink) {
+      found.seen.add(found.key(rel));
+      found.symlinks.push(rel);
     } else if (entry.isDirectory) {
-      if (!isIgnoredDirectory(rel)) walk(full, found);
+      if (!isIgnoredDirectory(rel)) walk(full, found, onlyTracked);
+      else if (found.git?.hasTrackedUnder(rel)) walk(full, found, true);
     } else if (entry.isFile) {
       considerFile(full, rel, found);
+    } else {
+      found.unknown.push(rel);
     }
   }
 }
 
 function considerFile(full, rel, found) {
-  if (path.resolve(full) === SELF) return;
-  if (found.gitFiles && !found.gitFiles.has(rel)) return;
+  found.seen.add(found.key(rel));
+  if (isSelf(full)) return;
   const kind = classifyFile(rel);
   if (kind === 'skip') return;
   if (kind === 'unknown') found.unknown.push(rel);
   else found.files.push({full, rel, ignoreRules: exemptRulesFor(rel)});
 }
 
-function collectFiles() {
-  const found = {files: [], unknown: [], symlinks: [], gitFiles: gitFileSet()};
-  const rootEntries = entriesOf(REPO_ROOT);
+// Collects the files to scan under `root`. Besides `files`, it reports what must make the scan fail: `unknown` file
+// types, `symlinks`, `nestedRepos` (a nested .git or a submodule entry in the index), and `missingTracked` (a file that
+// git tracks in a scanned area but that the walk did not find, so its committed text would go unchecked).
+export function collectFiles(root = REPO_ROOT, git = gitState(root)) {
+  const found = {
+    root, git, key: p => pathKey(p, git?.ignoreCase ?? false), seen: new Set(),
+    files: [], unknown: [], symlinks: [], nestedRepos: [], missingTracked: [],
+  };
+  const rootEntries = entriesOf(root);
   for (const e of rootEntries) {
+    // The repository's own metadata: a folder, or a file in a linked work tree.
+    if (e.name.toLowerCase() === '.git') continue;
+    if (git?.skips(e.name, e.isDirectory)) continue;
     if (e.isSymlink) {
-      if (!found.gitFiles || found.gitFiles.has(e.name)) found.symlinks.push(e.name);
-    } else if (e.isDirectory && SCAN_ROOT_DIRS.includes(e.name.toLowerCase())) walk(path.join(REPO_ROOT, e.name), found);
-    else if (e.isFile) {
+      found.seen.add(found.key(e.name));
+      found.symlinks.push(e.name);
+    } else if (e.isDirectory && SCAN_ROOT_DIRS.includes(e.name.toLowerCase())) {
+      walk(path.join(root, e.name), found, false);
+    } else if (e.isFile) {
       const pinned = LEGACY_ROOT_FILE_DIGESTS[e.name];
-      if (pinned && sha256(readFileSync(path.join(REPO_ROOT, e.name))) === pinned) continue;
-      considerFile(path.join(REPO_ROOT, e.name), e.name, found);
+      if (pinned && sha256(readFileSync(path.join(root, e.name))) === pinned) found.seen.add(found.key(e.name));
+      else considerFile(path.join(root, e.name), e.name, found);
     }
   }
   const docs = rootEntries.find(e => e.isDirectory && e.name.toLowerCase() === 'docs');
   if (docs) {
-    const apps = findChild(path.join(REPO_ROOT, docs.name), DOCS_SCAN_DIR);
-    if (apps) walk(path.join(REPO_ROOT, docs.name, apps.name), found);
+    const apps = findChild(path.join(root, docs.name), DOCS_SCAN_DIR);
+    if (apps && !git?.skips(`${docs.name}/${apps.name}`, true)) walk(path.join(root, docs.name, apps.name), found, false);
+  }
+  if (git) {
+    for (const entry of git.tracked) {
+      if (!inScanArea(entry.path)) continue;
+      if (entry.mode === '160000') found.nestedRepos.push(entry.path);
+      else if (!found.seen.has(found.key(entry.path))) found.missingTracked.push(entry.path);
+    }
   }
   found.files.sort((a, b) => a.rel.localeCompare(b.rel));
   return found;
@@ -255,61 +353,95 @@ export function isNegated(text, index) {
   return NEGATED_BEFORE.test(sentence);
 }
 
-// Mechanism names that are not claims. Each is blanked out (same length) before the rules run.
+// Mechanism names that are not claims. Each match is replaced by underscores of the same length before the rules run.
+// Underscores, not spaces, so that a negator in front of a masked name cannot reach a claim behind it.
 // Bare "secure store" and "secure storage" are not allowed: only the named platform features below.
+// An allowance never applies in a sentence that also mentions the user's data (see USER_DATA_WORDS): "TLS encrypts
+// the request." is a mechanism, but "TLS encrypts the request and your health data." is a claim about that data.
+// Each entry's `bad` samples are claims built around the same name, and the self-test proves each one is still caught.
 const MECHANISM_NAMES = [
   {
-    // A named platform feature that does the encrypting is a mechanism, not a claim about Treatable's protection.
+    // A named platform feature that encrypts a key, a credential, or a request. The object must be one of those words
+    // and the clause must end right after it (or after "in transit", "at rest", "for the current user", or the place
+    // the key is held). Anything else after the object (", so ...", "and ...") puts the sentence back under the rules.
     // This entry must come first so that "expo-secure-store encrypts" is masked before the bare package name is.
     id: 'mechanism-encrypts',
-    re: /\b(?:DPAPI|Keychain|(?:Android\s+)?Keystore|Credential\s+Manager|Secret\s+Service|libsecret|TLS|HTTPS|expo-secure-store)\s+(?:also\s+)?encrypts?\b/gi,
+    re: /\b(?:DPAPI|Keychain|(?:Android\s+)?Keystore|Credential\s+Manager|Secret\s+Service|libsecret|TLS|HTTPS|expo-secure-store)\s+(?:also\s+)?encrypts?\s+(?:(?:the|each|every|this|your|stored)\s+)?(?:(?:OpenAI\s+)?API\s+keys?|keys?|credentials?|secrets?|requests?|connection|traffic|values?)(?:\s+(?:in\s+transit|at\s+rest|for\s+the\s+current\s+user|with\s+a\s+key\s+(?:held|kept|stored)\s+in\s+the\s+(?:Android\s+Keystore|Keychain|Secure\s+Enclave|TPM)))?(?=[ \t]*(?:[.;:!?)\]"'`]|\n[ \t]*\n|$))/gi,
     ok: [
       'Windows DPAPI encrypts the key for the current user.', 'TLS encrypts the request in transit.',
-      'expo-secure-store encrypts values with a key held in the Android Keystore.',
+      'expo-secure-store encrypts values with a key held in the Android Keystore.', 'Keychain encrypts the OpenAI API key at rest.',
     ],
-    bad: ['Treatable encrypts your data.', 'Your data is encrypted.', 'The app encrypts the preview.'],
+    bad: [
+      'Treatable encrypts your data.', 'Your data is encrypted.', 'The app encrypts the preview.',
+      'HTTPS encrypts all your health data.', 'Keychain encrypts your health entries.', 'expo-secure-store encrypts your symptoms on your phone.',
+      'Credential Manager encrypts your health profile.', 'TLS encrypts everything.', 'No TLS encrypts anonymous traffic.',
+      'TLS encrypts the request and your health data.', 'TLS encrypts the request, so OpenAI cannot read it.',
+      'TLS encrypts the request and the rest.', 'Your health data is sent to OpenAI, and TLS encrypts the request.',
+      'TLS encrypts the request\nand your symptoms.',
+    ],
   },
   {
+    // A private key named by its kind (a signing, SSH, or App Store Connect key), or a key file name.
     id: 'private-key',
-    re: /\bprivate[-\s]keys?\b|\bprivate\.(?:pem|key|p8|p12)\b/gi,
-    ok: ['Store the App Store Connect private key outside the repository.', 'openssl genpkey -out private.pem'],
-    bad: ['Your private profile.', 'a private search', 'private notes'],
+    re: /\b(?:signing|App\s+Store\s+Connect|SSH|RSA|EC|PEM|upload|notarization|developer|API)\s+private[-\s]keys?\b|\bprivate\.(?:pem|key|p8|p12)\b/gi,
+    ok: ['Store the App Store Connect private key outside the repository.', 'openssl genpkey -out private.pem', 'Keep the signing private key offline.'],
+    bad: [
+      'Your private profile.', 'a private search', 'private notes', 'Your health data is locked with a private key.',
+      'Only your private key can read your data.', 'Data protected by a private key and HTTPS.',
+      'Your health data is locked with a signing private key.', 'Only your SSH private key can read your data.',
+      'private.pem keeps your information safe.',
+    ],
   },
   {
     id: 'expo-secure-store',
     re: /\bexpo-secure-store\b/gi,
     ok: ['"expo-secure-store": "~14.0.0"', "import * as Store from 'expo-secure-store';"],
-    bad: ['expo secure store is a secure store'],
+    bad: ['expo secure store is a secure store', 'Your symptoms stay in expo-secure-store.', 'expo-secure-store keeps your health data.'],
   },
   {
     id: 'platform-secure-storage',
     re: /\b(?:platform|system|OS|operating system's|operating system)\s+secure\s+storage\b/gi,
     ok: ['Credentials use platform secure storage.', "The operating system's secure storage holds the key."],
-    bad: ['Credentials are kept in secure storage.', 'a secure store', 'Your key is stored securely.'],
+    bad: [
+      'Credentials are kept in secure storage.', 'a secure store', 'Your key is stored securely.',
+      'Your health data is kept in platform secure storage.', 'Searches go into system secure storage.',
+    ],
   },
   {
     id: 'secure-enclave',
     re: /\bSecure Enclave\b/g,
     ok: ['Apple Secure Enclave'],
-    bad: ['a secure enclave for your data'],
+    bad: ['a secure enclave for your data', 'Your health data lives in the Secure Enclave.'],
   },
   {
     id: 'secure-context-random',
     re: /\bsecure (?:context|random)\b/gi,
     ok: ['A secure context is required.', 'Use a secure random generator.'],
-    bad: ['a secure connection'],
+    bad: ['a secure connection', 'Your health data runs in a secure context.'],
   },
   {
     id: 'encrypted-ebs',
     re: /\bencrypted EBS\b/gi,
     ok: ['Use encrypted EBS volumes for the test instance.'],
-    bad: ['encrypted storage'],
+    bad: ['encrypted storage', 'Your health data is on encrypted EBS volumes.'],
   },
 ];
 
+// Words that mean the user's own data. A mechanism allowance does not apply in a sentence that contains one.
+const USER_DATA_WORDS = /\b(?:health|medical|data|information|info|symptoms?|notes?|entries|entry|searches|search\s+(?:terms?|words|history)|profiles?|history|conditions?|diagnos\w*|identity|PHI|PII|everything|anything|you\s+(?:type|enter|share|search))\b/i;
+const SENTENCE_BREAK = /[.;:!?]|\n\s*\n/;
+
+function sentenceAround(text, start, length) {
+  const before = text.slice(Math.max(0, start - 400), start).split(SENTENCE_BREAK).pop();
+  const after = text.slice(start + length, start + length + 400).split(SENTENCE_BREAK)[0];
+  return `${before}${text.slice(start, start + length)}${after}`;
+}
+
 function maskMechanismNames(text) {
   let masked = text;
-  for (const {re} of MECHANISM_NAMES) masked = masked.replace(re, m => ' '.repeat(m.length));
+  for (const {re} of MECHANISM_NAMES) {
+    masked = masked.replace(re, (m, offset, whole) => (USER_DATA_WORDS.test(sentenceAround(whole, offset, m.length)) ? m : '_'.repeat(m.length)));
+  }
   return masked;
 }
 
@@ -367,9 +499,12 @@ const RULES = [
   },
   {
     id: 'clinical-validity',
-    re: /\b(?:clinically[-\s]+(?:validated|proven|verified|tested|accurate|reliable|approved)|medically[-\s]+(?:validated|proven|accurate|reliable|approved|reviewed))\b/gi,
+    re: /\b(?:clinically[-\s]+(?:validated|proven|verified|tested|accurate|reliable|approved)|medically[-\s]+(?:validated|proven|accurate|reliable|approved|reviewed)|scientifically[-\s]+(?:validated|proven|verified|tested|backed))\b/gi,
     negatable: true,
-    bad: ['clinically validated', 'a clinically proven method', 'Clinically tested', 'clinically\nvalidated', 'Medically accurate matches.', 'clinically accurate'],
+    bad: [
+      'clinically validated', 'a clinically proven method', 'Clinically tested', 'clinically\nvalidated', 'Medically accurate matches.', 'clinically accurate',
+      'Scientifically validated matching.',
+    ],
     ok: [
       'Treatable has not been clinically validated.', 'The score is not clinically validated.',
       'Never described as clinically proven.',
@@ -414,9 +549,12 @@ const RULES = [
   },
   {
     id: 'encryption',
-    re: /\bencrypt(?:s|ed|ion|ing)?\b/gi,
+    re: /\bencrypt(?:s|ed|ion|ing)?\b|\bE2EE\b|\bend[-\s]+to[-\s]+end[-\s]+(?:crypto\w*|protect\w*|privacy|secret\w*|secur\w*|safe\w*)/gi,
     negatable: true,
-    bad: ['Your data is encrypted.', 'end-to-end encrypted', 'Encrypted storage', 'encrypts your data', 'End-to-end encryption'],
+    bad: [
+      'Your data is encrypted.', 'end-to-end encrypted', 'Encrypted storage', 'encrypts your data', 'End-to-end encryption',
+      'Uses end to end crypto.', 'E2EE.', 'End-to-end protected.',
+    ],
     ok: ['The text is not encrypted.', 'EncryptedSharedPreferences', 'Treatable does not encrypt the preview.'],
   },
   {
@@ -445,32 +583,44 @@ const RULES = [
   },
   {
     id: 'endorsement-claim',
-    re: /\b(?:doctor|physician|clinician|nurse|pharmacist|expert)s?[-\s]+(?:approved|recommended|endorsed|reviewed|verified|validated|tested|backed)\b/gi,
+    re: /\b(?:doctor|physician|clinician|nurse|pharmacist|expert)s?[-\s]+(?:approved|recommended|endorsed|reviewed|verified|validated|tested|backed)\b|\b(?:trusted|approved|recommended|endorsed|reviewed|verified|validated|backed|used)\s+by\s+(?:\w+\s+){0,2}(?:doctors|physicians|clinicians|nurses|pharmacists|experts|hospitals|researchers)\b/gi,
     negatable: true,
-    bad: ['Doctor approved.', 'Physician-reviewed matching.', 'Doctor-recommended app.', 'Clinician validated scores.'],
-    ok: ['Treatable is not doctor approved.', 'The matching was not clinician reviewed.'],
+    bad: [
+      'Doctor approved.', 'Physician-reviewed matching.', 'Doctor-recommended app.', 'Clinician validated scores.', 'Trusted by doctors.',
+      'Reviewed by leading clinicians.',
+    ],
+    ok: ['Treatable is not doctor approved.', 'The matching was not clinician reviewed.', 'The scores are not reviewed by clinicians.'],
   },
   {
     id: 'collection-denial',
-    re: /\bno\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:collected|stored|retained|tracked|logged|kept)\b|\bwe\s+(?:never|don't|do\s+not)\s+(?:collect|store|track|log|sell|keep|see)\b|\bzero\s+data\s+collection\b|\bdata\s+not\s+collected\b|\bno\s+(?:data|information)\s+collection\b|\bnothing\s+is\s+(?:retained|stored|kept|saved|logged)\b|\b(?:keeps?|stores?|retains?)\s+nothing\b|\b(?:does\s+not|doesn't|never)\s+(?:store|keep|retain|log)\s+your\s+(?:data|information)\b|\bno\s+logs\s+(?:are\s+)?kept\b|\bno\s+(?:PII|personally[-\s]+identifiable(?:\s+information)?|personal\s+(?:data|information))\s+(?:is|are)\s+(?:ever\s+)?(?:sent|shared|collected|stored|transmitted)\b/gi,
+    re: /\bno\s+(?:\w+\s+){0,2}(?:data|information)\s+(?:is|are)\s+(?:ever\s+)?(?:collected|stored|retained|tracked|logged|kept)\b|\bwe\s+(?:never|don't|do\s+not)\s+(?:collect|store|track|log|sell|keep|see|share)\b|\bzero\s+data\s+collection\b|\bdata\s+not\s+collected\b|\bno\s+(?:data|information)\s+collection\b|\bnothing\s+(?:\w+\s+){0,3}?(?:is|gets)\s+(?:ever\s+)?(?:retained|stored|kept|saved|logged|sent|shared|uploaded)\b|\b(?:keeps?|stores?|retains?)\s+nothing\b|\b(?:does\s+not|doesn't|never)\s+(?:store|keep|retain|log)\s+your\s+(?:data|information)\b|\bno\s+logs\s+(?:are\s+)?kept\b|\bno\s+(?:PII|personally[-\s]+identifiable(?:\s+information)?|personal\s+(?:data|information))\s+(?:is|are)\s+(?:ever\s+)?(?:sent|shared|collected|stored|transmitted)\b|\b(?:data|information|entries|symptoms|searches|profiles?|history)\s+(?:is|are)\s+never\s+(?:shared|stored|sent|saved|kept|logged|retained|uploaded)\b/gi,
     negatable: false,
     bad: [
       'No personal data is collected.', 'We never collect your data.', 'We do not collect any personal information.', 'Zero data collection.',
       'Data Not Collected', 'No tracking, no data collection.', 'Nothing is retained.', 'OpenAI keeps nothing.',
       'OpenAI does not store your data.', 'No logs are kept.', 'No PII is sent.', 'No personally identifiable information is sent to OpenAI.', 'No data is stored.',
+      'We never share your data.', 'Health data is never shared.', 'Your health data is never stored.', 'Nothing is ever stored.',
+      'Nothing you type is stored.', 'Nothing is sent to the cloud.',
     ],
-    ok: ['Treatable does not save your health entries, notes, searches, or profiles.', 'Study contact details are never sent to OpenAI.'],
+    ok: [
+      'Treatable does not save your health entries, notes, searches, or profiles.', 'Study contact details are never sent to OpenAI.',
+      'Preparation failed. Nothing was sent to OpenAI.',
+    ],
   },
   {
     id: 'invisibility-claim',
-    re: /\b(?:no\s*one|nobody)\s+can\s+(?:identify|see|access|read|trace)|\bonly\s+you\s+can\s+(?:see|read|access)|\b(?:cannot|can't|can\s+not)\s+be\s+(?:traced|tracked|linked)|\bincognito\b|\bnever\s+sees\s+who\s+you\s+are\b|\bidentity\s+is\s+(?:never\s+shared|hidden|masked)\b/gi,
+    re: /\b(?:no\s*one|nobody)\s+(?:else\s+)?(?:can\s+|will\s+(?:ever\s+)?)?(?:identify|see|access|read|trace|know)s?\b|\bonly\s+(?:you|(?:your|the)\s+(?:\S+\s+){0,2}?\S+)\s+can\s+(?:see|read|access|decrypt|unlock|view|open)\b|\b(?:cannot|can't|can\s+not)\s+be\s+(?:traced|tracked|linked)|\bincognito\b|\bnever\s+(?:sees?|reads?|knows?|learns?)\s+(?:who\s+you\s+are|your|what\s+you)\b|\bidentity\s+is\s+(?:never\s+shared|hidden|masked)\b/gi,
     negatable: false,
     bad: [
       'No one can identify you.', 'Nobody can see your searches.', 'Only you can see your results.',
       'Your searches cannot be traced back to you.', 'Incognito search.', 'OpenAI never sees who you are.',
-      'Your identity is never shared.', 'Your identity is hidden.',
+      'Your identity is never shared.', 'Your identity is hidden.', 'No one sees your symptoms.', 'OpenAI never sees your symptoms.',
+      'Only your device can read your entries.', 'Only the study team can see your matches.',
     ],
-    ok: ['OpenAI can link these requests to your OpenAI account.', 'People who can view the logs of the project can see these traces.'],
+    ok: [
+      'OpenAI can link these requests to your OpenAI account.', 'People who can view the logs of the project can see these traces.',
+      'Only the study team can confirm eligibility.',
+    ],
   },
   {
     id: 'eligibility-claim',
@@ -495,23 +645,38 @@ const RULES = [
   },
   {
     id: 'zero-data-retention-claim',
-    re: /\b(?:ZDR|Zero[-\s]+Data[-\s]+Retention)[-\s]+(?:compatible|eligible|enabled|covered|ready)\b/gi,
+    // Zero Data Retention stated as a property, as something in use, or as a bare bullet or heading. The verb list
+    // leaves out bare "with" and "eligible for", which honest denials need ("not eligible for Zero Data Retention").
+    re: /\b(?:ZDR|Zero[-\s]+Data[-\s]+Retention)[-\s]+(?:compatible|eligible|enabled|covered|ready)\b|\b(?:runs?\s+with|works?\s+with|compatible\s+with|backed\s+by|covered\s+by|uses?|using|under|supports?|offers?|provides?|has|have|enables?|includes?|qualifies\s+for)\s+(?:(?!not\b|no\b|never\b|without\b)\w+\s+){0,2}(?:ZDR|Zero[-\s]+Data[-\s]+Retention)\b|^[ \t]*(?:[-*+][ \t]+|#{1,6}[ \t]+)?(?:ZDR|Zero[-\s]+Data[-\s]+Retention)(?:[ \t]+mode)?[ \t]*\.?[ \t]*$/gim,
     negatable: true,
-    bad: ['ZDR-compatible', 'Zero Data Retention eligible', 'ZDR enabled', 'Zero-Data-Retention ready'],
-    ok: ['Treatable is not ZDR-compatible.', 'It is not compatible with Zero Data Retention.'],
+    bad: [
+      'ZDR-compatible', 'Zero Data Retention eligible', 'ZDR enabled', 'Zero-Data-Retention ready', 'Zero data retention.', 'Zero Data Retention',
+      '- Zero Data Retention', '## ZDR', 'Uses Zero Data Retention.', 'Decisions requests run with ZDR.', 'ZDR mode.',
+      'Treatable is compatible with Zero Data Retention.', 'Covered by Zero Data Retention.', 'Treatable has no logs and uses ZDR.',
+    ],
+    ok: [
+      'Treatable is not ZDR-compatible.', 'It is not compatible with Zero Data Retention.', 'The Agents API does not support Zero Data Retention (ZDR).',
+      'Treatable does not use Zero Data Retention.', 'It is not eligible for Zero Data Retention and currently supports data residency only in the United States.',
+      'Treatable has no Zero Data Retention agreement.',
+    ],
   },
   {
     id: 'protection-claim',
-    re: /\b(?:(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|privacy|identity)\s+(?:is|are|stays?|remains?)\s+(?:(?!not\b|never\b|no\b)\w+\s+)?(?:safe|protected|confidential)|(?:keeps?|kept|holds?)\s+(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|key|searches|entries|identity)\s+(?:safe|protected|confidential|secret)|we\s+(?:protect|safeguard)\s+your|(?:bank|enterprise)[-\s]+(?:level|grade)|untraceable|confidential)\b/gi,
+    re: /\b(?:(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|privacy|identity)\s+(?:is|are|stays?|remains?)\s+(?:(?!not\b|never\b|no\b)\w+\s+)?(?:safe|protected|confidential|shielded|locked|hidden|sealed)|(?:data|information|privacy|identity|searches|entries|details|symptoms|notes|profiles?|history)\s+(?:is|are|stays?|remains?|will\s+(?:stay|remain|be))\s+(?:(?!not\b|never\b|no\b)\w+\s+)?(?:safe|protected|confidential|shielded|locked|hidden|sealed)|(?:data|information|entries|searches|symptoms|notes|profiles?)\s+(?:fully\s+|always\s+|strongly\s+)?(?:protected|safeguarded|shielded)\s+(?:by|with|from|against|using)|(?:keeps?|kept|holds?)\s+(?:your|the|all)\s+(?:\w+\s+){0,2}(?:data|information|key|searches|entries|identity)\s+(?:safe|protected|confidential|secret)|we\s+(?:protect|safeguard)\s+your|(?:protects?|safeguards?|shields?)\s+(?:your|all|users?'?|patients?'?)\s+(?:\w+\s+){0,2}(?:data|information|privacy|identity|searches|entries|health|symptoms|notes)|[A-Za-z]+-(?:protected|safeguarded|shielded)|(?:bank|enterprise)[-\s]+(?:level|grade)|untraceable|confidential)\b/gi,
     negatable: true,
     bad: [
       'Your data is safe.', 'Your data is protected.', 'We protect your privacy.', 'Bank-level security for your data.',
       'Enterprise-grade security.', 'Searches are untraceable.', 'Your health information stays confidential.',
       'We keep your data safe.', 'Treatable keeps your key protected.', 'Confidential search.',
+      'Protected health information stays protected.', 'Health data stays protected.', 'Health information remains safe.', 'Searches stay safe.',
+      'Treatable protects your health information.', 'Treatable safeguards your data.', 'Keychain protects your health data.',
+      'Your data is shielded.', 'Data protected by a private key and HTTPS.', 'Keychain-protected health data.',
+      'Your health data is locked with a signing private key.', 'Your search history is hidden.',
     ],
     ok: [
       'Your data is not protected against a compromised operating system.', 'Treatable cannot protect your information.',
-      'Treatable does not protect your data from malware.',
+      'Treatable does not protect your data from malware.', 'PHI means protected health information.', 'OpenAI features stay locked.',
+      'The key stays locked until you unlock the credential system.',
     ],
   },
   {
@@ -569,17 +734,41 @@ export function normalize(text) {
 
 // A "/" starts a regular expression literal after an operator, an opening bracket, or one of these keywords.
 // The angle brackets are left out on purpose: after "</" or "/>" in JSX a slash closes a tag and starts nothing.
-const REGEX_CAN_START_AFTER = /(?:[(,=:[!&|?{};+\-*%~^]|=>|\b(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await))\s*$/;
+// A closing brace is left out too: after "}" a slash is almost always a division or JSX text ("{count}/{total}").
+const REGEX_CAN_START_AFTER = /(?:[(,=:[!&|?{;+\-*%~^]|=>|\b(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await))\s*$/;
+
+// In JavaScript and TypeScript a quote right after a letter, digit, _ or $ cannot open a string, except after one of
+// these keywords (`return"x"`). Such a quote is an apostrophe or inch mark in JSX text ("Don't"), so it is skipped.
+const JS_KEYWORDS_BEFORE_STRING = new Set([
+  'return', 'typeof', 'case', 'in', 'of', 'delete', 'void', 'throw', 'new', 'else', 'do', 'yield', 'await', 'instanceof',
+  'import', 'from', 'export', 'extends',
+]);
+const precedingWord = (text, i) => /[\w$]*$/.exec(text.slice(Math.max(0, i - 32), i))[0];
+
+// The language family decides which literal forms the string scan knows: 'js' (regular expression literals and the
+// apostrophe rule), 'swift' (raw strings #"..."#, and ' is not a delimiter), 'cs' (verbatim strings @"..."),
+// 'rs' (raw strings r#"..."#, and lifetimes such as 'a), or 'c' (plain C-like strings and character literals).
+export function codeLanguage(ext) {
+  if (REGEX_LITERAL_EXTENSIONS.has(ext)) return 'js';
+  if (ext === '.swift') return 'swift';
+  if (ext === '.cs') return 'cs';
+  if (ext === '.rs') return 'rs';
+  return 'c';
+}
 
 // Returns the text of string literals and comments in C-like source code. Keywords and identifiers
 // (for example the `private` modifier or a variable named `encrypted`) are not claims, so they are dropped.
-export function codeProse(text, {regexLiterals = false} = {}) {
+// Pieces are joined by blank lines, so each literal is its own sentence: a negator in one cannot excuse another.
+export function codeProse(text, {lang = 'c'} = {}) {
   const out = [];
   const n = text.length;
   let i = 0;
   while (i < n) {
     const c = text[i];
     const d = text[i + 1];
+    const raw = lang === 'swift' && c === '#' ? /^(#+)("""|")/.exec(text.slice(i, i + 40))
+      : lang === 'rs' && (c === 'r' || c === 'b') && !/[\w$]/.test(text[i - 1] ?? '') ? /^b?r(#*)(")/.exec(text.slice(i, i + 40))
+        : null;
     if (c === '/' && d === '/') {
       let j = text.indexOf('\n', i);
       if (j < 0) j = n;
@@ -590,7 +779,31 @@ export function codeProse(text, {regexLiterals = false} = {}) {
       if (j < 0) j = n;
       out.push(text.slice(i + 2, j));
       i = j + 2;
-    } else if (c === '/' && regexLiterals && d !== '>' && (text.slice(Math.max(0, i - 16), i).trim() === '' || REGEX_CAN_START_AFTER.test(text.slice(Math.max(0, i - 16), i)))) {
+    } else if (raw) {
+      // Swift #"..."# and Rust r#"..."#: backslashes and plain quotes inside do not end the string.
+      const close = raw[2] + raw[1];
+      const start = i + raw[0].length;
+      let j = text.indexOf(close, start);
+      if (j < 0) j = n;
+      out.push(text.slice(start, j));
+      i = j + close.length;
+    } else if (lang === 'cs' && (c === '@' || c === '$') && /^(?:@\$?|\$@)"/.test(text.slice(i, i + 3))) {
+      // C# verbatim string: a backslash is an ordinary character and "" stands for one quote.
+      let j = i + text.slice(i, i + 3).indexOf('"') + 1;
+      const start = j;
+      while (j < n && !(text[j] === '"' && text[j + 1] !== '"')) j += text[j] === '"' ? 2 : 1;
+      out.push(text.slice(start, Math.min(j, n)));
+      i = j + 1;
+    } else if (lang === 'rs' && c === "'") {
+      // A Rust character literal ('a', '\n', '\u{1F600}'); otherwise the quote starts a lifetime or a label.
+      const char = /^'(?:\\(?:u\{[0-9a-fA-F]{1,6}\}|x[0-9a-fA-F]{2}|.)|[^\\'\n])'/.exec(text.slice(i, i + 14));
+      if (char) out.push(char[0].slice(1, -1));
+      i += char ? char[0].length : 1;
+    } else if (lang === 'swift' && c === "'") {
+      i += 1;
+    } else if (lang === 'js' && (c === '"' || c === "'") && /[\w$]/.test(text[i - 1] ?? '') && !JS_KEYWORDS_BEFORE_STRING.has(precedingWord(text, i))) {
+      i += 1;
+    } else if (c === '/' && lang === 'js' && d !== '>' && (text.slice(Math.max(0, i - 16), i).trim() === '' || REGEX_CAN_START_AFTER.test(text.slice(Math.max(0, i - 16), i)))) {
       // A regular expression literal can hold quote characters that are not string delimiters. Skip the whole literal.
       let j = i + 1;
       let inClass = false;
@@ -620,7 +833,7 @@ export function codeProse(text, {regexLiterals = false} = {}) {
       i += 1;
     }
   }
-  return out.join('\n');
+  return out.join('\n\n');
 }
 
 // Text between JSX tags, which is user-facing wording but is neither a string literal nor a comment.
@@ -633,7 +846,16 @@ export function jsxText(text) {
   for (const m of text.matchAll(/(?:<\/[A-Za-z][\w.:-]*\s*>|\/>)([^<>{}`;=]{1,2000})(?=[<{])/g)) out.push(m[1]);
   // Text that runs straight into a closing tag may hold ; and =, because a closing tag cannot be part of TypeScript generics.
   for (const m of text.matchAll(/[>}]([^<>{}]{1,2000})(?=<\/)/g)) out.push(m[1]);
-  return out.join('\n');
+  return out.join('\n\n');
+}
+
+// Attribute values and expression-container strings in JSX (title="...", label={'...'}, {"..."}), read straight from
+// the source with a pattern. This does not depend on the string scan in codeProse, so JSX text that confuses that scan
+// (an unmatched quote or a slash) cannot hide an attribute.
+export function jsxAttributeStrings(text) {
+  const out = [];
+  for (const m of text.matchAll(/(?:[A-Za-z_$][\w$.:-]*\s*=\s*\{?|\{)\s*(?:"([^"\n]{0,2000})"|'([^'\n]{0,2000})')/g)) out.push(m[1] ?? m[2]);
+  return out.join('\n\n');
 }
 
 // Returns string values and keys of a JSON document. The one exception is the package field `"private": true`.
@@ -656,7 +878,7 @@ export function jsonRegions(text) {
     }
   };
   visit(data);
-  return out.join('\n');
+  return out.join('\n\n');
 }
 
 // Markdown code fences and inline code may show source keywords such as `private`.
@@ -669,8 +891,9 @@ function regionsFor(relPath, text) {
   const ext = path.posix.extname(relPath).toLowerCase();
   const kind = classifyFile(relPath);
   if (kind === 'code') {
-    const prose = codeProse(text, {regexLiterals: REGEX_LITERAL_EXTENSIONS.has(ext)});
-    const joined = JSX_EXTENSIONS.has(ext) ? `${prose}\n${jsxText(text)}` : prose;
+    const parts = [codeProse(text, {lang: codeLanguage(ext)})];
+    if (JSX_EXTENSIONS.has(ext)) parts.push(jsxText(text), jsxAttributeStrings(text));
+    const joined = parts.join('\n\n');
     return {all: joined, prose: joined};
   }
   if (kind === 'json') {
@@ -897,8 +1120,11 @@ test('strings.en.json: OpenAI provider retention wording is complete and sourced
   assert.match(training, /cannot see whether your OpenAI organization has opted in/);
   assert.match(strings['disclosure.cannotRetract'], /cannot take back data that was already sent/);
   assert.match(strings['consent.resendNote'], /temporary rate limit, an overload, or a server error, Treatable may send the same Decisions request a second time, unchanged/);
-  assert.match(strings['trace.cleanupStatus.deleted'], /trace or an abuse-monitoring log entry may remain/);
-  assert.match(strings['session.endDescription'], /trace or an abuse-monitoring log entry may remain after deletion/);
+  // "Trace" has two meanings: the app's session-only trace, and OpenAI's trace of an Agents session.
+  const providerTrace = /OpenAI's trace of the session, or its abuse-monitoring log entries, may remain after deletion\./;
+  assert.match(strings['trace.cleanupStatus.deleted'], providerTrace);
+  assert.match(strings['session.endDescription'], providerTrace);
+  assert.match(strings['session.endDescription'], /the session-only trace from the app/);
 });
 
 test('strings.en.json: ClinicalTrials.gov and OpenAI disclosures stay separate and complete', () => {
@@ -923,8 +1149,11 @@ test('strings.en.json: ClinicalTrials.gov and OpenAI disclosures stay separate a
   assert.match(strings['disclosure.openai.account'], /under your own OpenAI API key, so OpenAI can link them to your OpenAI account/);
   assert.match(strings['disclosure.openai.account'], /OpenAI also sees your network address/);
   assert.match(strings['disclosure.openai.studyContacts'], /never sent to OpenAI/);
+  assert.match(strings['disclosure.openai.conditionTerm'], /the condition and MeSH terms listed on the study records your search returned\./);
   assert.match(strings['disclosure.openai.conditionTerm'], /chosen from that list, not copied from what you typed/);
   assert.match(strings['session.nothingSaved'], /^Treatable does not save your health entries, notes, searches, or profiles\. The only thing it saves is your OpenAI API key, if you choose to save one\.$/);
+  // That sentence depends on the public study cache staying in memory, which task A2 still has to confirm.
+  assert.match(strings['_todo.cache.description'] ?? 'session.nothingSaved', /session\.nothingSaved/);
 });
 
 test('strings.en.json: error messages cover every required failure and keep local results', () => {
@@ -968,16 +1197,33 @@ test('strings.en.json: the only email address is the notice-only privacy contact
 // Part 2: scan
 // ---------------------------------------------------------------------------------------------
 
+// Scans every collected file and returns the hits.
+function scanFound(found) {
+  const hits = [];
+  for (const file of found.files) {
+    const text = decode(readFileSync(file.full));
+    if (text !== null) hits.push(...scanText(file.rel, text, {ignoreRules: file.ignoreRules}));
+  }
+  return hits;
+}
+
 test('claims scan: every top-level folder and docs entry is classified', () => {
-  const docs = entriesOf(REPO_ROOT).find(e => e.isDirectory && e.name.toLowerCase() === 'docs');
-  const problems = classifyTopLevel(entriesOf(REPO_ROOT), docs ? entriesOf(path.join(REPO_ROOT, docs.name)) : []);
+  // Entries that git ignores (for example a coverage folder) are not part of the repository and need no class.
+  const git = gitState(REPO_ROOT);
+  const visible = (entries, prefix) => entries.filter(e => !git?.skips(`${prefix}${e.name}`, e.isDirectory));
+  const rootEntries = visible(entriesOf(REPO_ROOT), '');
+  const docs = rootEntries.find(e => e.isDirectory && e.name.toLowerCase() === 'docs');
+  const problems = classifyTopLevel(rootEntries, docs ? visible(entriesOf(path.join(REPO_ROOT, docs.name)), `${docs.name}/`) : []);
   assert.deepEqual(problems, []);
 });
 
 test('claims scan: every file under a scan root has a known type, decodes as text, and is not a symlink', t => {
   const found = collectFiles();
+  if (!found.git) t.diagnostic('git is unavailable or this is not a git work tree, so every file on disk was read');
   assert.deepEqual(found.unknown, [], 'classify these extensions in the test file (scanned, non-text, or config)');
   assert.deepEqual(found.symlinks, [], 'a symlink under a scan root hides its target from the scan: replace it with a real file');
+  assert.deepEqual(found.nestedRepos, [], 'a nested repository or submodule hides its files from git and from this scan: move its files into this repository');
+  assert.deepEqual(found.missingTracked, [], 'git tracks these files but the scan did not find them on disk: restore them or commit their removal');
   const undecodable = found.files.filter(f => decode(readFileSync(f.full)) === null).map(f => f.rel);
   // An extensionless file with NUL bytes is a binary (for example a built executable). It is skipped, but reported.
   const binaries = undecodable.filter(rel => path.posix.extname(rel) === '');
@@ -1002,12 +1248,7 @@ test('claims scan: shipped strings and docs make no banned compliance, security,
   assert.ok(relative.includes('core/strings/strings.en.json'), 'the strings file must be in the scan');
   assert.ok(relative.includes('core/strings/README.md'), 'the strings README must be in the scan');
   assert.ok(!relative.includes('core/strings/claims.test.mjs'), 'the rule definitions file must not be scanned');
-  const hits = [];
-  for (const file of found.files) {
-    const text = decode(readFileSync(file.full));
-    if (text !== null) hits.push(...scanText(file.rel, text, {ignoreRules: file.ignoreRules}));
-  }
-  assert.deepEqual(hits, []);
+  assert.deepEqual(scanFound(found), []);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -1239,12 +1480,149 @@ test('self-test: project and build files are scanned for wording but may use the
   assert.ok(scanText('Cargo.toml', 'description = "Guaranteed deletion"').length > 0);
 });
 
-test('self-test: files git does not track or list are not part of the scan', () => {
-  const listed = parseGitFileList('core/a.ts\0mobile/b.tsx\0.vscode/settings.json\0');
-  assert.equal(listed.has('core/a.ts'), true);
-  assert.equal(listed.has('.vscode/settings.json'), true, 'an untracked file that is not ignored is listed');
-  assert.equal(listed.has('coverage/lcov.info'), false);
-  assert.equal(listed.size, 3);
+test('self-test: git output is parsed, and only ignored paths with nothing tracked under them are skipped', () => {
+  assert.deepEqual(parseGitFileList('core/a.ts\0mobile/b.tsx\0'), ['core/a.ts', 'mobile/b.tsx']);
+  assert.deepEqual(parseGitIndex('100644 0123abcd 0\tcore/a b.ts\x00160000 4567cdef 0\twindows\x00'), [
+    {mode: '100644', path: 'core/a b.ts'}, {mode: '160000', path: 'windows'},
+  ]);
+  const tracked = [{mode: '100644', path: 'mobile/screens/Home.tsx'}, {mode: '100644', path: 'core/Résumé.md'}, {mode: '100644', path: 'core/build/keep.json'}];
+  const ignored = ['core/.env', 'core/dist/', 'core/build/out.js'];
+  const nfd = p => p.normalize('NFD');
+  const folded = makeGitView({tracked, ignored, ignoreCase: true});
+  assert.equal(folded.isTracked('mobile/Screens/home.tsx'), true, 'a case-only rename is still the tracked file');
+  assert.equal(folded.isTracked(nfd('core/Résumé.md')), true, 'a decomposed name is still the tracked file');
+  assert.equal(folded.skips('core/.env', false), true);
+  assert.equal(folded.skips('core/.ENV', false), true);
+  assert.equal(folded.skips('core/dist', true), true);
+  assert.equal(folded.skips('core/dist/a.js', false), true);
+  assert.equal(folded.skips('core/build', true), false, 'a folder with a tracked file inside is walked');
+  assert.equal(folded.skips('core/build/out.js', false), true);
+  assert.equal(folded.skips('core/distribution.md', false), false);
+  assert.equal(folded.skips('core/untracked.md', false), false, 'an untracked file that git does not ignore is scanned');
+  assert.equal(folded.skips('mobile/screens/Home.tsx', false), false);
+  const exact = makeGitView({tracked, ignored, ignoreCase: false});
+  assert.equal(exact.skips('core/.ENV', false), false, 'a case-sensitive repository compares case, so a differently cased file is scanned');
+  assert.equal(exact.isTracked('mobile/Screens/home.tsx'), false);
+  assert.equal(exact.isTracked(nfd('core/Résumé.md')), true);
+});
+
+// Temporary git repositories for the file-selection self-tests. Hooks and signing are turned off for these commands.
+const GIT_SKIP = (() => {
+  try {
+    execFileSync('git', ['--version'], {stdio: 'ignore'});
+    return false;
+  } catch {
+    return 'git is not installed, so the scan reads every file and these cases cannot arise';
+  }
+})();
+
+function runGit(cwd, args) {
+  const config = ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', '-c', 'user.name=Claims scan self-test', '-c', 'user.email=claims-scan@example.invalid'];
+  return execFileSync('git', [...config, ...args], {cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']});
+}
+
+function writeFiles(dir, files) {
+  for (const [rel, content] of Object.entries(files)) {
+    const full = path.join(dir, ...rel.split('/'));
+    mkdirSync(path.dirname(full), {recursive: true});
+    writeFileSync(full, content);
+  }
+}
+
+function tempRepo(t, files) {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'treatable-claims-')));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  runGit(dir, ['init', '-q']);
+  writeFiles(dir, files);
+  runGit(dir, ['add', '-A']);
+  runGit(dir, ['commit', '-q', '--no-verify', '-m', 'Self-test fixture']);
+  return dir;
+}
+
+// Renames through a temporary name, so that a case-only rename also works on a case-insensitive file system.
+function renameCase(dir, from, to) {
+  renameSync(path.join(dir, from), path.join(dir, `${to}.rename-tmp`));
+  renameSync(path.join(dir, `${to}.rename-tmp`), path.join(dir, to));
+}
+
+const hitFiles = hits => new Set(hits.map(h => h.slice(0, h.indexOf(': "')).normalize('NFC').toLowerCase()));
+const CLAIM_TSX = 'export const A = () => <Text>Your data is anonymous</Text>;\n';
+const CLAIM_MD = 'Your data is anonymous.\n';
+const CLEAN_MD = 'Research information, not medical advice.\n';
+
+test('self-test: a case-only rename, a decomposed name, or an untracked file cannot hide a claim from the scan', {skip: GIT_SKIP}, t => {
+  const decomposed = 'core/Résumé.md';
+  const dir = tempRepo(t, {
+    'mobile/screens/Home.tsx': CLAIM_TSX, 'NOTES.md': CLEAN_MD, [decomposed]: CLAIM_MD, '.gitignore': 'core/ignored-notes.md\n',
+  });
+  renameCase(dir, 'mobile/screens', 'mobile/Screens');
+  renameCase(dir, 'NOTES.md', 'Notes.md');
+  appendFileSync(path.join(dir, 'Notes.md'), CLAIM_MD);
+  writeFiles(dir, {'core/untracked.md': CLAIM_MD, 'core/ignored-notes.md': CLAIM_MD});
+  const found = collectFiles(dir);
+  assert.notEqual(found.git, null, 'the temporary repository is read through git');
+  const files = hitFiles(scanFound(found));
+  for (const rel of ['mobile/screens/home.tsx', 'notes.md', 'core/résumé.md', 'core/untracked.md']) assert.ok(files.has(rel), rel);
+  assert.ok(!files.has('core/ignored-notes.md'), 'a file that git ignores is not part of the repository');
+});
+
+test('self-test: a pinned legacy file is skipped only under its exact name and content', {skip: GIT_SKIP}, t => {
+  const legacy = path.join(REPO_ROOT, 'BUILD_REPORT.md');
+  if (!existsSync(legacy) || sha256(readFileSync(legacy)) !== LEGACY_ROOT_FILE_DIGESTS['BUILD_REPORT.md']) {
+    t.skip('the pinned BUILD_REPORT.md is not present in this checkout');
+    return;
+  }
+  const dir = tempRepo(t, {'BUILD_REPORT.md': readFileSync(legacy)});
+  let found = collectFiles(dir);
+  assert.ok(!found.files.some(f => f.rel === 'BUILD_REPORT.md'), 'the unchanged legacy file is skipped');
+  assert.deepEqual(found.missingTracked, []);
+  renameCase(dir, 'BUILD_REPORT.md', 'Build_Report.md');
+  appendFileSync(path.join(dir, 'Build_Report.md'), CLAIM_MD);
+  found = collectFiles(dir);
+  assert.ok(found.files.some(f => f.rel === 'Build_Report.md'), 'a renamed legacy file is scanned');
+  assert.ok(scanFound(found).some(h => h.startsWith('Build_Report.md: "anonymous"')));
+});
+
+test('self-test: a nested repository or a submodule under a scan root fails the scan', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {'core/a.md': CLEAN_MD});
+  writeFiles(dir, {'windows/App/Main.xaml': '<Page Title="Fully anonymous" />\n'});
+  const inner = path.join(dir, 'windows');
+  runGit(inner, ['init', '-q']);
+  runGit(inner, ['add', '-A']);
+  runGit(inner, ['commit', '-q', '--no-verify', '-m', 'Inner fixture']);
+  let found = collectFiles(dir);
+  assert.deepEqual(found.nestedRepos, ['windows/.git']);
+  assert.ok(hitFiles(scanFound(found)).has('windows/app/main.xaml'), 'the files of a nested repository are still scanned');
+  // Recorded in the outer index as a submodule (a gitlink), with nothing checked out.
+  runGit(dir, ['add', 'windows']);
+  rmSync(inner, {recursive: true, force: true});
+  mkdirSync(inner);
+  found = collectFiles(dir);
+  assert.deepEqual(found.nestedRepos, ['windows']);
+});
+
+test('self-test: tracked files in build folders are scanned, and a tracked file missing on disk is reported', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {'core/dist/strings.json': '{"tagline": "Your data is anonymous"}\n', 'core/keep.md': CLEAN_MD});
+  writeFiles(dir, {'core/dist/bundle.js': 'const s = "Your data is anonymous";\n'});
+  rmSync(path.join(dir, 'core', 'keep.md'));
+  const found = collectFiles(dir);
+  const files = hitFiles(scanFound(found));
+  assert.ok(files.has('core/dist/strings.json'), 'a tracked file in a build folder is scanned');
+  assert.ok(!files.has('core/dist/bundle.js'), 'untracked build output is not scanned');
+  assert.deepEqual(found.missingTracked, ['core/keep.md']);
+  const noGit = collectFiles(dir, null);
+  assert.ok(!noGit.files.some(f => f.rel.startsWith('core/dist/')), 'without git, build folders are skipped by path');
+});
+
+test('self-test: a symlink that git does not ignore is reported', {skip: GIT_SKIP}, t => {
+  const dir = tempRepo(t, {'core/a.md': CLEAN_MD, 'outside/claim.md': CLAIM_MD});
+  try {
+    symlinkSync(path.join('..', 'outside', 'claim.md'), path.join(dir, 'core', 'link.md'));
+  } catch {
+    t.skip('this file system or user cannot create symlinks');
+    return;
+  }
+  assert.deepEqual(collectFiles(dir).symlinks, ['core/link.md']);
 });
 
 test('self-test: a phrase split by an HTML comment is still caught', () => {
@@ -1263,6 +1641,58 @@ test('self-test: named mechanism text passes and unnamed claims are still caught
   assert.ok(scanText('a.md', 'Treatable encrypts the request in transit.').length > 0);
   assert.ok(scanText('a.md', 'The preview is encrypted.').length > 0);
   assert.ok(scanText('a.md', 'Keep your private notes here.').length > 0);
+  // A masked name is replaced by underscores, so a negator in front of it cannot excuse a claim behind it.
+  assert.ok(scanText('a.md', 'No TLS encrypts anonymous traffic.').some(h => h.endsWith('[anonymity]')));
+  assert.ok(scanText('a.md', 'Not expo-secure-store, anonymous.').some(h => h.endsWith('[anonymity]')));
+  // The same allowance inside a code string, a JSON value, and a comment.
+  assert.deepEqual(scanText('a.ts', "const note = 'TLS encrypts the request in transit.';"), []);
+  assert.ok(scanText('a.ts', "const note = 'TLS encrypts the request and your health data.';").length > 0);
+  assert.ok(scanText('a.json', '{"note": "Keychain encrypts your health entries."}').length > 0);
+  assert.ok(scanText('a.kt', '// expo-secure-store holds your symptoms.\nval x = 1').length > 0);
+});
+
+test('self-test: quotes and slashes in JSX text, and language-specific literals, do not hide a string', () => {
+  const jsx = [
+    `<Text>Don't share names</Text><Badge label="It's anonymous" />`,
+    `<Text>You're set</Text><Text accessibilityLabel="It's fully anonymous">x</Text>`,
+    `<Text>Don't worry</Text><Badge title="Totally anonymous, isn't it" />`,
+    `<Text>Don't worry</Text>; const s = "Your data's anonymous";`,
+    `<Text>Don't worry</Text>\n<Badge label="It's anonymous" />`,
+    `<Text>{a}/{b}</Text><X title="Fully anonymous" />`,
+    `<Text>{count}/<B title="Fully anonymous" /></Text>`,
+    `<Text>{count}/<B>{"Fully anonymous"}</B></Text>`,
+    `<Text>Use "quotes</Text><X title="Fully anonymous" />`,
+    '<Text>Run `npm</Text>\n<X title="Fully anonymous" />\n<Text>ok`</Text>',
+    `<Text>5" screen</Text><X label={'Fully anonymous'} />`,
+  ];
+  for (const ext of ['tsx', 'jsx', 'js']) {
+    for (const c of jsx) assert.ok(scanText(`App.${ext}`, c).length > 0, `${ext}: ${c}`);
+  }
+  // A keyword right before a quote still opens a string.
+  assert.ok(scanText('a.js', 'function f(){return"Your data is anonymous"}').length > 0);
+  assert.ok(scanText('a.ts', "import x from'./anonymous-data';").length > 0);
+  // Ordinary TypeScript stays quiet: string literal types, tagged templates, and the private keyword.
+  assert.deepEqual(scanText('a.ts', "type T = 'a'|'b';\nconst q = sql`select 1`;\nclass A { private x = 'ok'; }\n"), []);
+  const other = [
+    ['a.swift', 'let r = #"Your data is "anonymous""#'],
+    ['a.swift', 'let r = ##"She said "#" and it is anonymous"##'],
+    ['a.swift', 'let r = #"""\nYour data is anonymous\n"""#'],
+    ['a.swift', 'Text("Don\'t")\nlet s = "Your data is anonymous"'],
+    ['a.cs', 'var s = @"C:\\path\\"; var t = "Your data is anonymous";'],
+    ['a.cs', 'var s = @"Say ""hi"" anonymously"; var u = 1;'],
+    ['a.cs', 'var s = $@"C:\\{x}\\"; var t = "Your data is anonymous";'],
+    ['a.cs', 'var s = $"{x}"; var t = "Your data is anonymous";'],
+    ['a.rs', 'fn f<\'a>(x: &\'a str) -> &\'a str { "Your data is anonymous" }'],
+    ['a.rs', 'let r = r#"Your data is "anonymous""#;'],
+    ['a.rs', 'let c = \'"\'; let s = "Your data is anonymous";'],
+    ['a.kt', 'val c = \'\\\'\'; val s = "Your data is anonymous"'],
+    ['a.java', 'char c = \'"\'; String s = "Your data is anonymous";'],
+    ['a.ts', 'const x = a < b ? /\'/ : 1; const s = "Your data is anonymous";'],
+  ];
+  for (const [file, source] of other) assert.ok(scanText(file, source).length > 0, `${file}: ${source}`);
+  assert.deepEqual(scanText('a.swift', 'private let s = #"Research information, not medical advice."#\nprivate func go() {}\n'), []);
+  assert.deepEqual(scanText('a.cs', 'private string p = @"C:\\temp\\"; private int n = 1;'), []);
+  assert.deepEqual(scanText('a.rs', 'fn f<\'a>(x: &\'a str) -> &\'a str { x }\nstruct S<\'b> { v: &\'b str }\n'), []);
 });
 
 test('self-test: the real wording that must pass does pass', () => {

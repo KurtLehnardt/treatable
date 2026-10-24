@@ -27,7 +27,7 @@
   "disclosure.ctgov.networkNote": "Like any web request, it also reveals your network address to the service.",
   "disclosure.openai.heading": "What OpenAI receives",
   "disclosure.openai.body": "Only after you confirm: a condition term you selected from public ClinicalTrials.gov vocabulary, your age band, your US state if you chose to share it, your sex if you chose to share it, and public study fields from ClinicalTrials.gov records.",
-  "disclosure.openai.conditionTerm": "The condition term comes from public ClinicalTrials.gov vocabulary, such as condition and MeSH terms on returned study records. It is chosen from that list, not copied from what you typed.",
+  "disclosure.openai.conditionTerm": "The condition term comes from public ClinicalTrials.gov vocabulary: the condition and MeSH terms listed on the study records your search returned. It is chosen from that list, not copied from what you typed.",
   "disclosure.openai.account": "OpenAI receives these requests under your own OpenAI API key, so OpenAI can link them to your OpenAI account. OpenAI also sees your network address.",
   "disclosure.openai.neverSent": "The request content never includes free-text symptoms or notes, ZIP codes, coordinates, exact age, date of birth, your name, or your contact details.",
   "disclosure.openai.studyContacts": "Study contact details are shown to you in the app but are never sent to OpenAI.",
@@ -56,7 +56,7 @@
   "notice.section.02.heading": "What ClinicalTrials.gov receives",
   "notice.section.02.body": "The words you type to search, including any symptoms, are sent to clinicaltrials.gov over HTTPS as part of the web address (URL) of the request, together with the country (United States) and at most a US state. Do not type names or other identifying details. ClinicalTrials.gov's own policies apply to that request. The request does not include your ZIP code or coordinates, and Treatable calculates distance itself inside the app. Like any web request, it also reveals your network address to the service. ClinicalTrials.gov and OpenAI receive different information. Searching does not send anything to OpenAI.",
   "notice.section.03.heading": "What OpenAI receives",
-  "notice.section.03.body": "Only after you confirm: a condition term you selected from public ClinicalTrials.gov vocabulary, your age band, your US state if you chose to share it, your sex if you chose to share it, and public study fields from ClinicalTrials.gov records. The condition term comes from public ClinicalTrials.gov vocabulary, such as condition and MeSH terms on returned study records. It is chosen from that list, not copied from what you typed. OpenAI receives these requests under your own OpenAI API key, so OpenAI can link them to your OpenAI account. OpenAI also sees your network address. The request content never includes free-text symptoms or notes, ZIP codes, coordinates, exact age, date of birth, your name, or your contact details. Study contact details are shown to you in the app but are never sent to OpenAI.",
+  "notice.section.03.body": "Only after you confirm: a condition term you selected from public ClinicalTrials.gov vocabulary, your age band, your US state if you chose to share it, your sex if you chose to share it, and public study fields from ClinicalTrials.gov records. The condition term comes from public ClinicalTrials.gov vocabulary: the condition and MeSH terms listed on the study records your search returned. It is chosen from that list, not copied from what you typed. OpenAI receives these requests under your own OpenAI API key, so OpenAI can link them to your OpenAI account. OpenAI also sees your network address. The request content never includes free-text symptoms or notes, ZIP codes, coordinates, exact age, date of birth, your name, or your contact details. Study contact details are shown to you in the app but are never sent to OpenAI.",
   "notice.section.04.heading": "Minimized is not anonymous",
   "notice.section.04.body": "A condition term, an age band, and a US state can still identify a person when they are combined. Minimized health information is not anonymous. Not PHI-ready. PHI means protected health information. A business associate agreement (BAA) is a contract about how a service provider handles that information. Treatable has not confirmed whether a BAA or data retention terms cover your OpenAI account, and it does not verify a BAA. Treatable makes no claim of HIPAA compliance or legal sufficiency.",
   "notice.section.05.heading": "OpenAI Agents retention",
@@ -148,12 +148,12 @@
   "trace.label.toolCalls": "Tool calls",
   "trace.label.result": "Result",
   "trace.label.cleanup": "Cleanup",
-  "trace.cleanupStatus.deleted": "Deletion acknowledged by OpenAI. Physical removal can happen later, and a trace or an abuse-monitoring log entry may remain.",
+  "trace.cleanupStatus.deleted": "Deletion acknowledged by OpenAI. Physical removal can happen later. OpenAI's trace of the session, or its abuse-monitoring log entries, may remain after deletion.",
   "trace.cleanupStatus.failed": "Deletion failed. Provider data may remain.",
   "trace.cleanupStatus.unconfirmed": "Deletion could not be attempted or confirmed.",
 
   "session.endButton": "End session",
-  "session.endDescription": "Ending the session removes your entries, results, request previews, and trace from the app, cancels work in progress, and requests deletion of any OpenAI session. A trace or an abuse-monitoring log entry may remain after deletion.",
+  "session.endDescription": "Ending the session removes your entries, results, request previews, and the session-only trace from the app, cancels work in progress, and requests deletion of any OpenAI session. OpenAI's trace of the session, or its abuse-monitoring log entries, may remain after deletion.",
   "session.endCleared": "Removed from the app: your entries, the notice acknowledgment, prepared requests and confirmations, results, and the trace.",
   "session.endNotCleared": "Not removed: data already sent to ClinicalTrials.gov or OpenAI, your saved API key, and anything outside the control of the app, such as system memory or crash dumps.",
   "session.endDone": "Session ended. Your entries and results were cleared.",
@@ -175,5 +175,5 @@
   "_todo.notice.section.06.body": "TODO: if task A4 sends Decisions requests in explicit prompt-cache mode with no cache breakpoints, add the sentence about it from docs/apps/openai-contracts.md section 9 and keep disclosure.decisionsRetention in step.",
   "_todo.consent.resendNote": "TODO: confirm with task A4 that the retry behavior matches this note (docs/apps/openai-contracts.md section 10.6): at most one unchanged resend of a Decisions request after a temporary rate limit, an overload, or a server error.",
   "_todo.consent.expiryNote": "TODO: confirm with task A4 whether one confirmation covers both the Decisions send and the Agents send. If it does, change this note and consent.confirmLabel. The reviewed extension required one confirmation per operation.",
-  "_todo.cache.description": "TODO: confirm with task A2 whether the public study cache is kept after the session ends and whether it stores anything derived from your searches. If it does, add that to session.endNotCleared and notice.section.08.body."
+  "_todo.cache.description": "TODO: confirm with task A2 whether the public study cache is kept after the session ends and whether it stores anything derived from your searches. If it does, add that to session.endNotCleared and notice.section.08.body, and correct session.nothingSaved, which says that the OpenAI API key is the only thing Treatable saves."
 }
