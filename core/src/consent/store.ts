@@ -15,21 +15,39 @@
  *   - a timer clears the preparation when the five minutes end.
  *
  * Generalized for the apps:
- *   - the store is generic over a pinned subject digest (task A2 decides what it covers, for
- *     example the live record set); take() requires the current subject digest to equal the pinned
+ *   - the store is generic over a pinned subject digest (the dispatcher pins the digest of the
+ *     session's current record set); take() requires the current subject digest to equal the pinned
  *     one, and a mismatch clears the preparation;
  *   - the preparation names the operations it authorizes (score, agent, or both);
+ *   - the preparation also pins the SHA-256 of every exact byte string the dispatcher may send for
+ *     it (ConsentPins, computed by outbound.ts computeRequestPins). The consent digest covers the
+ *     pins, so a receipt binds the bytes allowed on the wire, not only the JSON values shown;
  *   - the digest is SHA-256 over the RFC 8785 canonical JSON of
- *     { operations, policyVersion, preview, subjectDigest }, computed through the injected port;
+ *     { operations, pins, policyVersion, preview, subjectDigest }, computed through the injected port;
  *   - time, tokens, and hashing come from injected ports; expiry uses the monotonic clock;
  *   - a take() without a live preparation reports CONSENT_EXPIRED only when the last preparation
  *     ended by timing out, and INVALID_CONSENT_RECEIPT otherwise (the extension always reported
  *     CONSENT_EXPIRED there).
+ *
+ * Clearing rules (a deliberate divergence from real.mjs and host.mjs at 48c569e, which kept the
+ * preparation after a wrong token, digest, or operation in take() and after a mismatched token in
+ * revoke()):
+ *   - every take() that fails while a preparation is active clears it: an invalid policy receipt, a
+ *     wrong token, a wrong digest, an operation that is unknown, not authorized, or already used, and
+ *     a changed subject. Expiry clears it as before. Only a take() with no active preparation has
+ *     nothing to clear. This makes "any invalid request clears the preparation" hold for receipts
+ *     too: a guesser gets one try per preparation, and a replayed or confused receipt ends the
+ *     consent instead of leaving it usable. The cost is that a host mistake such as executing the
+ *     same operation twice also discards the other authorized operation; the user prepares again;
+ *   - revoke() always clears. With a token that is not a string or does not match the active
+ *     preparation it still reports INVALID_CONSENT_RECEIPT, so the host learns its token was stale,
+ *     but the preparation is gone either way, because a revoke expresses the user's withdrawal and
+ *     must fail closed.
  * Errors are CoreError codes only and never include tokens, digests, or payload content.
  */
 import { base64UrlEncode, constantTimeEqual, isHex64, utf8ByteLength, utf8Encode } from '../bytes.ts';
 import { CoreError } from '../errors.ts';
-import { canonicalJson, deepFreeze, isJsonObject, isJsonValue, jsonClone, type JsonObject, type JsonValue } from '../json.ts';
+import { canonicalJson, deepFreeze, isJsonObject, jsonClone, type JsonObject } from '../json.ts';
 import type { Clock, Sha256, TokenSource } from '../ports.ts';
 import {
   CONSENT_POLICY_VERSION,
@@ -57,13 +75,38 @@ export interface ConsentStoreOptions {
   readonly onInvalidate?: () => void;
 }
 
+/**
+ * SHA-256 hex digests of the exact byte strings the dispatcher may send for this preparation: one
+ * per Decisions body in preview order, one for the Agents create body (null when the preview has
+ * none), and one per tool result output string in preview order. Each byte string is the canonical
+ * serialization of the corresponding preview object, so the pins add no data of their own; they
+ * bind the consent to the serialization that goes on the wire. take() hands the pins to the
+ * dispatcher, whose send capability serializes the frozen body again and compares its SHA-256 with
+ * the pin immediately before every send.
+ */
+export interface ConsentPins {
+  readonly decisionsRequests: readonly string[];
+  readonly agentsCreate: string | null;
+  readonly toolResults: readonly string[];
+}
+
+/** Internal sanity bound, far above the contract maxima (10 Decisions bodies, 2 tool results). */
+const PIN_ARRAY_MAX = 16;
+
+export function isValidConsentPins(pins: unknown): pins is ConsentPins {
+  if (typeof pins !== 'object' || pins === null || Array.isArray(pins)) return false;
+  const p = pins as Record<string, unknown>;
+  const hexArray = (value: unknown): value is readonly string[] =>
+    Array.isArray(value) && value.length <= PIN_ARRAY_MAX && value.every(isHex64);
+  return hexArray(p.decisionsRequests) && hexArray(p.toolResults) && (p.agentsCreate === null || isHex64(p.agentsCreate));
+}
+
 export interface PrepareInput {
   readonly policyReceipt: unknown;
   readonly subjectDigest: string;
   readonly operations: readonly ConsentOperation[];
   readonly preview: JsonObject;
-  /** Extra pinned data the executing pipeline needs (never shown, never digested). */
-  readonly context?: JsonValue;
+  readonly pins: ConsentPins;
 }
 
 export interface PreparedConsent {
@@ -91,7 +134,8 @@ export interface PinnedConsent {
   readonly subjectDigest: string;
   /** Deep-frozen; the exact objects whose serialization is sent. */
   readonly preview: Readonly<JsonObject>;
-  readonly context: Readonly<JsonValue> | undefined;
+  /** Digests of the exact serialized bodies; dispatcher-use only, never shown. */
+  readonly pins: ConsentPins;
 }
 
 export interface ConsentSnapshot {
@@ -120,10 +164,16 @@ export async function computeConsentDigest(
     readonly subjectDigest: string;
     readonly operations: readonly ConsentOperation[];
     readonly preview: JsonObject;
+    readonly pins: ConsentPins;
   },
 ): Promise<string> {
   const canonical = canonicalJson({
     operations: [...content.operations],
+    pins: {
+      agentsCreate: content.pins.agentsCreate,
+      decisionsRequests: [...content.pins.decisionsRequests],
+      toolResults: [...content.pins.toolResults],
+    },
     policyVersion: content.policyVersion,
     preview: content.preview,
     subjectDigest: content.subjectDigest,
@@ -141,7 +191,7 @@ interface ActivePreparation {
   readonly used: Set<ConsentOperation>;
   readonly expiresMonotonic: number;
   readonly preview: Readonly<JsonObject>;
-  readonly context: Readonly<JsonValue> | undefined;
+  readonly pins: ConsentPins;
 }
 
 function validOperations(value: readonly unknown[]): value is readonly ConsentOperation[] {
@@ -205,15 +255,20 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
       parsePolicyReceipt(input.policyReceipt, 'INVALID_REQUEST');
       if (!isHex64(input.subjectDigest) || !validOperations(input.operations)) throw new CoreError('INTERNAL_ERROR');
       if (!isJsonObject(input.preview)) throw new CoreError('INTERNAL_ERROR');
-      if (input.context !== undefined && !isJsonValue(input.context)) throw new CoreError('INTERNAL_ERROR');
+      if (!isValidConsentPins(input.pins)) throw new CoreError('INTERNAL_ERROR');
       const operations = [...input.operations];
       const preview = deepFreeze(jsonClone(input.preview));
-      const context = input.context === undefined ? undefined : deepFreeze(jsonClone(input.context));
+      const pins: ConsentPins = deepFreeze({
+        decisionsRequests: [...input.pins.decisionsRequests],
+        agentsCreate: input.pins.agentsCreate,
+        toolResults: [...input.pins.toolResults],
+      });
       const digest = await computeConsentDigest(deps.sha256, {
         policyVersion: CONSENT_POLICY_VERSION,
         subjectDigest: input.subjectDigest,
         operations,
         preview,
+        pins,
       });
       const bytes = await deps.tokens.randomBytes(TOKEN_BYTES);
       if (!(bytes instanceof Uint8Array) || bytes.length !== TOKEN_BYTES || bytes.every(b => b === bytes[0])) {
@@ -244,7 +299,7 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
         used: new Set(),
         expiresMonotonic,
         preview,
-        context,
+        pins,
       };
       endedByExpiry = false;
       cancelTimer = deps.clock.schedule(ttl, () => {
@@ -258,23 +313,30 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
   }
 
   function take(input: TakeInput): PinnedConsent {
-    parsePolicyReceipt(input.policyReceipt, 'INVALID_CONSENT_RECEIPT');
     const current = active;
-    if (!current) throw new CoreError(endedByExpiry ? 'CONSENT_EXPIRED' : 'INVALID_CONSENT_RECEIPT');
-    if (current.expiresMonotonic <= now('monotonic')) {
-      reset(true);
-      throw new CoreError('CONSENT_EXPIRED');
+    // Every failure while a preparation is active clears it (see the clearing rules in the header).
+    function reject(code: 'INVALID_CONSENT_RECEIPT' | 'CONSENT_EXPIRED'): never {
+      if (current !== undefined && active === current) reset(code === 'CONSENT_EXPIRED');
+      throw new CoreError(code);
     }
+    let receiptOk = true;
+    try {
+      parsePolicyReceipt(input.policyReceipt, 'INVALID_CONSENT_RECEIPT');
+    } catch {
+      receiptOk = false;
+    }
+    if (!receiptOk) reject('INVALID_CONSENT_RECEIPT');
+    if (!current) throw new CoreError(endedByExpiry ? 'CONSENT_EXPIRED' : 'INVALID_CONSENT_RECEIPT');
+    if (current.expiresMonotonic <= now('monotonic')) reject('CONSENT_EXPIRED');
     const tokenOk = typeof input.token === 'string' && constantTimeEqual(input.token, current.token);
     const digestOk = typeof input.digest === 'string' && constantTimeEqual(input.digest, current.digest);
-    if (!tokenOk || !digestOk) throw new CoreError('INVALID_CONSENT_RECEIPT');
+    if (!tokenOk || !digestOk) reject('INVALID_CONSENT_RECEIPT');
     const operation = input.operation;
     if (!isConsentOperation(operation) || !current.operations.has(operation) || current.used.has(operation)) {
-      throw new CoreError('INVALID_CONSENT_RECEIPT');
+      reject('INVALID_CONSENT_RECEIPT');
     }
     if (input.subjectDigest === undefined || !constantTimeEqual(input.subjectDigest, current.subjectDigest)) {
-      clear();
-      throw new CoreError('INVALID_CONSENT_RECEIPT');
+      reject('INVALID_CONSENT_RECEIPT');
     }
     current.used.add(operation);
     return {
@@ -282,16 +344,16 @@ export function createConsentStore(deps: ConsentDeps, options: ConsentStoreOptio
       consentDigest: current.digest,
       subjectDigest: current.subjectDigest,
       preview: current.preview,
-      context: current.context,
+      pins: current.pins,
     };
   }
 
   function revoke(token?: unknown): void {
-    if (token !== undefined) {
-      if (typeof token !== 'string') throw new CoreError('INVALID_CONSENT_RECEIPT');
-      if (active && !constantTimeEqual(token, active.token)) throw new CoreError('INVALID_CONSENT_RECEIPT');
-    }
+    // A revoke always clears; a token that is not a string or names another preparation is still
+    // reported (see the clearing rules in the header).
+    const mismatch = token !== undefined && (typeof token !== 'string' || (active !== undefined && !constantTimeEqual(token, active.token)));
     clear();
+    if (mismatch) throw new CoreError('INVALID_CONSENT_RECEIPT');
   }
 
   return {

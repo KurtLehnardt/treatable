@@ -34,6 +34,7 @@ import {
   isSafeText,
   type StudyRecord,
 } from '../protocol.ts';
+import { isCleanUntrustedText, sanitizeUntrustedText } from '../untrusted-text.ts';
 import { CTGOV_COUNTRY } from './query.ts';
 
 export const MAX_RECORD_TITLE_CHARS = 600;
@@ -71,25 +72,9 @@ function arr(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-// C0 and C1 controls except tab, line feed, and carriage return; bidirectional embeddings, overrides,
-// and isolates. Mirrors the characters isSafeText rejects.
-const UNSAFE_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/g;
-
-function fixSurrogates(text: string): string {
-  let out = '';
-  for (let i = 0; i < text.length; i += 1) {
-    const unit = text.charCodeAt(i);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const next = text.charCodeAt(i + 1);
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        out += text[i]! + text[i + 1]!;
-        i += 1;
-      } else out += '�';
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) out += '�';
-    else out += text[i]!;
-  }
-  return out;
-}
+// C0 and C1 controls except tab, line feed, and carriage return. Bidirectional controls and every
+// other invisible or format character are removed earlier by sanitizeUntrustedText (decision D2).
+const UNSAFE_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 
 /** Cuts to at most `max` UTF-16 units without splitting a surrogate pair. */
 function truncateChars(text: string, max: number): string {
@@ -103,28 +88,31 @@ function truncateChars(text: string, max: number): string {
 /** Single-line display text: controls removed, line breaks and tabs become spaces, runs of spaces collapse. */
 export function sanitizeLine(value: unknown, maxChars: number): { text: string; truncated: boolean } | undefined {
   if (typeof value !== 'string') return undefined;
-  const text = fixSurrogates(value).replace(/[\r\n\t]+/g, ' ').replace(UNSAFE_CHARS, '').replace(/ {2,}/g, ' ').trim();
+  const text = sanitizeUntrustedText(value).replace(/[\r\n\t]+/g, ' ').replace(UNSAFE_CHARS, '').normalize('NFC').replace(/ {2,}/g, ' ').trim();
   if (!text) return undefined;
   if (text.length <= maxChars) return { text, truncated: false };
-  return { text: truncateChars(text, maxChars), truncated: true };
+  return { text: truncateChars(text, maxChars).normalize('NFC'), truncated: true };
 }
 
 /** Multi-line display text: controls removed, CR LF and CR become LF, cut to `maxBytes` UTF-8 bytes. */
 export function sanitizeMultiline(value: unknown, maxBytes: number): { text: string; truncated: boolean } {
   if (typeof value !== 'string') return { text: '', truncated: false };
-  const text = fixSurrogates(value).replace(/\r\n?/g, '\n').replace(UNSAFE_CHARS, '').trim();
+  const text = sanitizeUntrustedText(value).replace(/\r\n?/g, '\n').replace(UNSAFE_CHARS, '').normalize('NFC').trim();
   const cut = truncateUtf8(text, maxBytes);
-  return { text: cut.truncated ? cut.text.trimEnd() : cut.text, truncated: cut.truncated };
+  return { text: cut.truncated ? cut.text.trimEnd().normalize('NFC') : cut.text, truncated: cut.truncated };
 }
 
 /**
- * Condition and MeSH terms are kept exactly as published or not at all: a term is kept only if it is
- * a string of 1 to 300 characters that is already safe single-line text. Exact duplicates are dropped.
+ * Condition and MeSH terms come only from the response's conditionsModule.conditions and
+ * conditionBrowseModule.meshes[].term, never from the search terms. Each is sanitized (invisible and
+ * format characters removed, NFC; decision D2) and then kept unchanged or dropped: a term is kept only
+ * if it is 1 to 300 characters of safe single-line text. Exact duplicates are dropped.
  */
 function exactTerms(values: unknown[]): { terms: string[]; dropped: boolean } {
   const terms: string[] = [];
   let dropped = false;
-  for (const value of values) {
+  for (const raw of values) {
+    const value = typeof raw === 'string' ? sanitizeUntrustedText(raw) : raw;
     if (typeof value !== 'string' || value.length < 1 || value.length > MAX_RECORD_TERM_CHARS || !isSafeText(value) || !value.trim()) {
       dropped = true;
       continue;
@@ -192,7 +180,8 @@ function contact(raw: Raw): StudyContact | undefined {
   const phone = phoneText && !phoneText.truncated && /\d/.test(phoneText.text) ? phoneText.text : undefined;
   const extText = sanitizeLine(raw.phoneExt, 20);
   const phoneExt = phone !== undefined && extText && !extText.truncated ? extText.text : undefined;
-  const email = typeof raw.email === 'string' && raw.email.length <= 254 && EMAIL_PATTERN.test(raw.email) ? raw.email : undefined;
+  const email =
+    typeof raw.email === 'string' && raw.email.length <= 254 && EMAIL_PATTERN.test(raw.email) && isCleanUntrustedText(raw.email) ? raw.email : undefined;
   if (name === undefined && phone === undefined && email === undefined) return undefined;
   return {
     ...(name !== undefined ? { name } : {}),

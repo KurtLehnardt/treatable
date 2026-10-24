@@ -4,6 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   AgentRealResultSchema,
+  AgentsInputSchema,
+  AgentsRequestBodySchema,
+  hasContactLikeContent,
+  parseAgentsInput,
   CONSENT_POLICY_VERSION,
   CONTRACT_VERSION,
   CredentialRequestSchema,
@@ -40,6 +44,7 @@ import {
   type RequestOp,
 } from '../src/protocol.ts';
 import { utf8ByteLength } from '../src/bytes.ts';
+import { canonicalJson } from '../src/json.ts';
 import { CoreError } from '../src/errors.ts';
 import { FICTIONAL_IDS, basePacket, makePreview, makeStudy } from './support/preview.ts';
 
@@ -215,7 +220,7 @@ test('the exact preview ties every body to the packet: one Decisions request per
     ['second tool', p => (p.agentsRequest!.agent.tools as unknown[]).push({ type: 'web_search' })],
     ['tool enum widened', p => p.agentsRequest!.agent.tools[0].parameters.properties.nctId.enum.push(FICTIONAL_IDS[5])],
     ['agent input profile changed', p => (p.agentsRequest!.input = p.agentsRequest!.input.replace('45_59', '18_29'))],
-    ['agent input study text', p => (p.agentsRequest!.input = JSON.stringify({ ...JSON.parse(p.agentsRequest!.input), summary: 'x' }))],
+    ['agent input study text', p => (p.agentsRequest!.input = canonicalJson({ ...JSON.parse(p.agentsRequest!.input), summary: 'x' }))],
     ['tool results reordered', p => p.toolResults.reverse()],
     ['tool result contacts', p => ((p.toolResults[0]!.study as Record<string, unknown>).contacts = [])],
     ['delivery changed', p => ((p.delivery as Record<string, unknown>).decisionsMaxAttemptsPerRequest = 5)],
@@ -264,8 +269,8 @@ test('fixed model-bound texts are contract constants; any other text is rejected
     ['agents instructions', p => ((p.agentsRequest!.agent as { instructions: string }).instructions = 'Use any tool.')],
     ['tool description', p => ((p.agentsRequest!.agent.tools[0] as { description: string }).description = 'x')],
     ['output schema', p => ((p.agentsRequest!.agent.text.format.schema as Record<string, unknown>).additionalProperties = true)],
-    ['task', p => (p.agentsRequest!.input = JSON.stringify({ ...JSON.parse(p.agentsRequest!.input), task: 'x' }))],
-    ['question template', p => (p.agentsRequest!.input = JSON.stringify({ ...JSON.parse(p.agentsRequest!.input), questionTemplates: { ...QUESTION_TEMPLATES, costs: 'x' } }))],
+    ['task', p => (p.agentsRequest!.input = canonicalJson({ ...JSON.parse(p.agentsRequest!.input), task: 'x' }))],
+    ['question template', p => (p.agentsRequest!.input = canonicalJson({ ...JSON.parse(p.agentsRequest!.input), questionTemplates: { ...QUESTION_TEMPLATES, costs: 'x' } }))],
   ];
   for (const [name, edit] of edits) {
     const p = clone();
@@ -276,9 +281,14 @@ test('fixed model-bound texts are contract constants; any other text is rejected
 });
 
 test('the condition term is validated byte for byte and never normalized, trimmed, or shortened', () => {
-  for (const term of ['Sjo\u0308gren Syndrome', ' Asthma', 'Hypertension,Essential', 'CIPN - Chemotherapy-Induced Peripheral Neuropathy', '15Q13.3 Deletion Syndrome']) {
+  for (const term of ['Sj\u00f6gren Syndrome', ' Asthma', 'Hypertension,Essential', 'CIPN - Chemotherapy-Induced Peripheral Neuropathy', '15Q13.3 Deletion Syndrome']) {
     const parsed = RequestSchema.parse(req('prepareReal', { packet: basePacket({ conditionTerm: term }), policyReceipt: receipt }));
     assert.equal((parsed.payload as { packet: { conditionTerm: string } }).packet.conditionTerm, term);
+  }
+  // Decision D2: model-bound text must already be NFC and free of invisible or format characters;
+  // such a term is rejected, never normalized or stripped.
+  for (const term of ['Sjo\u0308gren Syndrome', 'Asth\u200Bma', 'Asthma\u00AD', '\uFEFFAsthma', 'Asthma\u{E0041}', 'Asthma\uFE0F']) {
+    assert.equal(ModelPacketSchema.safeParse(basePacket({ conditionTerm: term })).success, false, JSON.stringify(term));
   }
   assert.equal(ModelPacketSchema.safeParse(basePacket({ conditionTerm: 'é'.repeat(100) })).success, true, '200 bytes');
   assert.equal(ModelPacketSchema.safeParse(basePacket({ conditionTerm: 'é'.repeat(100) + 'x' })).success, false, '201 bytes is rejected, not truncated');
@@ -415,4 +425,62 @@ test('parseCoreMessage validates direction, IDs and size budgets on the host sid
   assert.throws(() => parseCoreMessage(req('status', {})));
   assert.throws(() => parseCoreMessage({ ...ok, padding: 'x'.repeat(MAX_RESPONSE_BYTES) }));
   assert.equal(MAX_MESSAGE_BYTES, 96 * 1024);
+});
+
+test('Agents input must be the canonical serialization of its value: duplicate keys, padding, escapes, and key order are rejected', () => {
+  const preview = makePreview(basePacket());
+  const body = preview.agentsRequest!;
+  const value = JSON.parse(body.input) as Record<string, unknown>;
+  assert.equal(body.input, canonicalJson(value), 'the builder emits the canonical form');
+  assert.deepEqual(parseAgentsInput(body.input), AgentsInputSchema.parse(value));
+  // Duplicate key: JSON.parse keeps the last profile, so the allowlist alone would see only the valid
+  // one while the first (with free text and a ZIP) would still be sent.
+  const canonical = body.input;
+  const smuggled = canonical.replace('"profile":{', '"profile":{"note":"PRIVATE_SENTINEL chest pain since Monday","zip":"83702"},"profile":{');
+  assert.notEqual(smuggled, canonical);
+  assert.equal(AgentsInputSchema.safeParse(JSON.parse(smuggled)).success, true, 'control: the naive parse-then-validate check accepts it');
+  const variants: [string, string][] = [
+    ['duplicate key', smuggled],
+    ['duplicate key at the end', `${canonical.slice(0, -1)},"task":${JSON.stringify(value.task)}}`],
+    ['leading whitespace', ` ${canonical}`],
+    ['trailing newline', `${canonical}\n`],
+    ['pretty printed', JSON.stringify(JSON.parse(canonical), null, 2)],
+    ['insertion key order', JSON.stringify({ task: value.task, ...value })],
+    ['escaped character', canonical.replace('"minimizedHealthData"', '"minimizedHealth\\u0044ata"')],
+  ];
+  for (const [name, input] of variants) {
+    if (input === canonical) continue;
+    assert.equal(parseAgentsInput(input), undefined, name);
+    assert.equal(AgentsRequestBodySchema.safeParse({ ...body, input }).success, false, `${name} (create body)`);
+    assert.equal(PreviewSchema.safeParse({ ...preview, agentsRequest: { ...body, input } }).success, false, `${name} (preview)`);
+  }
+  assert.equal(parseAgentsInput(42 as unknown as string), undefined);
+});
+
+test('contact-like text: phone numbers, ZIP codes, emails, and URLs in common formats are rejected; ordinary condition names are not', () => {
+  for (const text of [
+    '83702',
+    'asthma 83702',
+    '555-123-4567',
+    '(555) 123 4567',
+    '555.123.4567',
+    '555/123/4567',
+    '9 0 2 1 0',
+    '+1 208 555 0100',
+    '208–555–0100',
+    '208 555 0100',
+    '２０８５５５０１００',
+    '٢٠٨٥٥٥٠١٠٠',
+    'me@example.invalid',
+    'me＠example',
+    'https://evil.invalid',
+  ]) {
+    assert.equal(hasContactLikeContent(text), true, text);
+    assert.equal(accepts(req('searchTrials', { conditionTerms: [text] })), false, `search term ${text}`);
+    assert.equal(ModelPacketSchema.safeParse(basePacket({ conditionTerm: text })).success, false, `condition term ${text}`);
+  }
+  for (const text of ['COVID-19', '15q11.2 BP1-BP2 Deletion', 'Type 2 Diabetes', '46,XY Disorders of Sex Development', 'HIV-1 Infection', 'Chromosome 22q11.2 Deletion Syndrome', 'Stage IV Breast Cancer AJCC v8', 'SARS-CoV-2']) {
+    assert.equal(hasContactLikeContent(text), false, text);
+    assert.equal(accepts(req('searchTrials', { conditionTerms: [text] })), true, `search term ${text}`);
+  }
 });

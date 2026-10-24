@@ -1,29 +1,22 @@
 /**
- * R4 bounds for real operations (final-plan.md amendment R4), as pure, reusable checks:
+ * R4 bounds for real operations (final-plan.md amendment R4), checked by the dispatcher in
+ * prepareReal after the preview is built and verified (dispatcher.ts), so no pipeline can change them:
  *   - Agents operations use at most MAX_AGENT_STUDIES (2) studies, as in real-contract.mjs;
  *   - Decisions relevance scoring uses at most MAX_SCORE_STUDIES (10) studies per confirmed
- *     operation, exactly one request per study, and at most MAX_DECISIONS_CONCURRENCY (3) requests
- *     in flight at a time.
- * The packet and preview schemas in protocol.ts already reject oversized lists; these functions
- * restate the bounds at the points where work is planned and run, so a send path cannot exceed them
- * even with a hand-built plan. decisionsSendPlan yields one entry per scored study, and runBounded
- * runs a worker once per entry with at most three running at once. A retry of one Decisions request
- * happens inside its worker call, so it keeps its slot and counts toward the limit
- * (DELIVERY_POLICY: retries count toward the concurrency limit).
- *
- * Wiring these into the dispatcher-owned send capability is part of the dispatcher reconciliation
- * (A1a critic MAJOR-1); this module has no dependency on the dispatcher.
+ *     operation, with exactly one pinned request body per study.
+ * The packet and preview schemas in protocol.ts reject oversized lists too; these checks restate the
+ * bounds on the exact preview that is pinned. At most three Decisions requests in flight, with the one
+ * permitted retry inside its slot, is enforced by the send capability (outbound.ts), which also
+ * refuses a second send of the same body.
  */
-import { CoreError } from '../errors.ts';
-import type { CancelSignal } from '../ports.ts';
+import { CoreError } from './errors.ts';
 import {
   MAX_AGENT_STUDIES,
-  MAX_DECISIONS_CONCURRENCY,
   MAX_SCORE_STUDIES,
   NCT_ID_PATTERN,
   type DecisionsRequestBody,
   type Preview,
-} from '../protocol.ts';
+} from './protocol.ts';
 
 function uniqueIds(ids: unknown, max: number): ids is readonly string[] {
   return (
@@ -90,42 +83,9 @@ export function assertAgentsBound(preview: Readonly<Preview>): void {
   if (enumIds.length !== ids.length || enumIds.some((id, i) => id !== ids[i])) throw new CoreError('INTERNAL_ERROR');
 }
 
-/**
- * Runs `worker` exactly once per item with at most `limit` calls in flight (limit 1 to
- * MAX_DECISIONS_CONCURRENCY) and returns the results in item order. When a worker call rejects or
- * `signal` fires, no further call starts; the calls already running are awaited, and then the first
- * error (or CANCELLED) is thrown. Workers receive the signal and should stop promptly when it fires.
- */
-export async function runBounded<T, R>(
-  items: readonly T[],
-  limit: number,
-  worker: (item: T, index: number, signal: CancelSignal) => Promise<R>,
-  signal: CancelSignal,
-): Promise<R[]> {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_DECISIONS_CONCURRENCY) throw new CoreError('INTERNAL_ERROR');
-  if (!Array.isArray(items) || items.length > MAX_SCORE_STUDIES) throw new CoreError('INTERNAL_ERROR');
-  const results: R[] = new Array<R>(items.length);
-  let next = 0;
-  let failed = false;
-  let firstError: unknown;
-  const lane = async (): Promise<void> => {
-    while (!failed && !signal.aborted && next < items.length) {
-      const index = next;
-      next += 1;
-      try {
-        results[index] = await worker(items[index] as T, index, signal);
-      } catch (error) {
-        if (!failed) {
-          failed = true;
-          firstError = error;
-        }
-      }
-    }
-  };
-  const lanes: Promise<void>[] = [];
-  for (let i = 0; i < Math.min(limit, items.length); i += 1) lanes.push(lane());
-  await Promise.all(lanes);
-  if (failed) throw firstError instanceof CoreError ? firstError : new CoreError('INTERNAL_ERROR');
-  if (signal.aborted) throw new CoreError('CANCELLED');
-  return results;
+/** All R4 checks on a built preview: packet bounds, one Decisions body per study, Agents bound. */
+export function assertR4Preview(preview: Readonly<Preview>): void {
+  assertR4Packet(preview.packet);
+  decisionsSendPlan(preview);
+  assertAgentsBound(preview);
 }

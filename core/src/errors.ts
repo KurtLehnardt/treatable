@@ -14,6 +14,8 @@ export const ERROR_CODES = [
   'SESSION_LIMIT',
   'RECORD_NOT_IN_SESSION',
   'CONDITION_TERM_NOT_IN_SESSION',
+  // A study record is too old to prepare consent with; the user should search again (decision D3).
+  'RECORD_STALE',
   // Consent receipts.
   'CONSENT_EXPIRED',
   'INVALID_CONSENT_RECEIPT',

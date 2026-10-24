@@ -12,7 +12,7 @@ import {
   type PreparedRealResult,
 } from '../src/protocol.ts';
 import { testPorts } from './support/fakes.ts';
-import { FAKE_KEY, errorCode, harness, okResult, receipt, req } from './support/harness.ts';
+import { FAKE_KEY, defaultExecute, errorCode, harness, okResult, receipt, req } from './support/harness.ts';
 import { FICTIONAL_IDS, basePacket } from './support/preview.ts';
 
 const packet = basePacket();
@@ -21,6 +21,10 @@ const execute = (p: PreparedRealResult, operation = 'score', extra: Record<strin
 async function prepared(h: ReturnType<typeof harness>, pk = packet): Promise<PreparedRealResult> {
   okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
   return okResult<PreparedRealResult>(await h.call('prepareReal', { packet: pk, policyReceipt: receipt }));
+}
+
+async function isPrepared(h: ReturnType<typeof harness>): Promise<boolean> {
+  return okResult<Record<string, any>>(await h.call('status', {})).session.prepared;
 }
 
 test('status reports the contract, the policy version, the mode label, and which operations are wired', async () => {
@@ -37,6 +41,9 @@ test('status reports the contract, the policy version, the mode label, and which
     executeReal: 'not_implemented', revokeReal: 'ready', cancel: 'ready', endSession: 'ready', 'credential.request': 'not_implemented',
   });
   assert.ok(!JSON.stringify(response).includes('sk-'), 'status never exposes credentials');
+  const wired = harness();
+  const operations = okResult<Record<string, any>>(await wired.call('status', {})).operations;
+  assert.equal(operations.prepareReal, 'ready', 'preparation is ready once an executor exists; the core builds the preview itself');
 });
 
 test('operations owned by later tasks answer a typed NOT_IMPLEMENTED error', async () => {
@@ -86,32 +93,33 @@ test('a session accepts a bounded number of requests', async () => {
 
 test('[ported real.test.mjs#4] stale, changed, replayed, expired, revoked and missing-policy receipts make zero provider requests and no credential request', async () => {
   const h = harness();
-  const p = await prepared(h);
   assert.equal(PREPARED_TTL_MS, 5 * 60 * 1000);
-  for (const invalid of [
-    execute(p, 'score', { token: 'x'.repeat(43) }),
-    execute(p, 'score', { digest: '0'.repeat(64) }),
-    execute(p, 'score', { policyReceipt: { accepted: true, policyVersion: 'old' } }),
-    execute(p, 'score', { policyReceipt: undefined }),
+  for (const change of [
+    (p: PreparedRealResult) => execute(p, 'score', { token: 'x'.repeat(43) }),
+    (p: PreparedRealResult) => execute(p, 'score', { digest: '0'.repeat(64) }),
+    (p: PreparedRealResult) => execute(p, 'score', { policyReceipt: { accepted: true, policyVersion: 'old' } }),
+    (p: PreparedRealResult) => execute(p, 'score', { policyReceipt: undefined }),
   ]) {
-    assert.notEqual(errorCode(await h.call('executeReal', invalid)), undefined);
+    const p = await prepared(h);
+    assert.notEqual(errorCode(await h.call('executeReal', change(p))), undefined);
+    assert.equal(await isPrepared(h), false, 'every rejected receipt clears the preparation');
+    assert.equal(errorCode(await h.call('executeReal', execute(p))), 'INVALID_CONSENT_RECEIPT', 'the real receipt is gone too');
   }
   assert.equal(h.log.executions.length, 0);
   assert.equal(h.log.credentialRequests.length, 0, 'receipts are validated before any credential request');
-  // An invalid request clears the preparation (host.mjs semantics), so prepare again.
+  assert.equal(h.openai.calls.length, 0, 'no provider request');
   const p2 = await prepared(h);
-  const scored = okResult<Record<string, any>>(await h.call('executeReal', execute(p2)));
+  const scored = okResult<Record<string, any>>(await h.call('executeReal', execute(p2), 'exec-score'));
   assert.equal(scored.kind, 'scoreReal');
   assert.equal(scored.consentDigest, p2.digest);
   assert.equal(scored.mode, 'mocked');
   assert.equal(h.log.credentialRequests.length, 1);
   assert.equal(h.log.credentialRequests[0]!.consentDigest, p2.digest);
-  assert.equal(h.log.credentialRequests[0]!.forRequestId, 'r9');
+  assert.equal(h.log.credentialRequests[0]!.forRequestId, 'exec-score');
   assert.deepEqual(h.log.executions[0]!.preview, p2.preview, 'the runner receives exactly the previewed payloads');
-  assert.equal(errorCode(await h.call('executeReal', execute(p2))), 'INVALID_CONSENT_RECEIPT', 'replay');
   const agent = okResult<Record<string, any>>(await h.call('executeReal', execute(p2, 'agent')));
   assert.equal(agent.cleanup, 'deleted');
-  assert.equal(errorCode(await h.call('executeReal', execute(p2, 'agent'))), 'INVALID_CONSENT_RECEIPT');
+  assert.equal(errorCode(await h.call('executeReal', execute(p2, 'agent'))), 'INVALID_CONSENT_RECEIPT', 'replay');
   const p3 = okResult<PreparedRealResult>(await h.call('prepareReal', { packet: basePacket({ state: 'WA' }), policyReceipt: receipt }));
   okResult(await h.call('revokeReal', { token: p3.token }));
   assert.equal(errorCode(await h.call('executeReal', execute(p3))), 'INVALID_CONSENT_RECEIPT', 'revoked');
@@ -120,14 +128,37 @@ test('[ported real.test.mjs#4] stale, changed, replayed, expired, revoked and mi
   assert.equal(errorCode(await h.call('executeReal', execute(p4))), 'CONSENT_EXPIRED');
   assert.equal(h.log.executions.length, 2);
   assert.equal(h.log.credentialRequests.length, 2);
-  assert.equal(h.ports.transport.calls.length, 0, 'no network request in a mocked test');
 });
 
-test('mutation invalidation through the dispatcher: a new subject, an invalid request, cancel, or a new preparation clears consent', async () => {
+test('the clear/keep matrix through the dispatcher: a wrong token, a replayed operation, and a mismatched revoke all clear the preparation', async () => {
   const h = harness();
   const p = await prepared(h);
-  okResult(await h.call('searchTrials', { conditionTerms: ['different term'] }));
-  assert.equal(errorCode(await h.call('executeReal', execute(p))), 'INVALID_CONSENT_RECEIPT', 'subject changed');
+  assert.equal(errorCode(await h.call('executeReal', execute(p, 'score', { token: 'y'.repeat(43) }))), 'INVALID_CONSENT_RECEIPT');
+  assert.equal(await isPrepared(h), false, 'wrong token clears (real.mjs kept it)');
+
+  const q = await prepared(h, basePacket({ agentNctIds: undefined }));
+  okResult(await h.call('executeReal', execute(q)));
+  assert.equal(await isPrepared(h), true, 'a used preparation stays listed until it fails or expires');
+  assert.equal(errorCode(await h.call('executeReal', execute(q, 'agent'))), 'INVALID_CONSENT_RECEIPT', 'unauthorized operation');
+  assert.equal(await isPrepared(h), false, 'an unauthorized operation clears');
+
+  const r = await prepared(h);
+  okResult(await h.call('executeReal', execute(r)));
+  assert.equal(errorCode(await h.call('executeReal', execute(r))), 'INVALID_CONSENT_RECEIPT', 'replayed operation');
+  assert.equal(errorCode(await h.call('executeReal', execute(r, 'agent'))), 'INVALID_CONSENT_RECEIPT', 'the other operation went with it');
+
+  const s = await prepared(h);
+  assert.equal(errorCode(await h.call('revokeReal', { token: 'z'.repeat(43) })), 'INVALID_CONSENT_RECEIPT', 'a stale token is reported');
+  assert.equal(await isPrepared(h), false, 'and the preparation is cleared anyway (host.mjs kept it)');
+  assert.equal(errorCode(await h.call('executeReal', execute(s))), 'INVALID_CONSENT_RECEIPT');
+  assert.equal(h.log.credentialRequests.length, 2, 'only the two valid executions asked for a credential');
+});
+
+test('mutation invalidation through the dispatcher: changed records, an invalid request, cancel, or a new preparation clears consent', async () => {
+  const h = harness();
+  const p = await prepared(h);
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'], pageSize: 4 }));
+  assert.equal(errorCode(await h.call('executeReal', execute(p))), 'INVALID_CONSENT_RECEIPT', 'a new record changed the record-set digest');
   const q = await prepared(h);
   await h.core.handle({ garbage: true });
   assert.equal(errorCode(await h.call('executeReal', execute(q))), 'INVALID_CONSENT_RECEIPT', 'invalid request cleared it');
@@ -136,34 +167,43 @@ test('mutation invalidation through the dispatcher: a new subject, an invalid re
   assert.equal(errorCode(await h.call('executeReal', execute(r))), 'INVALID_CONSENT_RECEIPT', 'cancel cleared it');
   const s = await prepared(h);
   okResult(await h.call('prepareReal', { packet: basePacket({ ageBand: '60_74' }), policyReceipt: receipt }));
+  assert.equal(await isPrepared(h), true, 'the newer preparation is active');
   assert.equal(errorCode(await h.call('executeReal', execute(s))), 'INVALID_CONSENT_RECEIPT', 'superseded');
+  assert.equal(await isPrepared(h), false, 'a superseded receipt is a wrong token, so the newer preparation is cleared too');
   assert.equal(h.log.executions.length, 0);
-  const status = okResult<Record<string, any>>(await h.call('status', {}));
-  assert.equal(status.session.prepared, true);
 });
 
-test('prepareReal needs a session subject and a builder whose preview matches the packet and the schema', async () => {
-  const noSubject = harness();
-  assert.equal(errorCode(await noSubject.call('prepareReal', { packet, policyReceipt: receipt })), 'RECORD_NOT_IN_SESSION');
-  const altered = harness({ pipelines: { buildPreview: async (_ctx, pk) => ({ preview: { ...(await import('./support/preview.ts')).makePreview({ ...pk, ageBand: '18_29' }) } }) } });
-  okResult(await altered.call('searchTrials', { conditionTerms: ['x'] }));
-  assert.equal(errorCode(await altered.call('prepareReal', { packet, policyReceipt: receipt })), 'INTERNAL_ERROR', 'builder may not change the packet');
-  const leaky = harness({
-    pipelines: {
-      buildPreview: async (_ctx, pk) => {
-        const preview = (await import('./support/preview.ts')).makePreview(pk);
-        (preview.decisionsRequests[0]!.input[0].content[1].data.profile as Record<string, unknown>).zip = '83702';
-        return { preview };
-      },
-    },
-  });
-  okResult(await leaky.call('searchTrials', { conditionTerms: ['x'] }));
-  assert.equal(errorCode(await leaky.call('prepareReal', { packet, policyReceipt: receipt })), 'INTERNAL_ERROR', 'ZIP in a model-bound body is refused');
-  assert.equal(okResult<Record<string, any>>(await leaky.call('status', {})).session.prepared, false);
-  const tooBig = harness({ options: { consentTtlMs: 1000 } });
-  okResult(await tooBig.call('searchTrials', { conditionTerms: ['x'] }));
-  const ok = okResult<PreparedRealResult>(await tooBig.call('prepareReal', { packet, policyReceipt: receipt }));
-  assert.equal(ok.expiresAt, tooBig.ports.clock.now() + 1000);
+function baseRecord(nctId: string) {
+  return {
+    nctId,
+    title: `Fictional study ${nctId}`,
+    status: 'RECRUITING',
+    studyType: 'INTERVENTIONAL',
+    phases: ['PHASE2'],
+    conditions: ['Seasonal Allergic Rhinitis'],
+    meshTerms: ['Rhinitis, Allergic, Seasonal'],
+    summary: 'Fictional public summary.',
+    eligibility: { criteria: 'Inclusion Criteria:\n* Fictional', minimumAge: '18 Years', maximumAge: null, sex: 'ALL', healthyVolunteers: false },
+    sponsor: null,
+    locations: [],
+    contacts: [],
+    lastUpdatePostDate: '2026-09-30',
+    sourceUrl: `https://clinicaltrials.gov/study/${nctId}`,
+    retrievedAt: '2026-10-24T08:00:00.000Z',
+    truncatedFields: [],
+  };
+}
+
+test('a search that returns the same record versions keeps consent; a changed record version clears it', async () => {
+  let version = 'Fictional public summary.';
+  const h = harness({ records: id => ({ ...baseRecord(id), summary: version }) });
+  const p = await prepared(h);
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  assert.equal(await isPrepared(h), true, 'identical records: the subject digest is unchanged');
+  version = 'Fictional public summary, updated upstream.';
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  assert.equal(await isPrepared(h), false);
+  assert.equal(errorCode(await h.call('executeReal', execute(p))), 'INVALID_CONSENT_RECEIPT');
 });
 
 test('trace events are validated, sequenced, labeled mocked, and delivered before the response', async () => {
@@ -178,7 +218,7 @@ test('trace events are validated, sequenced, labeled mocked, and delivered befor
   assert.equal(trace[0]!.consentDigest, p.digest);
   const invalidTrace = harness({
     execute: async ctx => {
-      ctx.emitTrace({ stage: 'task', outcome: 'started', consentDigest: ctx.pinned.consentDigest });
+      ctx.emitTrace({ stage: 'task', outcome: 'started', consentDigest: ctx.consentDigest });
       throw new Error('unreachable');
     },
   });
@@ -186,29 +226,13 @@ test('trace events are validated, sequenced, labeled mocked, and delivered befor
   assert.equal(errorCode(await invalidTrace.call('executeReal', execute(q))), 'INTERNAL_ERROR');
 });
 
-test('the credential is requested once per confirmed operation and never appears in any response or event', async () => {
-  const leakViaTrace = harness({
-    execute: async ctx => {
-      const key = await ctx.requestCredential();
-      ctx.emitTrace({ stage: 'task', outcome: 'started', sessionId: key });
-      throw new Error('unreachable');
-    },
-  });
-  const p = await prepared(leakViaTrace);
-  const response = await leakViaTrace.call('executeReal', execute(p));
-  assert.equal(errorCode(response), 'INTERNAL_ERROR');
-  assert.ok(!JSON.stringify(leakViaTrace.events).includes(FAKE_KEY));
-  assert.ok(!JSON.stringify(response).includes(FAKE_KEY));
-  const twice = harness({
-    execute: async ctx => {
-      await ctx.requestCredential();
-      await ctx.requestCredential();
-      throw new Error('unreachable');
-    },
-  });
-  const q = await prepared(twice);
-  assert.equal(errorCode(await twice.call('executeReal', execute(q))), 'INTERNAL_ERROR');
-  assert.equal(twice.log.credentialRequests.length, 1);
+test('the credential is requested once per confirmed operation, before the pipeline runs, and never appears in any response or event', async () => {
+  const h = harness();
+  const p = await prepared(h);
+  okResult(await h.call('executeReal', execute(p)));
+  assert.equal(h.log.credentialRequests.length, 1);
+  assert.ok(!JSON.stringify(h.events).includes(FAKE_KEY));
+  for (const call of h.openai.calls) assert.equal(call.headers.Authorization, `Bearer ${FAKE_KEY}`, 'the capability adds the key to each request');
   const cases: [unknown, string][] = [
     [{ ok: false, code: 'KEY_MISSING' }, 'KEY_MISSING'],
     [{ ok: false, code: 'DECLINED' }, 'CANCELLED'],
@@ -218,23 +242,25 @@ test('the credential is requested once per confirmed operation and never appears
     [{ ok: true, apiKey: FAKE_KEY, id: 'someone-else' }, 'CREDENTIAL_UNAVAILABLE'],
   ];
   for (const [answer, code] of cases) {
-    const h = harness({
+    const failing = harness({
       credentials: {
         async request(message) {
           return { v: CONTRACT_VERSION, type: 'credential.response', id: message.id, ...(answer as object) };
         },
       },
     });
-    const r = await prepared(h);
-    assert.equal(errorCode(await h.call('executeReal', execute(r))), code, JSON.stringify(answer));
-    assert.equal(h.log.executions.length, 0);
+    const r = await prepared(failing);
+    assert.equal(errorCode(await failing.call('executeReal', execute(r))), code, JSON.stringify(answer));
+    assert.equal(failing.log.executions.length, 0, 'without a credential the pipeline never runs');
+    assert.equal(failing.openai.calls.length, 0);
   }
   const none = harness({ credentials: null });
   const s = await prepared(none);
   assert.equal(errorCode(await none.call('executeReal', execute(s))), 'KEY_MISSING');
+  assert.equal(none.log.executions.length, 0);
 });
 
-test('results are checked against the pinned consent: kind, digest, mode, and exactly the consented studies', async () => {
+test('results are checked against the pinned consent and against what was actually sent', async () => {
   const wrong: [string, (r: any) => any][] = [
     ['other study', r => ({ ...r, scores: [{ ...r.scores[0], nctId: FICTIONAL_IDS[7] }, r.scores[1]] })],
     ['missing study', r => ({ ...r, scores: [r.scores[0]] })],
@@ -244,10 +270,30 @@ test('results are checked against the pinned consent: kind, digest, mode, and ex
     ['agent kind for score', r => ({ ...r, kind: 'agentReal' })],
   ];
   for (const [name, change] of wrong) {
-    const h = harness({ execute: async (ctx, log) => change(await (await import('./support/harness.ts')).defaultExecute(ctx, log)) });
+    const h = harness({ execute: async (ctx, log) => change(await defaultExecute(ctx, log)) });
     const p = await prepared(h);
     assert.equal(errorCode(await h.call('executeReal', execute(p))), 'INVALID_API_RESPONSE', name);
   }
+  // A score for a study whose request was never sent is refused.
+  const unsent = harness({
+    execute: async ctx => {
+      const first = await ctx.openai.send({ kind: 'decisions', index: 0 });
+      void first;
+      return { kind: 'scoreReal', mode: ctx.mode, consentDigest: ctx.consentDigest, scores: (ctx.packet.scoreNctIds ?? []).map(nctId => ({ nctId, outcome: 'scored', index: 50, confidence: 0.5 })) };
+    },
+  });
+  const p = await prepared(unsent);
+  assert.equal(errorCode(await unsent.call('executeReal', execute(p))), 'INVALID_API_RESPONSE', 'second study was never sent');
+  // An Agents result that claims deletion without an acknowledged DELETE is refused.
+  const notDeleted = harness({ openai: { deleteStatus: 409 }, execute: async (ctx, log) => ({ ...(await defaultExecute(ctx, log)), cleanup: 'deleted' }) as never });
+  const q = await prepared(notDeleted);
+  assert.equal(errorCode(await notDeleted.call('executeReal', execute(q, 'agent'))), 'INVALID_API_RESPONSE', 'cleanup claimed without acknowledgement');
+  const honest = harness({ openai: { deleteStatus: 409 } });
+  const r = await prepared(honest);
+  assert.equal(okResult<Record<string, any>>(await honest.call('executeReal', execute(r, 'agent'))).cleanup, 'failed', 'a failed deletion is reported as failed');
+  const miscounted = harness({ execute: async (ctx, log) => ({ ...(await defaultExecute(ctx, log)), toolCalls: 5 }) as never });
+  const s = await prepared(miscounted);
+  assert.equal(errorCode(await miscounted.call('executeReal', execute(s, 'agent'))), 'INVALID_API_RESPONSE', 'tool call count must match accepted tool results');
 });
 
 test('BUSY, cancel, and consent clearing abort running work; local operations report CANCELLED', async () => {
@@ -274,7 +320,7 @@ test('BUSY, cancel, and consent clearing abort running work; local operations re
   const slow = harness({
     execute: ctx =>
       new Promise((_resolve, reject) => {
-        ctx.emitTrace({ stage: 'input', outcome: 'started', consentDigest: ctx.pinned.consentDigest });
+        ctx.emitTrace({ stage: 'input', outcome: 'started', consentDigest: ctx.consentDigest });
         ctx.signal.addEventListener('abort', () => reject(new Error('aborted')));
       }),
   });
@@ -294,17 +340,27 @@ test('BUSY, cancel, and consent clearing abort running work; local operations re
   assert.equal(errorCode(await longRun), 'CANCELLED', 'the consent window ending aborts work still running (real.mjs timer semantics)');
 });
 
-test('outputs that fail validation are replaced by an error and clear consent', async () => {
-  const h = harness({ pipelines: { searchTrials: async () => ({ records: [], retrievedAt: 'yesterday', source: 'live', query: { conditionTerms: ['x'], country: 'US' } }) as never } });
+test('outputs that fail validation are replaced by an error, clear consent, and never add records', async () => {
+  const h = harness({ pipelines: { searchTrials: async () => ({ records: [], retrievedAt: 'yesterday', source: 'live', skippedRecords: 0, query: { conditionTerms: ['x'], country: 'US' } }) as never } });
   assert.equal(errorCode(await h.call('searchTrials', { conditionTerms: ['x'] })), 'INTERNAL_ERROR');
   const throwing = harness({ pipelines: { searchTrials: async () => { throw new Error('SENSITIVE_SENTINEL provider text'); } } });
   const response = await throwing.call('searchTrials', { conditionTerms: ['x'] });
   assert.equal(errorCode(response), 'INTERNAL_ERROR');
   assert.ok(!JSON.stringify(response).includes('SENSITIVE_SENTINEL'));
+  // A search response that fails validation never adds its (otherwise valid) records.
+  const invalidTail = harness({
+    pipelines: {
+      searchTrials: async () => ({ records: [baseRecord(FICTIONAL_IDS[0])], retrievedAt: '2026-10-24T08:00:00Z', source: 'live', skippedRecords: 0, query: { conditionTerms: ['x'], country: 'US' }, extra: true }) as never,
+    },
+  });
+  assert.equal(errorCode(await invalidTail.call('searchTrials', { conditionTerms: ['x'] })), 'INTERNAL_ERROR');
+  assert.equal(errorCode(await invalidTail.call('prepareReal', { packet, policyReceipt: receipt })), 'RECORD_NOT_IN_SESSION', 'no record was held');
 });
 
-test('createCore rejects missing ports and unknown modes', () => {
+test('createCore rejects missing ports, unknown modes, and unknown or non-function pipelines', () => {
   assert.throws(() => createCore({} as never, { mode: 'mocked', runtime: 'test' }));
   assert.throws(() => createCore(testPorts(), { mode: 'test' as never, runtime: 'test' }));
   assert.throws(() => createCore(testPorts(), { mode: 'live', runtime: 'browser' as never }));
+  assert.throws(() => createCore(testPorts(), { mode: 'mocked', runtime: 'test', pipelines: { buildPreview: async () => ({}) } as never }), 'there is no preview pipeline to replace');
+  assert.throws(() => createCore(testPorts(), { mode: 'mocked', runtime: 'test', pipelines: { executeReal: 'run' } as never }));
 });

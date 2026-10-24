@@ -13,7 +13,8 @@ interface Timer {
 
 /** Manual clock: time moves only when a test calls advance(). Timers fire in order during advance(). */
 export class FakeClock implements Clock {
-  wall = 1_793_000_000_000;
+  /** 2026-10-24T08:05:00Z: five minutes after the fixed retrievedAt of the fictional records (decision D3). */
+  wall = 1_792_829_100_000;
   mono = 10_000;
   private timers: Timer[] = [];
 

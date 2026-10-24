@@ -58,8 +58,11 @@ export interface TransportResponse {
 /**
  * HTTPS transport. Implementations must validate server certificates, must not follow redirects,
  * must not add credentials or cookies of their own, and must reject (not resolve) on network
- * failure or cancellation. Endpoint allowlists, host pinning, and request size caps are enforced
- * by the core around this port (task A1b), so a transport cannot widen them.
+ * failure or cancellation. The core decides every request before it reaches this port: OpenAI
+ * requests are built only by the send capability (outbound.ts: the five allowlisted method and
+ * path pairs on https://api.openai.com, fixed headers, the per-body byte cap), and the search
+ * pipeline's view of this port accepts only GET requests to the ClinicalTrials.gov API
+ * (dispatcher.ts). Task A1b's transport gate re-checks the invariants around the port itself.
  */
 export interface Transport {
   request(request: TransportRequest): Promise<TransportResponse>;
