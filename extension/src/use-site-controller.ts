@@ -1,0 +1,27 @@
+import {useEffect,useRef,useState} from 'react';
+import {SiteClient,readActivation,parseSnapshot} from './overlay-port';
+import {SITE_FILTERS} from './site-filter-catalog';
+import {parseSiteSearchFilters} from './site-search';
+import type {OverlayFields,OverlayField,OverlayRecord,OverlaySnapshot,OverlayViewModel} from './overlay-types';
+const plain=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+function recordsFrom(value:unknown,ids:string[]):OverlayRecord[]{const list=Array.isArray(value)?value:plain(value)&&Array.isArray(value.records)?value.records:[];return list.flatMap((v:any)=>{const nctId=v?.nctId??v?.id??v?.protocolSection?.identificationModule?.nctId;if(typeof nctId!=='string'||!ids.includes(nctId))return[];const title=v.title??v.briefTitle??v?.protocolSection?.identificationModule?.briefTitle;return [{nctId,title:typeof title==='string'?title.slice(0,1000):nctId,status:String(v.status??v.overallStatus??v?.protocolSection?.statusModule?.overallStatus??'Unknown').slice(0,100),conditions:Array.isArray(v.conditions)?v.conditions.filter((x:any)=>typeof x==='string').slice(0,20):[]} ]})}
+export function useSiteController():OverlayViewModel {
+ const[connected,setConnected]=useState(false),[ended,setEnded]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[fields,setFields]=useState<OverlayFields>({}),[catalog,setCatalog]=useState<readonly OverlayField[]>(SITE_FILTERS),[snapshot,setSnapshot]=useState<OverlaySnapshot>(),[records,setRecords]=useState<OverlayRecord[]>([]),[opacity,setOpacityState]=useState(.92),[collapsed,setCollapsedState]=useState(false);
+ const client=useRef<SiteClient>(),revision=useRef(0),alive=useRef(true),snapshotRef=useRef<OverlaySnapshot>(),parentOrigin=useRef<string>();
+ const end=()=>{revision.current++;client.current?.disconnect();client.current=undefined;setConnected(false);setEnded(true);setFields({});setRecords([]);setCatalog([]);setSnapshot(undefined);snapshotRef.current=undefined;setBusy(false);setError('')};
+ useEffect(()=>{alive.current=true;const activation=async(event:MessageEvent)=>{const auth=readActivation(event,window.parent,'overlay');if(!auth||client.current)return;parentOrigin.current=event.origin;let next:SiteClient;try{next=new SiteClient(chrome.runtime);client.current=next;next.onEvent(v=>{if(!alive.current)return;if(v.type==='site.snapshot'){revision.current++;const s=parseSnapshot(v.snapshot);snapshotRef.current=s;setSnapshot(s);setRecords([]);setBusy(false)}else if(v.type==='site.ended')end()});const ready=await next.authenticate(auth.capability);if(!alive.current||client.current!==next)return;snapshotRef.current=ready.snapshot;setSnapshot(ready.snapshot);setFields(ready.search||{});setCatalog(ready.filters);setConnected(true);setEnded(false)}catch{if(alive.current){client.current?.disconnect();client.current=undefined;setError('Use the Treatable toolbar button on ClinicalTrials.gov to open a secure session.')}}};
+ const hide=()=>{if(document.visibilityState==='hidden')end()};window.addEventListener('message',activation);window.addEventListener('pagehide',end);document.addEventListener('visibilitychange',hide);return()=>{alive.current=false;revision.current++;client.current?.disconnect();client.current=undefined;window.removeEventListener('message',activation);window.removeEventListener('pagehide',end);document.removeEventListener('visibilitychange',hide)}} ,[]);
+ const run=async(type:string,payload:Record<string,unknown>={},apply?:(v:any)=>void)=>{if(!client.current||!connected)return;const r=++revision.current;setBusy(true);setError('');try{const result=await client.current.request(type,payload);if(alive.current&&revision.current===r)apply?.(result)}catch{if(alive.current&&revision.current===r)setError('This site action could not complete. Nothing was sent to OpenAI.')}finally{if(alive.current&&revision.current===r)setBusy(false)}};
+ function dismiss(){try{window.parent.postMessage({type:'treatable.site.dismiss'},parentOrigin.current||'https://clinicaltrials.gov')}catch{}end()}
+ return {connected,ended,busy,error,fields,catalog,snapshot,records,opacity,collapsed,
+ setField:(key,value)=>{setFields(old=>({...old,[key]:value}));setError('')},
+ search:()=>{try{const filters=parseSiteSearchFilters(fields);void run('site.search',{filters})}catch(e){setError(e instanceof Error?e.message:'Review the search filters.')}},
+ refresh:()=>{void run('site.snapshot',{},value=>{const s=parseSnapshot(plain(value)&&value.snapshot?value.snapshot:value);snapshotRef.current=s;setSnapshot(s);setRecords([])})},
+ fetchRecords:()=>{const s=snapshotRef.current;if(s)void run('site.fetch',{nctIds:s.nctIds},value=>setRecords(recordsFrom(value,s.nctIds)))},
+ setOpacity:value=>{const next=Math.min(1,Math.max(.35,value));setOpacityState(next);if(client.current)void client.current.request('site.layout',{opacity:next}).catch(()=>{})},
+ setCollapsed:value=>{setCollapsedState(value);if(client.current)void client.current.request('site.layout',{collapsed:value}).catch(()=>{})},
+ restore:()=>{void run('site.restore')},
+ openPrivate:()=>{void run('site.openPrivate')},
+ close:()=>{if(client.current)void client.current.request('site.close').catch(()=>{});dismiss()}
+ };
+}
