@@ -22,6 +22,7 @@
 .apply-trace{margin:0;padding-left:22px;display:grid;gap:6px}.apply-trace .done::marker{color:var(--accent)}.apply-trace .warn{color:var(--error-ink)}.apply-trace .working{color:var(--muted)}
 .apply-questions,.apply-checklist{margin:0;padding-left:22px;display:grid;gap:8px}.apply-checklist{list-style:none;padding-left:0}
 .apply-actions{display:flex;flex-wrap:wrap;gap:10px}
+.apply-session{display:grid;gap:8px}.apply-session p{margin:0}
 .apply-big{min-height:52px;font-size:16px;padding:12px 18px}
 a.button{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-weight:650;text-decoration:none}a.button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .apply-failure code,.apply-section code{font-size:13px}
