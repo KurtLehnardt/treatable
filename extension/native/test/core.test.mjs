@@ -72,3 +72,5 @@ test('actual framed helper rejects PHI and duplicate IDs before any credential r
   child.stdin.end();await new Promise(r=>child.once('exit',r));child=undefined;
  }finally{child?.kill();await rm(home,{recursive:true,force:true});}
 });
+
+test('create disconnect before a session ID reports unconfirmed cleanup instead of fabricated deletion',async()=>{const trace=[];const api={mode:'test',async request(){return(async function*(){yield{type:'agent.session.status.changed',status:'in_progress'};})();}};await assert.rejects(runAgent(api,payload,{onTrace:x=>trace.push(x)}));assert.ok(trace.some(x=>x.stage==='agent.cleanup.failed'&&!x.sessionId));assert.ok(!trace.some(x=>x.stage==='agent.cleanup.deleted'));});
