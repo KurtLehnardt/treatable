@@ -50,7 +50,8 @@ export async function listLocalModels(runtime,signal){
  for(const item of(Array.isArray(tags?.models)?tags.models:[]).slice(0,40)){
   const name=item?.name;if(!isLocalModelName(name)||item.remote_host||item.remote_model||!Number.isSafeInteger(item.size)||item.size<=0||models.some(m=>m.name===name))continue;
   if(runtime.running===false)throw new ApiError('LOCAL_RUNTIME_FAILED');
-  let info;try{info=await runtime.describe(name,signal);}catch(e){if(signal?.aborted||e?.code==='LOCAL_RUNTIME_FAILED'||e?.code==='LOCAL_TIMEOUT')throw e;continue;}
+  // One unreadable model is skipped; only a stopped runtime or the check's own deadline fails the whole check.
+  let info;try{info=await runtime.describe(name,signal);}catch(e){if(signal?.aborted||runtime.running===false)throw e;continue;}
   if(!info.completion)continue;
   models.push({name,sizeBytes:item.size,family:familyOf(item.details?.family),parameterSize:paramsOf(item.details?.parameter_size),quantization:quantOf(item.details?.quantization_level),...(Number.isSafeInteger(info.kvBytes)?{kvBytes:info.kvBytes}:{})});
   if(models.length>=32)break;
@@ -113,6 +114,9 @@ export function recommend({machine,models,installed=true}){
  return{models:ranked,recommendation:{kind:'pull',model:pick.model,command:`ollama pull ${pick.model}`,downloadBytes:pick.downloadBytes,reason}};
 }
 
+/** JSON-schema structured outputs need Ollama 0.5 or later. */
+export const MIN_OLLAMA_VERSION=[0,5,0];
+export function versionAtLeast(v,min=MIN_OLLAMA_VERSION){const m=/^(\d+)\.(\d+)\.(\d+)/.exec(typeof v==='string'?v:'');if(!m)return false;const n=m.slice(1).map(Number);for(let i=0;i<3;i++){if(n[i]!==min[i])return n[i]>min[i];}return true;}
 // ---------- dedicated runtime ----------
 const CHAT_MAX_BYTES=2*1024*1024,INFO_MAX_BYTES=8*1024*1024,WATCHDOG=fileURLToPath(new URL('./local-watchdog.mjs',import.meta.url));
 /** A dedicated `ollama serve` owned by this helper. All HTTP goes directly to its own loopback port; proxies are never used. */
@@ -167,7 +171,9 @@ export class OllamaRuntime{
     response.on('error',()=>fail('LOCAL_RUNTIME_FAILED'));
     response.on('end',()=>{let value;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));}catch{fail(response.statusCode===200?'LOCAL_INVALID_OUTPUT':'LOCAL_RUNTIME_FAILED');return;}
      if(response.statusCode===404&&route!=='/api/version'){reject(new ApiError('LOCAL_MODEL_UNAVAILABLE'));return;}
-     if(response.statusCode<200||response.statusCode>=300){reject(new ApiError(route==='/api/chat'?'LOCAL_MODEL_FAILED':'LOCAL_RUNTIME_FAILED',response.statusCode));return;}resolve(value);});
+     // A refused chat request (400) usually means an Ollama too old for JSON-schema structured outputs; other chat errors mean the model
+     // could not run (for example not enough memory).
+     if(response.statusCode<200||response.statusCode>=300){reject(new ApiError(route==='/api/chat'?response.statusCode===400?'LOCAL_OLLAMA_OUTDATED':'LOCAL_MODEL_FAILED':'LOCAL_RUNTIME_FAILED',response.statusCode));return;}resolve(value);});
    });
    request.on('error',()=>fail('LOCAL_RUNTIME_FAILED'));if(encoded)request.write(encoded);request.end();
   });

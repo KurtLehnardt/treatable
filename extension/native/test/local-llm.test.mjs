@@ -271,3 +271,13 @@ test('stdio: an Ollama too old for structured output is listed but nothing is re
   host.child.stdin.end();await host.exit;host=undefined;
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
+
+test('an unreadable model is skipped, an outdated or refusing Ollama is reported as LOCAL_OLLAMA_OUTDATED',async()=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'treatable-local-outdated-'));let rt;try{
+  const broken=MODELS.map(m=>m.name==='qwen2.5:14b'?{...m,showStatus:500}:m),fake=await fakeOllama(root,{models:broken}),dir=await modelsDir(root);rt=new OllamaRuntime({binary:fake.binary,modelsDir:dir});
+  assert.deepEqual((await listLocalModels(rt)).map(m=>m.name),['qwen3.5:9b','qwen3:32b','gemma4:latest','batiai/gemma4-26b:q4'],'one unreadable model does not hide the others');
+  await fake.set({models:broken,chat:'reject'});let{s,pin}=await pinnedLocal();let r=await runLocalStudyBrief(rt,pin);assert.deepEqual(r.failureCodes,['LOCAL_OLLAMA_OUTDATED']);s.clear();
+  await rt.stop();await fake.set({models:broken,version:'0.4.7'});({s,pin}=await pinnedLocal());r=await runLocalStudyBrief(rt,pin);assert.deepEqual(r.failureCodes,['LOCAL_OLLAMA_OUTDATED']);assert.equal(r.local.steps.length,0,'nothing is sent to a runtime that cannot follow the schema');s.clear();
+  r=await runLocalRanking(rt,{profile:PROFILE,studies:rankStudies(2),model:'qwen3.5:9b'});assert.ok(r.studies.every(x=>x.failure==='LOCAL_OLLAMA_OUTDATED'));
+ }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
+});

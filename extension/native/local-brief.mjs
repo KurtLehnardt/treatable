@@ -1,6 +1,7 @@
 // Local study brief pipeline: the same pinned public excerpts and the same validators as the OpenAI path, run by a model on this device
 // through the helper's own dedicated Ollama runtime. Nothing in this module reads a credential or contacts OpenAI.
 import{ApiError}from'./transport.mjs';
+import{versionAtLeast}from'./local-runtime.mjs';
 import{parseBriefAgentOutput,routeBriefPlans,fallbackPlan,unroutedPlans}from'./study-brief.mjs';
 import{APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_FLAG_TEMPLATES,STUDY_BRIEF_ROUTES,parseStudyBriefResult,localTraceBody,LOCAL_TRACE_BODY_MAX_BYTES}from'../shared/apply-contract.mjs';
 import{MAX_MESSAGE_BYTES,utf8Bytes,isRecord}from'../shared/demo-contract.mjs';
@@ -61,7 +62,7 @@ export function parseLocalRouting(text,plans){
 }
 const safeCode=e=>typeof e?.code==='string'&&/^[A-Z_]{1,40}$/.test(e.code)?e.code:'LOCAL_INVALID_OUTPUT';
 // Runtime-level failures make a second local request pointless; output failures still let step 2 run on the default plan, as on the OpenAI path.
-const RUNTIME_FAILURES=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_FAILED','LOCAL_TIMEOUT','CANCELLED'];
+const RUNTIME_FAILURES=['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_FAILED','LOCAL_OLLAMA_OUTDATED','LOCAL_TIMEOUT','CANCELLED'];
 // With a time budget (the rest of the browser session), step 1 leaves this much for step 2 and is not started with less than the minimum.
 const ROUTING_RESERVE_MS=15000,MIN_STEP_MS=8000;
 function chatText(reply){if(!isRecord(reply)||!isRecord(reply.message)||typeof reply.message.content!=='string'||reply.remote_host||reply.remote_model)throw new ApiError('LOCAL_INVALID_OUTPUT');return reply.message.content;}
@@ -70,7 +71,7 @@ export async function runLocalStudyBrief(runtime,pinned,{signal,onTrace=()=>{},n
  const begun=now(),left=()=>Number.isSafeInteger(budgetMs)?budgetMs-(now()-begun):Infinity;
  const model=pinned.engine.model;let plans=pinned.briefs.map(fallbackPlan),agentStatus='failed',decisionStatus='failed',studyPlans,stop;const failureCodes=[],steps=[],confidences=new Map();
  const step=async(name,body,timeout,parse)=>{const started=now();let output=null;onTrace({stage:`local.${name}.request`});try{const reply=await runtime.chat(body,{signal,timeout});output=chatText(reply);const value=parse(output);steps.push({step:name,status:'complete',durationMs:Math.round(now()-started),request:body,output});onTrace({stage:`local.${name}.complete`});return value;}catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');steps.push({step:name,status:'failed',durationMs:Math.round(now()-started),request:body,output});throw e;}};
- try{onTrace({stage:'local.runtime.start'});await runtime.ensure(signal);const info=await runtime.describe(model,signal);if(!info.completion)throw new ApiError('LOCAL_MODEL_UNAVAILABLE');onTrace({stage:'local.runtime.ready'});}
+ try{onTrace({stage:'local.runtime.start'});await runtime.ensure(signal);if(!versionAtLeast(runtime.version))throw new ApiError('LOCAL_OLLAMA_OUTDATED');const info=await runtime.describe(model,signal);if(!info.completion)throw new ApiError('LOCAL_MODEL_UNAVAILABLE');onTrace({stage:'local.runtime.ready'});}
  catch(e){if(signal?.aborted)throw new ApiError('CANCELLED');stop=RUNTIME_FAILURES.includes(e?.code)?e.code:'LOCAL_RUNTIME_FAILED';failureCodes.push(stop);}
  const thinking=!stop&&(await runtime.describe(model,signal).catch(()=>({}))).thinking===true;
  // Thinking models are asked to answer directly; the pinned body is otherwise sent unchanged and is what the trace shows.

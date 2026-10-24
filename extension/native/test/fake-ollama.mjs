@@ -31,9 +31,10 @@ else{
   const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(typeof value==='string'?value:JSON.stringify(value));};
   if(req.url==='/api/version')return send(200,{version:config.start==='badVersion'?'not a version!':config.version??'0.99.0'});
   if(req.url==='/api/chat'&&config.chat==='oom')return send(500,{error:'model requires more system memory than is available'});
+  if(req.url==='/api/chat'&&config.chat==='reject')return send(400,{error:'invalid format'});
   if(req.url==='/api/tags')return send(200,{models:(config.models??[]).map(m=>({name:m.name,model:m.name,size:m.size,details:m.details??{},...(m.remote?{remote_host:'https://ollama.com:443',remote_model:m.name}:{})}))});
   const model=(config.models??[]).find(m=>m.name===body?.model);
-  if(req.url==='/api/show'){if(!model)return send(404,{error:`model '${body?.model}' not found`});return send(200,{capabilities:model.capabilities??['completion'],details:model.details??{},...(model.modelInfo?{model_info:model.modelInfo}:{}),...(model.remote?{remote_host:'https://ollama.com:443'}:{})});}
+  if(req.url==='/api/show'){if(!model)return send(404,{error:`model '${body?.model}' not found`});if(model.showStatus)return send(model.showStatus,{error:'unreadable model'});return send(200,{capabilities:model.capabilities??['completion'],details:model.details??{},...(model.modelInfo?{model_info:model.modelInfo}:{}),...(model.remote?{remote_host:'https://ollama.com:443'}:{})});}
   if(req.url==='/api/chat'){
    if(!model)return send(404,{error:`model '${body?.model}' not found`});
    if(body?.format?.properties?.score){const mode=config.rank??'valid',record=JSON.parse(body.messages.at(-1).content),n=Number(record.nctId.slice(-1));
