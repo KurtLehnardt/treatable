@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {StudySchema, profileFromForm, type Study} from '../src/core';
 import {retrieveCandidates, screenCandidates, buildQuery, patientRegion} from '../src/match';
-import {parseDecisionAnswers, combineScore, unrefinedScore, validateChecklist, buildEvidence, ageBand, ProviderFormatError, type ScoringAnswers} from '../src/scoring';
+import {scrubCondition, parseDecisionAnswers, combineScore, unrefinedScore, validateChecklist, buildEvidence, ageBand, ProviderFormatError, type ScoringAnswers} from '../src/scoring';
 import {OpenAIProvider, ProviderError, readAgentStream, redact, FAILURE_MESSAGES} from '../src/openai';
 import {LocalProvider, parseLocalAnswers} from '../src/localProvider';
 import {runPipeline, visibleAt, countLine, emptyMessage} from '../src/pipeline';
@@ -369,4 +369,19 @@ test('checklist validation: short fragments, claim phrases, and claim questions 
   assert.equal(run([item('Prior spine surgery excluded', 'Prior spine surgery')]).items.length, 1);
   assert.equal(run([item('Disc degeneration on MRI', 'Thoracic disc degeneration on MRI')]).items.length, 1);
   assert.deepEqual(run([], ['Do you accept thoracic disc patients?', 'You can enroll in this trial', 'Is the patient eligible?']).questions_for_study_team, ['Do you accept thoracic disc patients?', 'Is the patient eligible?']);
+});
+
+test('typed condition is scrubbed of emails and long digit runs before it reaches evidence', () => {
+  assert.equal(scrubCondition('lumbar disc disease jane.doe@example.com 83702 MRN 1234567'), 'lumbar disc disease MRN');
+  assert.equal(scrubCondition('stage 3, L4-L5 disc'), 'stage 3, L4-L5 disc');
+  const p = profileOf('lumbar degenerative disc disease 83702 pat@example.org');
+  const evidence = buildEvidence(p, screenCandidates(retrieveCandidates(studies, 'lumbar degenerative disc disease'), p)[0]);
+  assert.ok(!/83702|@/.test(JSON.stringify(evidence.patient)));
+});
+
+test('forced single-study run explains an empty result without mentioning the snapshot', async () => {
+  const p = profileOf('thoracic degenerative disc disease');
+  const result = await runPipeline({studies, profile: p, forced: [study({conditions: ['Lung Cancer'], briefTitle: 'Lung cancer trial'})]});
+  const msg = emptyMessage(result, 80);
+  assert.ok(msg && /This study does not reach 80%/.test(msg) && !/snapshot/.test(msg));
 });

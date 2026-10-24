@@ -23,7 +23,7 @@ This page describes the extension's observable behavior in each mode. The projec
 
 - Off until you accept the consent screen. Uses your own API key.
 - Sent to OpenAI at `https://api.openai.com`:
-  - your condition as typed,
+  - your condition as typed, with email addresses and runs of five or more digits removed,
   - a five-year age band (for example 40-44), not your exact age,
   - your sex for study criteria,
   - your spine region, if your condition names one,

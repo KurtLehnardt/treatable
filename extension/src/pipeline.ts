@@ -30,6 +30,8 @@ export interface PipelineResult {
   excludedCount: number;
   shortlistCount: number;
   corpusCount: number;
+  /** True when the run scored the study on the current page instead of searching the snapshot. */
+  forced?: boolean;
 }
 
 const GLOBAL_FAILURES = new Set(['missing_key', 'consent', 'unauthorized', 'forbidden']);
@@ -75,7 +77,7 @@ export async function runPipeline(input: PipelineInput): Promise<PipelineResult>
     : retrieveCandidates(input.studies, condition, 20);
   const screened = screenCandidates(candidates, input.profile);
   const kept = screened.filter(s => !s.excluded);
-  const base = {excludedCount: screened.length - kept.length, shortlistCount: candidates.length, corpusCount: input.studies.length};
+  const base = {excludedCount: screened.length - kept.length, shortlistCount: candidates.length, corpusCount: input.studies.length, forced: !!input.forced};
   const unrefined = (failure?: string): PipelineResult => assemble(
     kept.map(screen => ({screen, evidence: buildEvidence(input.profile, screen), breakdown: unrefinedScore(screen), refined: false})),
     {...base, mode: 'unrefined', failure, providerId: input.provider?.id, providerLabel: input.provider?.label},
@@ -132,5 +134,6 @@ export function countLine(result: PipelineResult, min: MinMatch): string {
 export function emptyMessage(result: PipelineResult, min: MinMatch): string | undefined {
   if (visibleAt(result, min).shown.length) return undefined;
   const label = min === 80 ? 'strong' : min === 65 ? 'possible or stronger' : '';
+  if (result.forced) return `This study does not reach ${min}% for your profile. Lower Minimum match to see it.`;
   return `No ${label ? label + ' ' : ''}matches in the offline snapshot of ${result.corpusCount.toLocaleString('en-US')} studies.`;
 }

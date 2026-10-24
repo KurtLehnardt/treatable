@@ -28,11 +28,16 @@ export function ageBand(age: number): string {
   return `${low}-${low + 4}`;
 }
 
+/** Remove email addresses and runs of five or more digits (ZIP codes, IDs, phone numbers) from typed text before it is sent. */
+export function scrubCondition(text: string): string {
+  return text.replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, ' ').replace(/\d{5,}/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 export function buildEvidence(profile: PatientProfile, screen: LocalScreen): SharedEvidence {
   const s = screen.study;
   return {
     patient: {
-      condition: profile.primaryDiagnoses.join(', ').slice(0, 300),
+      condition: scrubCondition(profile.primaryDiagnoses.join(', ')).slice(0, 300),
       age_band: ageBand(profile.ageYears),
       sex: profile.sex === 'prefer_not_to_say' ? 'not provided' : profile.sex,
       spine_region: screen.region.patient,

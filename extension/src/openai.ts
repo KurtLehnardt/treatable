@@ -21,7 +21,7 @@ export const FAILURE_MESSAGES: Record<FailureKind, string> = {
   missing_key: 'No OpenAI API key is set. Add your key in Settings, or switch to Local LLM or Send nothing.',
   consent: 'Cloud scoring is off until you accept the OpenAI consent screen.',
   unauthorized: 'OpenAI rejected the API key (401). Check the key in Settings.',
-  forbidden: 'This OpenAI key is not allowed to use this API (403). The Agents API needs api.agents.read and api.agents.write.',
+  forbidden: 'OpenAI refused this request with 403: the key may lack permission for this API or be restricted by its organization. The Agents API needs api.agents.read and api.agents.write.',
   rate_limited: 'OpenAI rate limit or quota reached (429). Try again in a minute.',
   timeout: 'OpenAI did not respond in time.',
   offline: 'Could not reach OpenAI. Check your internet connection.',

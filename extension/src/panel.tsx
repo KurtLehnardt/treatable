@@ -179,12 +179,12 @@ function App() {
     const gateNow = CONFIG.hipaaGateEnabled && settings.provider === 'openai' ? (gate?.open ? gate : await checkGate()) : gate;
     if (!runs.current.isCurrent(token)) return;
     const {provider, reason} = makeProvider(gateNow);
-    setNotice(provider ? `Scoring the shortlist with ${provider.label}…` : 'Screening locally…');
+    setNotice(`${reason ? reason + ' ' : ''}${provider ? `Scoring the shortlist with ${provider.label}…` : 'Screening locally…'}`);
     try {
       const out = await runPipeline({studies, profile: p, provider, forced, signal: controller.signal, unrefinedReason: reason});
       if (!runs.current.isCurrent(token)) return;
       setResult(out);
-      setNotice(out.mode === 'refined' ? `Scored by ${out.providerLabel}. Scores never change when you change Minimum match.` : '');
+      setNotice(out.mode === 'refined' ? `${reason ? reason + ' ' : ''}Scored by ${out.providerLabel}. Scores never change when you change Minimum match.` : '');
       setRunning(false);
       // Agent task: auto-run for the top Strong/Possible OpenAI results; Local runs on click (slow).
       if (out.mode === 'refined' && provider?.id === 'openai') {
@@ -366,7 +366,7 @@ function App() {
       {settings.provider === 'openai' && !settings.openaiConsent && <div className="consent" role="dialog" aria-label="OpenAI consent">
         <h3>Before anything is sent to OpenAI</h3>
         <p>If you accept, Treatable sends the following to OpenAI (api.openai.com, Decisions API and Agents API) for each shortlisted study:</p>
-        <ul><li>Your condition as typed</li><li>Your age as a five-year band (for example 40-44), not your exact age</li><li>Your sex for study criteria</li><li>Your spine region, if your condition names one</li><li>The public ClinicalTrials.gov text of the study</li></ul>
+        <ul><li>Your condition as typed, with email addresses and any run of five or more digits removed</li><li>Your age as a five-year band (for example 40-44), not your exact age</li><li>Your sex for study criteria</li><li>Your spine region, if your condition names one</li><li>The public ClinicalTrials.gov text of the study</li></ul>
         <p>Your ZIP code, notes, and saved studies are not included in requests, and Treatable does not ask for your name.</p>
         <p className="warning"><strong>OpenAI mode is not set up for protected health information.</strong> HIPAA use of the OpenAI API requires an executed BAA and Modified Retention on your organization, and endpoint coverage must be confirmed with OpenAI. Without those, use only synthetic or non-identifying information, or use Local LLM mode. You are responsible for confirming your own BAA and endpoint coverage before entering real health details. In Local LLM mode, requests are sent to the local helper on this device.</p>
         <p>Treatable asks OpenAI to delete each agent session after the checklist is read, and shows whether the deletion was confirmed. OpenAI's own data retention terms still apply to your API key's account.</p>
@@ -377,8 +377,8 @@ function App() {
       {settings.provider === 'openai' && settings.openaiConsent && <>
         <p className="fine">Consent accepted. <button className="text-button" onClick={() => { cancel(); setResult(undefined); updateSettings({openaiConsent: false}); }}>Withdraw consent</button></p>
         <label>OpenAI API key {apiKey ? '(a key is set)' : '(none set)'}<input type="password" autoComplete="off" value={keyDraft} onChange={e => setKeyDraft(e.target.value)} placeholder={apiKey ? 'Paste to replace' : 'sk-…'}/></label>
-        <label className="check"><input type="checkbox" checked={settings.rememberKey} onChange={e => { updateSettings({rememberKey: e.target.checked}); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, e.target.checked, baaAttested)); }}/>Remember the key on this computer (otherwise kept for this browser session only)</label>
-        {CONFIG.hipaaGateEnabled && <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); setGate(undefined); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>}
+        <label className="check"><input type="checkbox" checked={settings.rememberKey} onChange={e => { updateSettings({rememberKey: e.target.checked}); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, e.target.checked, baaAttested)).catch(() => setError('Could not update the key storage preference.')); }}/>Remember the key on this computer (otherwise kept for this browser session only)</label>
+        {CONFIG.hipaaGateEnabled && <label className="check attest"><input type="checkbox" checked={baaAttested} onChange={e => { const value = e.target.checked; setBaaAttested(value); resetGate(); if (apiKey) void queue(() => saveApiKey(chrome.storage.session, chrome.storage.local, apiKey, settings.rememberKey, value)).catch(() => setError('Could not save the attestation.')); }}/>{BAA_ATTESTATION_LABEL}</label>}
         <div className="actions"><button onClick={() => void storeKey()}>Save key</button>{apiKey && <button onClick={() => void forgetKey()}>Forget key</button>}</div>
       </>}
       {settings.provider === 'local' && <>
