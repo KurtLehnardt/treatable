@@ -21,7 +21,7 @@ The standalone prototype on localhost:5556 and the native/mobile app work are se
 6. **Your email draft.** Treatable writes an editable draft addressed to a listed contact, with up to three questions. **Open draft in my email app** hands it to your own mail program. **Copy message** and **Copy full email** put it on your clipboard. You read it and press Send yourself.
 7. **Call script and follow-up.** Each phone contact from the record gets a **Call** (`tel:`) link and **Copy number** when the number checks out. Treatable also writes a call script, a follow-up message, a follow-up date five business days away, and a calendar reminder file you can download. The reminder holds public study and contact information only.
 
-If you have not generated a brief, steps 2 and 4 to 7 still work, using standard questions. Pressing **End and clear my details** clears the drafts, scripts and everything you typed, including Settings → Your details. When the five-minute session expires, the drafts, scripts and details typed in that section are cleared and Treatable asks you to reopen it; Settings → Your details stay until you clear them or the Treatable session ends.
+If you have not generated a brief, steps 2 and 4 to 7 still work, using standard questions. Pressing **End and clear my details** clears the drafts, scripts and everything you typed, including Settings → Your details. When the 30-minute session expires (it is extended whenever you type or click in the overlay), the drafts, scripts and details typed in that section are cleared and Treatable asks you to reopen it; Settings → Your details stay until you clear them or the Treatable session ends.
 
 ## How Treatable uses OpenAI
 
@@ -82,7 +82,7 @@ Decisions is told not to assess eligibility, benefit or safety.
 
 **How it is used.** The first three questions routed to **Ask the study team** become **Three questions to start with**, and they feed the email draft and call script. Questions that the record answers, or that only you can answer, are left out of those three; every question's route and probabilities are listed under **How this was generated**. If no question needs the study team, the first three questions are shown with their routes.
 
-**If it fails.** Every question is shown as **Ask the study team** and the first three of the Agent's questions are used. The status line reads "Decisions: classification unavailable" and names the failure code.
+**If it fails.** Every question is shown as **Ask the study team** and the first three of the Agent's questions are used. The status line reads "Question sorting unavailable" and shows the reason for the failure.
 
 ### If a step cannot run
 
