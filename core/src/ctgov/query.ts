@@ -10,9 +10,16 @@
  *       &filter.overallStatus=RECRUITING|NOT_YET_RECRUITING|ENROLLING_BY_INVITATION|AVAILABLE
  *       &filter.advanced=SEARCH[Location](AREA[LocationCountry]"United States"[ AND AREA[LocationState]"<state name>"])
  *       &fields=<fixed field list>
+ *       &sort=@relevance
  *       &pageSize=<1..25>
  *       &countTotal=true            (first page only)
  *       &pageToken=<token>          (later pages only; a token ClinicalTrials.gov returned)
+ *
+ * Without `sort` the API returns studies unsorted ("The returning studies are not sorted by default
+ * for a performance reason"), so the request asks for `@relevance`, the order the website uses. The
+ * OpenAPI description also requires every later page to repeat the first page's parameters except
+ * countTotal, pageSize, and pageToken; search.ts binds each page token to the terms and state it
+ * came from. pageSize is capped at 25 here (the API allows up to 1,000).
  *
  * The only user-derived values are the search terms and, optionally, one US state name. The country
  * is always the United States. SEARCH[Location](...) requires the country and the state to match on
@@ -46,6 +53,8 @@ export const CTGOV_COUNTRY = 'United States';
 export const DEFAULT_SEARCH_PAGE_SIZE = 10;
 export const MAX_SEARCH_TERMS = 5;
 export const MAX_SEARCH_TERM_LENGTH = 100;
+/** Fixed sort order: relevance to the search terms, as on the ClinicalTrials.gov website. */
+export const CTGOV_SORT = '@relevance';
 
 /**
  * Open statuses requested from ClinicalTrials.gov. Same set as ALLOWED_STATUSES in
@@ -104,6 +113,7 @@ export const CTGOV_QUERY_PARAMS = [
   'filter.overallStatus',
   'filter.advanced',
   'fields',
+  'sort',
   'pageSize',
   'countTotal',
   'pageToken',
@@ -162,6 +172,7 @@ export function studiesQueryParams(query: StudiesQuery): [string, string][] {
     ['filter.overallStatus', CTGOV_OPEN_STATUSES.join('|')],
     ['filter.advanced', locationExpression(query.state)],
     ['fields', CTGOV_FIELDS.join('|')],
+    ['sort', CTGOV_SORT],
     ['pageSize', String(query.pageSize)],
   ];
   if (query.countTotal && query.pageToken === undefined) params.push(['countTotal', 'true']);
@@ -183,7 +194,63 @@ export function buildStudiesUrl(query: StudiesQuery): string {
   return `${CTGOV_STUDIES_URL}?${encodeQuery(params)}`;
 }
 
-/** True only for a URL this module could have built: https, the exact host and path, a query string. */
+/** True only for a URL with the exact https origin and path and a query string (a cheap first check). */
 export function isCtgovStudiesUrl(url: string): boolean {
   return typeof url === 'string' && url.startsWith(`${CTGOV_STUDIES_URL}?`) && !url.includes('#');
+}
+
+function decodeComponent(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    throw new CoreError('INVALID_ENDPOINT');
+  }
+}
+
+/**
+ * Recovers the StudiesQuery from a request URL and proves that the URL is exactly what
+ * buildStudiesUrl produces for it: same parameters, same order, same encoding, and nothing else.
+ * The transport seam runs this on every ClinicalTrials.gov request, so a URL that carries anything
+ * beyond the search terms, the United States, at most one state, the fixed parameters, a page size,
+ * and a ClinicalTrials.gov page token never reaches the transport port. Throws INVALID_ENDPOINT.
+ */
+export function parseStudiesUrl(url: string): StudiesQuery {
+  if (!isCtgovStudiesUrl(url) || url.length > 8192) throw new CoreError('INVALID_ENDPOINT');
+  const values = new Map<string, string>();
+  for (const part of url.slice(CTGOV_STUDIES_URL.length + 1).split('&')) {
+    const at = part.indexOf('=');
+    if (at <= 0) throw new CoreError('INVALID_ENDPOINT');
+    const name = decodeComponent(part.slice(0, at));
+    if (values.has(name) || !(CTGOV_QUERY_PARAMS as readonly string[]).includes(name)) throw new CoreError('INVALID_ENDPOINT');
+    values.set(name, decodeComponent(part.slice(at + 1)));
+  }
+  const cond = values.get('query.cond');
+  if (cond === undefined || cond.length < 2 || !cond.startsWith('"') || !cond.endsWith('"')) throw new CoreError('INVALID_ENDPOINT');
+  // Terms cannot contain a double quote (isSendableSearchTerm), so this split is unambiguous.
+  const conditionTerms = cond.slice(1, -1).split('" OR "');
+  const advanced = values.get('filter.advanced');
+  let state: UsStateCode | undefined;
+  if (advanced !== locationExpression()) {
+    state = US_STATES.find(code => locationExpression(code) === advanced);
+    if (state === undefined) throw new CoreError('INVALID_ENDPOINT');
+  }
+  const pageSizeText = values.get('pageSize') ?? '';
+  if (!/^[1-9]\d{0,1}$/.test(pageSizeText)) throw new CoreError('INVALID_ENDPOINT');
+  const countTotal = values.get('countTotal');
+  if (countTotal !== undefined && countTotal !== 'true') throw new CoreError('INVALID_ENDPOINT');
+  const query: StudiesQuery = {
+    conditionTerms,
+    state,
+    pageSize: Number(pageSizeText),
+    pageToken: values.get('pageToken'),
+    countTotal: countTotal === 'true',
+  };
+  let rebuilt: string;
+  try {
+    rebuilt = buildStudiesUrl(query);
+  } catch {
+    throw new CoreError('INVALID_ENDPOINT');
+  }
+  if (rebuilt !== url) throw new CoreError('INVALID_ENDPOINT');
+  return query;
 }

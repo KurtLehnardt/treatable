@@ -1,23 +1,35 @@
 /**
- * The searchTrials pipeline: one live ClinicalTrials.gov search, merged into the session record set.
+ * The searchTrials pipeline: one live ClinicalTrials.gov search.
  *
- * - The request carries only the search terms, the United States, and at most one state (query.ts).
+ * It is split in two so that the search itself does not depend on where the session keeps records:
+ *   - runLiveSearch is pure with respect to the session. It takes the payload, the current search
+ *     cursor, and a cancellation signal, fetches at most MAX_SEARCH_PAGES_PER_REQUEST pages, and
+ *     returns the validated result plus the next cursor. It writes nothing.
+ *   - createSearchTrialsPipeline is the session adapter used by this branch's dispatcher: it reads the
+ *     cursor from a session slot, runs the search, and commits the records to the session record set
+ *     (pinning/record-set.ts) together with the new subject digest. A dispatcher-owned record index can
+ *     replace this adapter and call runLiveSearch directly.
+ *
+ * Rules:
+ * - The request carries only the search terms, the United States, and at most one state (query.ts,
+ *   enforced again by the transport guard in transport-seam.ts).
  * - pageToken pagination: the first request asks for countTotal; a later searchTrials may pass only
- *   the nextPageToken this core returned for the same terms and state in this session (the cursor),
- *   so a host cannot send arbitrary tokens. Within one searchTrials, at most
- *   MAX_SEARCH_PAGES_PER_REQUEST pages are fetched, only to fill pageSize when ClinicalTrials.gov
- *   returns empty or unreadable pages.
- * - Every record carries sourceUrl and its own retrievedAt (the time its page arrived).
- * - Results always have source "live". There is no on-disk cache: records live only in the session
- *   record set in memory, and endSession wipes them.
- * - The records are committed to the session record set only after the whole search succeeded and
- *   was not cancelled; the commit changes the consent subject digest, which clears prepared consent
- *   (mutation invalidation). A failed or cancelled search leaves the record set and consent unchanged.
+ *   the nextPageToken this core returned for the same terms and state (the cursor), so a host cannot
+ *   send arbitrary tokens, and every later page repeats the first page's parameters as the API
+ *   requires. Within one searchTrials, more pages are fetched only to fill pageSize when
+ *   ClinicalTrials.gov returns empty or unreadable pages, at most MAX_SEARCH_PAGES_PER_REQUEST.
+ * - Every record carries sourceUrl and its own retrievedAt (the clock-port time its page arrived).
+ * - Results always have source "live". There is no cache of any kind: records live only in session
+ *   memory, and endSession wipes them. A future public cache must be separate, label its results
+ *   "public_cache", and keep each record's original retrievedAt.
+ * - The adapter commits records only after the whole search succeeded and was not cancelled; the
+ *   commit changes the consent subject digest, which clears prepared consent (mutation invalidation).
+ *   A failed or cancelled search leaves the record set, the cursor, and consent unchanged.
  */
 import { constantTimeEqual } from '../bytes.ts';
 import { CoreError } from '../errors.ts';
 import { canonicalJson } from '../json.ts';
-import type { CorePorts } from '../ports.ts';
+import type { CancelSignal, Clock, CorePorts } from '../ports.ts';
 import {
   ISO_TIMESTAMP_PATTERN,
   MAX_SEARCH_PAGES_PER_REQUEST,
@@ -26,18 +38,23 @@ import {
   type StudyRecord,
 } from '../protocol.ts';
 import { defineSlot, type Session } from '../session.ts';
-import type { CancelSignal } from '../ports.ts';
 import { prepareRecordMerge } from '../pinning/record-set.ts';
 import { createCtgovClient, type CtgovClient, type CtgovLimits } from './client.ts';
 import { normalizeStudy } from './normalize.ts';
 import { CTGOV_OPEN_STATUSES, DEFAULT_SEARCH_PAGE_SIZE } from './query.ts';
 import { US_STATE_NAMES } from './states.ts';
-import { ctgovTransport } from './transport-seam.ts';
 
-interface SearchCursor {
+/** The page token ClinicalTrials.gov returned last, bound to the terms and state it belongs to. */
+export interface SearchCursor {
   /** Canonical JSON of the terms and state the token belongs to. */
   readonly key: string;
   readonly nextPageToken: string;
+}
+
+export interface LiveSearchOutcome {
+  readonly result: OperationResult<'searchTrials'>;
+  /** The cursor to keep for the next page, or undefined when this was the last page. */
+  readonly cursor: SearchCursor | undefined;
 }
 
 const CURSOR_SLOT = defineSlot<SearchCursor>('ctgov.cursor');
@@ -57,22 +74,33 @@ export function isoTimestamp(ms: number): string {
   return text;
 }
 
-export async function searchLive(
+/** The key a page token is bound to: the exact terms (in order) and the state. */
+export function searchCursorKey(terms: readonly string[], state: string | undefined): string {
+  return canonicalJson({ state: state ?? null, terms: [...terms] });
+}
+
+/**
+ * Runs one live search. Throws INVALID_REQUEST for a page token that is not the cursor's token for
+ * the same terms and state (before any network request), CANCELLED when `signal` fires, and the
+ * client's typed errors otherwise. Writes no state.
+ */
+export async function runLiveSearch(
   client: CtgovClient,
-  ports: Pick<CorePorts, 'sha256' | 'clock'>,
-  ctx: SearchContext,
+  clock: Pick<Clock, 'now' | 'monotonic'>,
   payload: RequestPayload<'searchTrials'>,
-): Promise<OperationResult<'searchTrials'>> {
-  const { session, signal } = ctx;
+  signal: CancelSignal,
+  cursor: SearchCursor | undefined,
+): Promise<LiveSearchOutcome> {
   const terms = [...payload.conditionTerms];
   const state = payload.state;
   const pageSize = payload.pageSize ?? DEFAULT_SEARCH_PAGE_SIZE;
-  const key = canonicalJson({ state: state ?? null, terms });
+  const key = searchCursorKey(terms, state);
   if (payload.pageToken !== undefined) {
-    const cursor = session.get(CURSOR_SLOT);
     if (!cursor || cursor.key !== key || !constantTimeEqual(cursor.nextPageToken, payload.pageToken)) throw new CoreError('INVALID_REQUEST');
   }
-  const deadline = ports.clock.monotonic() + client.limits.searchBudgetMs;
+  const start = clock.monotonic();
+  if (typeof start !== 'number' || !Number.isFinite(start)) throw new CoreError('INTERNAL_ERROR');
+  const deadline = start + client.limits.searchBudgetMs;
   const stateName = state !== undefined ? US_STATE_NAMES[state] : undefined;
   const records: StudyRecord[] = [];
   const seen = new Set<string>();
@@ -101,28 +129,37 @@ export async function searchLive(
     }
     token = page.nextPageToken;
   } while (token !== undefined && records.length < pageSize && pages < MAX_SEARCH_PAGES_PER_REQUEST);
-
   if (signal.aborted) throw new CoreError('CANCELLED');
-  const commit = await prepareRecordMerge(session, ports.sha256, records);
-  if (signal.aborted) throw new CoreError('CANCELLED');
-  // Synchronous from here on: the record set, the subject digest, and the cursor change together.
-  commit();
-  if (token !== undefined) session.set(CURSOR_SLOT, { key, nextPageToken: token });
-  else session.delete(CURSOR_SLOT);
 
   return {
-    records,
-    ...(token !== undefined ? { nextPageToken: token } : {}),
-    ...(totalCount !== undefined ? { totalCount } : {}),
-    retrievedAt: retrievedAt ?? isoTimestamp(ports.clock.now()),
-    source: 'live',
-    skippedRecords: skipped,
-    query: { conditionTerms: terms, ...(state !== undefined ? { state } : {}), country: 'US' },
+    result: {
+      records,
+      ...(token !== undefined ? { nextPageToken: token } : {}),
+      ...(totalCount !== undefined ? { totalCount } : {}),
+      retrievedAt: retrievedAt ?? isoTimestamp(clock.now()),
+      source: 'live',
+      skippedRecords: skipped,
+      query: { conditionTerms: terms, ...(state !== undefined ? { state } : {}), country: 'US' },
+    },
+    cursor: token !== undefined ? { key, nextPageToken: token } : undefined,
   };
 }
 
-/** The built-in searchTrials pipeline over the injected ports. One client (and its request pacing) per core. */
+/**
+ * Session adapter: the built-in searchTrials pipeline over the injected ports. One client (and its
+ * request pacing) per core. Records and the cursor are committed only after a complete search.
+ */
 export function createSearchTrialsPipeline(ports: CorePorts, limits?: Partial<CtgovLimits>): SearchTrialsPipeline {
-  const client = createCtgovClient({ transport: ctgovTransport(ports), clock: ports.clock, tokens: ports.tokens }, limits);
-  return (ctx, payload) => searchLive(client, ports, ctx, payload);
+  const client = createCtgovClient({ transport: ports.transport, clock: ports.clock, tokens: ports.tokens }, limits);
+  return async (ctx, payload) => {
+    const { session, signal } = ctx;
+    const outcome = await runLiveSearch(client, ports.clock, payload, signal, session.get(CURSOR_SLOT));
+    const commit = await prepareRecordMerge(session, ports.sha256, outcome.result.records);
+    if (signal.aborted) throw new CoreError('CANCELLED');
+    // Synchronous from here on: the record set, the subject digest, and the cursor change together.
+    commit();
+    if (outcome.cursor !== undefined) session.set(CURSOR_SLOT, outcome.cursor);
+    else session.delete(CURSOR_SLOT);
+    return outcome.result;
+  };
 }

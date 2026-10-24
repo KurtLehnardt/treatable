@@ -259,11 +259,12 @@ export const ErrorCodeSchema = z.enum(ERROR_CODES);
 /**
  * A search term must be safe to place inside one double-quoted ClinicalTrials.gov Essie phrase
  * (task A2): no double quote or backslash, which could end the phrase and add search operators.
- * It must also not name a study ID ("NCT" followed by digits), because ClinicalTrials.gov ignores
- * every filter, including the United States and state filters, when a query holds only study IDs.
+ * It must also not name a study ID (a word that starts with "NCT" followed by digits), because
+ * ClinicalTrials.gov ignores every filter, including the United States and state filters, when a
+ * query holds only study IDs (OpenAPI description of GET /studies, API 2.0.5, checked 2026-10-24).
  */
 export function isSendableSearchTerm(text: string): boolean {
-  return !/["\\]/.test(text) && !/nct\s*\d/i.test(text);
+  return !/["\\]/.test(text) && !/\bnct\s*\d/i.test(text);
 }
 
 const SearchTermSchema = inputText(1, 100).refine(v => !hasContactLikeContent(v) && isSendableSearchTerm(v));

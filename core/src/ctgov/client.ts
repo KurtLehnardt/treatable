@@ -14,7 +14,15 @@
  *     cap, strict UTF-8 decoding, a nesting-depth check, and JSON parsing;
  *   - the page envelope is validated (studies array no longer than requested, page token pattern,
  *     total count range); individual studies are validated later by normalize.ts.
+ *   - the transport is always wrapped in the ClinicalTrials.gov guard (transport-seam.ts), so this client
+ *     can reach only GET https://clinicaltrials.gov/api/v2/studies with a query built by query.ts.
  * Errors are constant CoreError codes; response bodies and headers are never logged or echoed.
+ *
+ * Rate limits: the official API documentation (OpenAPI description 2.0.5 behind
+ * https://clinicaltrials.gov/data-api/api, checked 2026-10-24) states no numeric limit. Third-party
+ * reports put it near 50 requests per minute per address, so requests from one client start at
+ * least 1.25 seconds apart (at most 48 per minute), and 429 responses are retried only as allowed
+ * above.
  */
 import { createCancelSource } from '../cancel.ts';
 import { readBounded, utf8Decode } from '../bytes.ts';
@@ -22,7 +30,7 @@ import { CoreError, isCoreError, type ErrorCode } from '../errors.ts';
 import type { CancelSignal, Clock, TokenSource, Transport, TransportRequest, TransportResponse } from '../ports.ts';
 import { PAGE_TOKEN_PATTERN } from '../protocol.ts';
 import { buildStudiesUrl, type StudiesQuery } from './query.ts';
-import { CTGOV_REQUEST_HEADERS, assertCtgovRequest } from './transport-seam.ts';
+import { CTGOV_REQUEST_HEADERS, assertCtgovRequest, createCtgovTransport } from './transport-seam.ts';
 
 export interface CtgovLimits {
   /** Attempts per page, including the first. */
@@ -208,9 +216,19 @@ type AttemptOutcome =
   | { readonly ok: true; readonly page: CtgovPage }
   | { readonly ok: false; readonly code: ErrorCode; readonly retryable: boolean; readonly retryAfterMs?: number | undefined };
 
+/** Errors that a retry cannot fix: a refused request, a bad or oversized body, or an internal fault. */
+const NON_RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  'INVALID_ENDPOINT',
+  'INVALID_REQUEST',
+  'INVALID_API_RESPONSE',
+  'OUTPUT_TOO_LARGE',
+  'INTERNAL_ERROR',
+]);
+
 export function createCtgovClient(deps: CtgovClientDeps, overrides?: Partial<CtgovLimits>): CtgovClient {
   const limits = resolveLimits(overrides);
-  const { transport, clock, tokens } = deps;
+  const { clock, tokens } = deps;
+  const transport = createCtgovTransport(deps.transport);
   let lastStart: number | undefined;
 
   function monotonic(): number {
@@ -237,8 +255,8 @@ export function createCtgovClient(deps: CtgovClientDeps, overrides?: Partial<Ctg
     });
     const failure = (error: unknown): AttemptOutcome => {
       if (signal.aborted) throw new CoreError('CANCELLED');
-      if (isCoreError(error) && error.code === 'OUTPUT_TOO_LARGE') return { ok: false, code: 'OUTPUT_TOO_LARGE', retryable: false };
-      if (isCoreError(error) && error.code === 'INVALID_API_RESPONSE' && !timedOut) return { ok: false, code: 'INVALID_API_RESPONSE', retryable: false };
+      if (!timedOut && isCoreError(error) && NON_RETRYABLE_CODES.has(error.code)) return { ok: false, code: error.code, retryable: false };
+      // A transport rejection, a timeout, or a broken stream: retried as a network failure.
       return { ok: false, code: 'NETWORK_ERROR', retryable: true };
     };
     try {
