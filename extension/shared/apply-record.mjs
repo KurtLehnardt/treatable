@@ -29,6 +29,14 @@ export function normalizeApplyRecord(raw,fetchedAt,maxBytes=APPLY_RECORD_MAX_BYT
  return parseApplyRecord(record);
 }
 
+// Recognizes registry eligibility headings such as "Inclusion Criteria:", "Key Exclusion Criteria:", "Exclusions:" or "Inclusion criteria (Part A):".
+// A heading is either the bare heading words or ends with a colon; prose such as "Exclusion of pregnant women" is not a heading.
+// The returned heading is the source wording itself so that quoted excerpts are never re-labelled.
+function criterionHeading(line){
+ const m=/^[^A-Za-z0-9]*(?:(?:key|main|major|general|additional|other)\s+)?(inclusion|exclusion)s?\b(.*)$/i.exec(line);if(!m)return;
+ const bare=/^(?:\s+criteri(?:a|on)\b)?\s*$/i.test(m[2]),colon=bare?undefined:/^(?:\s+criteri(?:a|on)\b[^:]{0,40})?\s*:\s*(.*)$/i.exec(m[2]);if(!bare&&!colon)return;
+ const inline=colon?colon[1]:'';return{context:m[1].toLowerCase()==='inclusion'?'inclusion':'exclusion',heading:line.slice(0,line.length-inline.length).trim(),inline};
+}
 // Source excerpts are quotations of sanitized official fields, not generated medical claims.
 export function normalizeStudyBrief(raw,fetchedAt){
  const p=obj(obj(raw).protocolSection),nctId=applyNctId(obj(p.identificationModule).nctId),sourceUrl=`https://clinicaltrials.gov/study/${nctId}`,items=[],unknowns=[];
@@ -45,7 +53,7 @@ export function normalizeStudyBrief(raw,fetchedAt){
 `statusModule.${field}.date`,v.date,900,{context:'registry_milestone',dateType:v.type==='ESTIMATED'||v.type==='ACTUAL'?v.type:'UNSPECIFIED'});}
  add('eligibility','Minimum age','eligibilityModule.minimumAge',el.minimumAge);add('eligibility','Maximum age','eligibilityModule.maximumAge',el.maximumAge);add('eligibility','Sex listed in criteria','eligibilityModule.sex',el.sex);
  const criterionLines=typeof el.eligibilityCriteria==='string'?sanitizeUntrustedText(el.eligibilityCriteria).split(/\n+/).map(x=>x.trim()).filter(Boolean):[],criteria=[];let criterionContext='eligibility_unspecified',heading='Eligibility (section not specified)';
- for(const line of criterionLines){const h=/^(inclusion|exclusion) criteria\s*:?\s*(.*)$/i.exec(line);if(h){criterionContext=h[1].toLowerCase()==='inclusion'?'inclusion':'exclusion';heading=h[1]+' Criteria:';if(!h[2])continue;criteria.push({line:h[2],context:criterionContext,heading});continue}criteria.push({line,context:criterionContext,heading});}
+ for(const line of criterionLines){const h=criterionHeading(line);if(h){criterionContext=h.context;heading=h.heading;if(!h.inline)continue;criteria.push({line:h.inline,context:criterionContext,heading});continue}criteria.push({line,context:criterionContext,heading});}
  for(const c of criteria.slice(0,8))add('eligibility',c.context==='exclusion'?'Exclusion criterion (may prevent participation)':c.context==='inclusion'?'Inclusion criterion (listed requirement)':'Eligibility criterion (section unclear)','eligibilityModule.eligibilityCriteria',c.context==='eligibility_unspecified'?c.line:`${c.heading}\n${c.line}`,900,{context:c.context});
  add('contact','Overall recruitment status','statusModule.overallStatus',st.overallStatus);
  if(!items.some(x=>x.context==='participant_schedule'))unknowns.push('The record does not give a clear participation timeline.');else unknowns.push('Timing is quoted as written; confirm the exact visit schedule and which treatment each interval starts from with the study team.');

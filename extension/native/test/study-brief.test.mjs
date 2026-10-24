@@ -32,3 +32,12 @@ test('a detailed record with eight exact claims keeps the claims that fit instea
   assert.ok(utf8Bytes(r.briefs[0])<=STUDY_BRIEF_MAX_BYTES);claims.forEach((c,i)=>{assert.equal(c.id,`claim${i+1}`);assert.equal(c.text,picks[i].text)});
  }finally{s.clear()}
 });
+test('key, bare and colon eligibility headings switch context and are quoted in their source wording',()=>{
+ const brief=criteria=>{const raw=syntheticRaw();raw.protocolSection.eligibilityModule.eligibilityCriteria=criteria;return normalizeStudyBrief(raw,1).items.filter(x=>x.category==='eligibility'&&x.context)};
+ const keyed=brief('Inclusion Criteria:\n\n* Age 18 or older\n\nKey Exclusion Criteria:\n\n* Prior gene therapy\n* Pregnancy');
+ assert.deepEqual(keyed.map(x=>[x.context,x.text]),[['inclusion','Inclusion Criteria:\n* Age 18 or older'],['exclusion','Key Exclusion Criteria:\n* Prior gene therapy'],['exclusion','Key Exclusion Criteria:\n* Pregnancy']]);
+ assert.ok(!keyed.some(x=>/Inclusion Criteria:\nKey Exclusion/.test(x.text)),'a heading line is never a criterion');
+ assert.deepEqual(brief('INCLUSION CRITERIA\n- A\nEXCLUSIONS:\n- B').map(x=>[x.context,x.text]),[['inclusion','INCLUSION CRITERIA\n- A'],['exclusion','EXCLUSIONS:\n- B']]);
+ assert.deepEqual(brief('Exclusion: Pregnancy').map(x=>[x.context,x.text]),[['exclusion','Exclusion:\nPregnancy']]);
+ assert.deepEqual(brief('* Must be 18\n* Exclusion of smokers').map(x=>x.context),['eligibility_unspecified','eligibility_unspecified'],'prose that starts with "Exclusion of" is not a heading');
+});
