@@ -11,19 +11,23 @@
  *   host -> core: request, credential.response
  *   core -> host: response, event (trace), credential.request
  *
- * Payload rule (enforced by the preview schemas below): the only user-derived values that may reach
- * OpenAI are a condition term the user selected from ClinicalTrials.gov vocabulary on returned
- * records, an age band, an optional sex value, and an optional US state. Everything else sent to
- * OpenAI is public study fields from the allowlist in ModelStudySchema. ZIP codes, coordinates,
- * and exact age appear only in the screenLocal request, which local screening consumes; contact
- * details appear only in searchTrials records shown to the user. None of them can appear in a
- * preview, because the preview schemas reject every field outside the allowlists.
+ * Payload rule: the only user-derived values that may reach OpenAI are a condition term the user
+ * selected from ClinicalTrials.gov vocabulary on returned records, an age band, an optional sex
+ * value, and an optional US state. Everything else sent to OpenAI is public study fields from the
+ * allowlist in ModelStudySchema. ZIP codes, coordinates, and exact age appear only in the
+ * screenLocal request, which local screening consumes; contact details appear only in searchTrials
+ * records shown to the user. None of them can appear in a preview, because the preview schemas
+ * below reject every field outside the allowlists. The schemas bound the shape; the dispatcher adds
+ * the membership rules that a schema cannot express (the condition term must be a term on a record
+ * held by the session, and every study object must be the core's projection of a held record; see
+ * records.ts and preview.ts), and the dispatcher's send capability (outbound.ts) sends only the
+ * exact serialized bodies of a consented preview.
  */
 import { z } from 'zod';
 import { utf8ByteLength } from './bytes.ts';
 import { CONSENT_OPERATIONS, CONSENT_POLICY_VERSION } from './consent/policy.ts';
 import { CoreError, ERROR_CODES } from './errors.ts';
-import { isJsonObject, jsonEqual, type JsonObject } from './json.ts';
+import { canonicalJson, isJsonObject, jsonEqual, type JsonObject } from './json.ts';
 
 export { ERROR_CODES, type ErrorCode } from './errors.ts';
 export { CONSENT_POLICY_VERSION, PREPARED_TTL_MS } from './consent/policy.ts';
@@ -47,7 +51,10 @@ export const MAX_MESSAGE_BYTES = 96 * 1024;
 export const MAX_RESPONSE_BYTES = 1024 * 1024;
 /** The whole prepared reply (token, digest, and exact preview) must fit here, as in real.mjs. */
 export const PREVIEW_BUDGET_BYTES = MAX_MESSAGE_BYTES - 1024;
-/** Each serialized OpenAI request body (enforced again around the transport by task A1b). */
+/**
+ * Each serialized OpenAI request body. The send capability (outbound.ts) checks it on the exact
+ * bytes it sends; task A1b's transport gate checks it again around the transport port.
+ */
 export const MAX_OUTBOUND_BODY_BYTES = 96 * 1024;
 /**
  * Serialized UTF-8 byte budget for one public study object sent to OpenAI. Chosen so that ten
@@ -148,6 +155,13 @@ export const TRACE_OUTCOMES = ['started', 'completed', 'declined', 'failed', 'ca
 export const CLEANUP_STATES = ['deleted', 'failed', 'unconfirmed'] as const;
 export const SCREEN_BUCKETS = ['no_known_mismatch', 'unknown', 'known_mismatch'] as const;
 export const SCREEN_RULES = ['age', 'sex', 'status'] as const;
+/**
+ * Travel-radius status of one screened study: not_set (no radius chosen), within (a located site is
+ * within the radius), outside (every site has coordinates and all are beyond the radius), unknown
+ * (no shared location, no sites, or a site without coordinates that could be nearer). It is never a
+ * medical exclusion and never changes the bucket.
+ */
+export const RADIUS_STATUSES = ['not_set', 'within', 'outside', 'unknown'] as const;
 export const CHECK_STATES = ['met', 'unmet', 'unknown'] as const;
 export const OPERATION_STATES = ['ready', 'not_implemented'] as const;
 export const CREDENTIAL_FAILURES = ['KEY_MISSING', 'CREDENTIAL_UNAVAILABLE', 'DECLINED'] as const;
@@ -172,7 +186,7 @@ export const CTGOV_DATE_PATTERN = /^\d{4}-\d{2}(?:-\d{2})?$/;
 export const API_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{19,511}$/;
 
 /** C0/C1 controls (except tab, line feed, carriage return) and bidirectional overrides (validation.ts). */
-const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
 const LINE_BREAKS = /[\r\n\t]/;
 
 function hasLoneSurrogate(text: string): boolean {
@@ -193,11 +207,30 @@ export function isSafeText(text: string, multiline = false): boolean {
 }
 
 /**
+ * Separators people put between the digits of a phone number or ZIP code: any whitespace
+ * (including no-break and other Unicode spaces), the characters ( ) . + - /, and the Unicode
+ * hyphen, dash, and minus characters U+2010 to U+2015 and U+2212.
+ */
+const DIGIT_SEPARATORS = /[\s().+\-\/\u2010-\u2015\u2212]/g;
+/**
+ * Five or more decimal digits in a row, in the digit sets a phone number or ZIP code is most likely
+ * typed in: ASCII, Arabic-Indic, Extended Arabic-Indic, Devanagari, and fullwidth. Explicit ranges
+ * are used instead of a Unicode property escape so the pattern means the same on every runtime.
+ */
+const DIGIT_RUN = /[0-9\u0660-\u0669\u06f0-\u06f9\u0966-\u096f\uff10-\uff19]{5,}/;
+
+/**
  * Text that a user types or picks for a search or condition term must not look like a ZIP code,
- * phone number, email address, or URL. This is defense in depth on top of the field allowlists.
+ * phone number, email address, or URL. The separators above are removed first, so formats such as
+ * 555-123-4567, (555) 123 4567, 555.123.4567, 9 0 2 1 0, and +1 208 555 0100 are caught, as are
+ * an at sign (ASCII or fullwidth) and "://". This is defense in depth only: it cannot recognize
+ * every way of writing contact details. For the model-bound condition term the controlling rule is
+ * that the dispatcher accepts only a term that equals a conditions or meshTerms entry of a record
+ * held by the session (records.ts): a typed term that passes this check is still refused unless it
+ * is such a record term.
  */
 export function hasContactLikeContent(text: string): boolean {
-  return /\d{5,}/.test(text) || text.includes('@') || text.includes('://');
+  return DIGIT_RUN.test(text.replace(DIGIT_SEPARATORS, '')) || /[@\uff20]/.test(text) || text.includes('://');
 }
 
 /** Request text: validated, then NFC-normalized and trimmed (as boundedText does). */
@@ -248,9 +281,9 @@ export const ErrorCodeSchema = z.enum(ERROR_CODES);
 const SearchTermSchema = inputText(1, 100).refine(v => !hasContactLikeContent(v));
 /**
  * A condition term the user picked from ClinicalTrials.gov vocabulary. It is validated exactly as
- * received and never normalized, trimmed, or shortened, because task A2 must match it byte for byte
- * against a conditions or MeSH term on a record returned in this session. Over 200 UTF-8 bytes is
- * rejected, not truncated.
+ * received and never normalized, trimmed, or shortened, because the dispatcher matches it byte for
+ * byte against a conditions or meshTerms entry of a record held by the session before any consent
+ * preparation (records.ts, hasConditionTerm). Over 200 UTF-8 bytes is rejected, not truncated.
  */
 const ConditionTermSchema = maxBytes(outputText(1, MAX_CONDITION_TERM_BYTES), MAX_CONDITION_TERM_BYTES).refine(
   v => !hasContactLikeContent(v),
@@ -277,7 +310,8 @@ export const PolicyReceiptSchema = z.strictObject({
 /**
  * The only user-derived object that may reach OpenAI. conditionTerm must be a term the user
  * selected from ClinicalTrials.gov vocabulary (conditions or MeSH terms) on records returned in this
- * session; task A2 checks membership against the session record set.
+ * session; the dispatcher checks that membership against the session record index before it
+ * prepares consent, independently of any pipeline.
  */
 export const ModelProfileSchema = z.strictObject({
   conditionTerm: ConditionTermSchema,
@@ -473,10 +507,22 @@ export const AgentsInputSchema = z.strictObject({
 });
 export type AgentsInput = z.infer<typeof AgentsInputSchema>;
 
-function parseAgentsInput(text: string): AgentsInput | undefined {
+/**
+ * Parses the Agents `input` string and checks it against AgentsInputSchema. The string must also be
+ * exactly the canonical serialization (canonicalJson: RFC 8785 key order, no insignificant
+ * whitespace) of the value it parses to. Without that rule a string with a duplicated key, such as
+ * {"profile":{"note":"free text"},...,"profile":{<valid profile>}}, would pass, because JSON.parse
+ * keeps only the last value of a duplicated key, while the whole string, first value included,
+ * would be sent to OpenAI. The same rule rejects padded whitespace, escaped characters that have a
+ * shorter form, and any other key order, so the string can carry nothing beyond the validated value.
+ * buildAgentsBody (preview.ts) emits exactly this canonical form.
+ */
+export function parseAgentsInput(text: string): AgentsInput | undefined {
+  if (typeof text !== 'string') return undefined;
   try {
-    const parsed = AgentsInputSchema.safeParse(JSON.parse(text));
-    return parsed.success ? parsed.data : undefined;
+    const value: unknown = JSON.parse(text);
+    const parsed = AgentsInputSchema.safeParse(value);
+    return parsed.success && canonicalJson(value) === text ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -535,11 +581,14 @@ export const DeliveryPolicySchema = z.strictObject({
 });
 
 /**
- * The exact outbound preview. Every body is shown literally: what the user reviews is byte for byte
- * what is sent (bodies are serialized with JSON.stringify of these objects). The consent digest
- * covers this whole object. Consistency rules tie every body to the packet: one Decisions body per
- * score study in order, the Agents tool enum and input IDs equal agentNctIds, tool results match
- * agentNctIds, and every profile equals the packet profile.
+ * The exact outbound preview. Every body is shown literally, and the bytes sent are the canonical
+ * serialization (canonicalJson: RFC 8785 key order, no insignificant whitespace) of exactly these
+ * objects: each Decisions body, the Agents create body, and, as the `output` string of the tool
+ * result event, each tool result object (outbound.ts). Any holder of the preview can therefore
+ * recompute every byte string. The consent digest covers this whole object and the SHA-256 of each
+ * of those byte strings (consent/store.ts). Consistency rules tie every body to the packet: one
+ * Decisions body per score study in order, the Agents tool enum and input IDs equal agentNctIds,
+ * tool results match agentNctIds, and every profile equals the packet profile.
  */
 export const PreviewSchema = z
   .strictObject({
@@ -742,13 +791,16 @@ export const ScreenLocalResultSchema = z
             .max(SCREEN_RULES.length),
           /** Distance is informational and computed locally. It is never a medical exclusion, and no operation sends it anywhere. */
           distanceMiles: z.number().min(0).max(30000).nullable(),
+          radiusStatus: z.enum(RADIUS_STATUSES),
+          /** True exactly when radiusStatus is "outside". */
           outOfRadius: z.boolean(),
           stale: z.boolean(),
         }),
       )
       .max(100),
   })
-  .refine(result => uniqueBy(result.results, r => r.nctId));
+  .refine(result => uniqueBy(result.results, r => r.nctId))
+  .refine(result => result.results.every(r => r.outOfRadius === (r.radiusStatus === 'outside')));
 
 export const PreparedRealResultSchema = z
   .strictObject({

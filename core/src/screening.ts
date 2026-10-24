@@ -18,14 +18,14 @@
  *   - Screening only studies the session has: nctIds that were never returned by searchTrials are
  *     RECORD_NOT_IN_SESSION, so no operation can probe the registry by_id. (The scaffold compared
  *     against a whole local corpus; the session-scoped rule is the live-data counterpart.)
- * Task A2 owns searchTrials and calls rememberRecords with its live result pages; what the session
- * digest covers is A2's decision. Task A5 renders the user-facing language; the protocol result
+ * The records come from the dispatcher's session record index (records.ts, read through
+ * ctx.records); the dispatcher alone writes it from searchTrials responses. Task A5 renders the user-facing language; the protocol result
  * here carries only structured outcomes (no note strings), deliberately.
  */
 import { CoreError } from './errors.ts';
-import type { HandlerContext } from './dispatcher.ts';
-import { StudyRecordSchema, type OperationResult, type RequestPayload, type StudyRecord } from './protocol.ts';
-import { defineSlot, type Session } from './session.ts';
+import type { ScreenContext } from './dispatcher.ts';
+import type { OperationResult, RequestPayload, StudyRecord } from './protocol.ts';
+import { defineSlot } from './session.ts';
 import { loadZipTable, resolveZip, type ZipTable } from './zip.ts';
 
 /** Statuses that can list a recruiting-style record, ported from hardFilters.ts. */
@@ -158,61 +158,64 @@ export function isStaleRecord(record: StudyRecord, nowMs: number): boolean {
 }
 
 // -------------------------------------------------------------------------------------------
-// Session records and the ZIP table cache
+// The ZIP table cache
 // -------------------------------------------------------------------------------------------
 
-/** Session-scoped study records (results of this session's searches only). */
-export const STUDY_RECORDS = defineSlot<readonly StudyRecord[]>('session.studyRecords');
 /** The ZIP table parsed once per session; wiped with every other slot at endSession. */
-const ZIP_TABLE = defineSlot<ZipTable>('session.zipTable');
-
-/** The session accepts at most this many records; whole-registry dumps are INPUT_TOO_LARGE. */
-export const MAX_SESSION_RECORDS = 1000;
+const ZIP_TABLE = defineSlot<ZipTable>('screening.zipTable');
 
 type CheckStatus = OperationResult<'screenLocal'>['results'][number]['checks'][number]['status'];
 type ScreenEntry = OperationResult<'screenLocal'>['results'][number];
 type ScreenProfile = RequestPayload<'screenLocal'>['profile'];
+export type RadiusStatus = ScreenEntry['radiusStatus'];
 
-/**
- * Validates public study records and remembers them for this session. Only records that passed
- * StudyRecordSchema can be screened or previewed later, and duplicate NCT IDs are rejected rather
- * than silently deduplicated, so the caller learns its pages overlap. The call replaces the
- * remembered set; task A2 owns how pages accumulate (it can merge before calling, and it owns the
- * subject digest and mutation bookkeeping when records arrive). Throws INPUT_TOO_LARGE,
- * INVALID_REQUEST, or a session error.
- */
-export function rememberRecords(session: Session, records: readonly unknown[]): readonly StudyRecord[] {
-  if (records.length > MAX_SESSION_RECORDS) throw new CoreError('INPUT_TOO_LARGE');
-  const seen = new Set<string>();
-  const validated: StudyRecord[] = [];
-  for (const record of records) {
-    const parsed = StudyRecordSchema.safeParse(record);
-    if (!parsed.success) throw new CoreError('INVALID_REQUEST');
-    if (seen.has(parsed.data.nctId)) throw new CoreError('INVALID_REQUEST');
-    seen.add(parsed.data.nctId);
-    validated.push(parsed.data);
-  }
-  session.set(STUDY_RECORDS, validated);
-  return validated;
-}
-
-async function zipTableFor(ctx: HandlerContext): Promise<ZipTable> {
-  const cached = ctx.session.get(ZIP_TABLE);
+async function zipTableFor(ctx: ScreenContext): Promise<ZipTable> {
+  const cached = ctx.slots.get(ZIP_TABLE);
   if (cached !== undefined) return cached;
   const table = await loadZipTable(ctx.ports, ctx.signal);
-  ctx.session.set(ZIP_TABLE, table);
+  ctx.slots.set(ZIP_TABLE, table);
   return table;
 }
 
 /** The user's coordinates for screening: direct lat/lon passes through, a ZIP resolves locally. */
-export async function coordinatesForProfile(
-  ctx: HandlerContext,
+async function coordinatesForProfile(
+  ctx: ScreenContext,
   location: ScreenProfile['location'],
 ): Promise<Coords | undefined> {
   if (location === undefined) return undefined;
   if ('lat' in location) return { lat: location.lat, lon: location.lon };
   const resolved = resolveZip(location.zip, await zipTableFor(ctx));
   return { lat: resolved.lat, lon: resolved.lon };
+}
+
+/**
+ * The travel-radius status of one record (port of the radius rule of extension/src/local-distance.ts
+ * at d0f11d0, without its site-status and country filters). "outside" needs every listed site to
+ * have coordinates and all of them to lie beyond the radius; a site without coordinates could be
+ * nearer, so then the status is "unknown", as it is without a shared location or without any site.
+ * The status is informational: it never changes the bucket and is never a medical exclusion.
+ */
+export function radiusStatusOf(
+  record: StudyRecord,
+  from: Coords | undefined,
+  radius: ScreenProfile['travelRadiusMiles'],
+): RadiusStatus {
+  if (radius === undefined || radius === 'anywhere') return 'not_set';
+  if (from === undefined) return 'unknown';
+  let missing = 0;
+  let located = 0;
+  let nearest = Infinity;
+  for (const location of record.locations) {
+    if (!location.geo) {
+      missing += 1;
+      continue;
+    }
+    located += 1;
+    nearest = Math.min(nearest, haversineMiles(from, location.geo));
+  }
+  if (located > 0 && nearest <= radius) return 'within';
+  if (located > 0 && missing === 0) return 'outside';
+  return 'unknown';
 }
 
 // -------------------------------------------------------------------------------------------
@@ -269,16 +272,15 @@ export function screenStudyRecord(
       : 'no_known_mismatch';
 
   const distance = from === undefined ? undefined : nearestDistanceMiles(record, from);
-  const radius = profile.travelRadiusMiles;
-  const outOfRadius =
-    distance !== undefined && radius !== undefined && radius !== 'anywhere' && distance > radius;
+  const radiusStatus = radiusStatusOf(record, from, profile.travelRadiusMiles);
 
   return {
     nctId: record.nctId,
     bucket,
     checks,
     distanceMiles: distance === undefined ? null : distance,
-    outOfRadius,
+    radiusStatus,
+    outOfRadius: radiusStatus === 'outside',
     stale: isStaleRecord(record, nowMs),
   };
 }
@@ -291,18 +293,16 @@ export function screenStudyRecord(
  * the session, the bundled table through the Loader port, and the injected clock.
  */
 export async function screenLocalPipeline(
-  ctx: HandlerContext,
+  ctx: ScreenContext,
   payload: RequestPayload<'screenLocal'>,
 ): Promise<OperationResult<'screenLocal'>> {
-  const records = ctx.session.get(STUDY_RECORDS);
-  if (records === undefined) throw new CoreError('RECORD_NOT_IN_SESSION');
-  const byId = new Map(records.map(record => [record.nctId, record] as const));
   const from = await coordinatesForProfile(ctx, payload.profile.location);
   const nowMs = ctx.ports.clock.now();
   if (!Number.isSafeInteger(nowMs) || nowMs < 0) throw new CoreError('INTERNAL_ERROR');
   return {
     results: payload.nctIds.map(nctId => {
-      const record = byId.get(nctId);
+      // The dispatcher already refused NCT IDs the session does not hold; this is defense in depth.
+      const record = ctx.records.get(nctId)?.record;
       if (record === undefined) throw new CoreError('RECORD_NOT_IN_SESSION');
       return screenStudyRecord(record, payload.profile, from, nowMs);
     }),

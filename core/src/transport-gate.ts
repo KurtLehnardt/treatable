@@ -197,6 +197,26 @@ const COMPILED_RULES: readonly CompiledRule[] = TRANSPORT_RULES.map(rule => ({
 
 const METHODS: ReadonlySet<string> = new Set(TRANSPORT_RULES.map(rule => rule.method));
 
+/** The five OpenAI rules (the send capability's view of the gate). */
+export const OPENAI_RULE_IDS: readonly TransportRuleId[] = Object.freeze(
+  TRANSPORT_RULES.filter(rule => rule.origin === OPENAI_ORIGIN).map(rule => rule.id),
+);
+/** The ClinicalTrials.gov search rule (the searchTrials pipeline's view of the gate). */
+export const CTGOV_SEARCH_RULE_IDS: readonly TransportRuleId[] = Object.freeze(['ctgov.studies.search'] as const);
+
+/**
+ * The OpenAI rule for a method and an exact path, or undefined. outbound.ts uses this so that the
+ * send capability and the gate read the same table.
+ */
+export function findOpenAIRule(method: string, path: string): TransportRule | undefined {
+  if (typeof method !== 'string' || typeof path !== 'string' || !path.startsWith('/')) return undefined;
+  for (const compiled of COMPILED_RULES) {
+    const { rule } = compiled;
+    if (rule.origin === OPENAI_ORIGIN && rule.method === method && compiled.pathPattern.test(path)) return rule;
+  }
+  return undefined;
+}
+
 /** One percent-encoded query component: the encodeURIComponent alphabet, upper-case hex escapes. */
 const QUERY_COMPONENT = /^(?:[A-Za-z0-9\-_.!~*'()]|%[0-9A-F]{2})+$/;
 
@@ -345,13 +365,14 @@ interface CheckedRequest {
   readonly signal: CancelSignal | undefined;
 }
 
-function checkSnapshot(request: unknown): CheckedRequest {
+function checkSnapshot(request: unknown, allowed: ReadonlySet<TransportRuleId> | undefined): CheckedRequest {
   if (typeof request !== 'object' || request === null) throw new CoreError('INVALID_REQUEST');
   // Each field is read exactly once, here. Everything below validates and rebuilds from these
   // values only, so a getter or Proxy cannot show one value to the checks and another to the port.
   const { method, url, headers: rawHeaders, body: rawBody, signal: rawSignal } = request as Record<string, unknown>;
 
   const { rule } = matchRule(method, url);
+  if (allowed !== undefined && !allowed.has(rule.id)) throw new CoreError('INVALID_ENDPOINT');
 
   const body = rawBody === undefined ? undefined : copyBody(rawBody);
   if (rule.body === 'required' ? body === undefined : body !== undefined) throw new CoreError('INVALID_REQUEST');
@@ -387,9 +408,9 @@ function checkSnapshot(request: unknown): CheckedRequest {
  * INVALID_REQUEST, INPUT_TOO_LARGE, or KEY_MISSING; never throws anything that names request
  * content. A getter, Proxy trap, or detached buffer that throws becomes INVALID_REQUEST.
  */
-function checkTransportRequest(request: unknown): CheckedRequest {
+function checkTransportRequest(request: unknown, allowed?: ReadonlySet<TransportRuleId>): CheckedRequest {
   try {
-    return checkSnapshot(request);
+    return checkSnapshot(request, allowed);
   } catch (error) {
     if (isCoreError(error)) throw error;
     throw new CoreError('INVALID_REQUEST');
@@ -481,6 +502,20 @@ export function guardTransport(port: Transport): Transport {
   return Object.freeze({
     async request(request: TransportRequest): Promise<TransportResponse> {
       return port.request(rebuildChecked(checkTransportRequest(request)));
+    },
+  });
+}
+
+/**
+ * Like guardTransport, but only the named rules pass; a request that matches another rule is
+ * INVALID_ENDPOINT. The dispatcher gives the send capability the OpenAI rules and the searchTrials
+ * pipeline the ClinicalTrials.gov rule, each on top of the gate around the host's port.
+ */
+export function restrictTransport(port: Transport, ruleIds: readonly TransportRuleId[]): Transport {
+  const allowed: ReadonlySet<TransportRuleId> = new Set(ruleIds);
+  return Object.freeze({
+    async request(request: TransportRequest): Promise<TransportResponse> {
+      return port.request(rebuildChecked(checkTransportRequest(request, allowed)));
     },
   });
 }
