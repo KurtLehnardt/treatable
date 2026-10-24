@@ -1,3 +1,4 @@
+import './zod-jitless';
 import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-background';
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
