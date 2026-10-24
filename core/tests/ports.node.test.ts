@@ -24,7 +24,15 @@ test('sha256, token and clock reference ports', async () => {
   let fired = 0;
   const cancel = nodeClock.schedule(5, () => (fired += 1));
   cancel();
-  await new Promise(resolve => nodeClock.schedule(10, () => resolve(undefined)));
+  // nodeClock unrefs its timers, so the test keeps the event loop alive itself: some Node test
+  // runners (22) treat a fully drained loop as the end of the test tree, while others (26) do not.
+  await new Promise<void>((resolve, reject) => {
+    const guard = setTimeout(() => reject(new Error('the scheduled timer never fired')), 5000);
+    nodeClock.schedule(10, () => {
+      clearTimeout(guard);
+      resolve();
+    });
+  });
   assert.equal(fired, 0, 'a cancelled timer never fires');
   assert.ok(nodeClock.monotonic() >= t0);
   assertPorts(createNodePorts());
