@@ -49,3 +49,7 @@ See [native helper setup](NATIVE_SETUP.md). The native helper is required only f
 Bundled study records preserve ClinicalTrials.gov URLs, fetch timestamps, and source-update dates. This is an incomplete registry snapshot; recruiting status and contacts can change. Distance is approximate, measured from GeoNames ZIP-area centers (CC BY 4.0), and remains a travel preference. Missing data never becomes medical exclusion. Only structured contradictory age/sex facts can produce Unlikely; unverified free-text criteria stay unknown.
 
 The browser bundle reuses the existing Treatable patient/study contracts and deterministic screening module. It does not import the Next server or saved cloud-provider configuration. Source modules are imported at build time; the built extension is standalone.
+
+## Version B interface
+
+[Version B](VERSION_B.md) provides a separately built panel using the make-interfaces-feel-better skill. Build with `npm run build:b` from `extension/`; load `dist-b`. Version A remains the default `dist` build. Both use the same extension ID/native helper and must be compared one at a time. See the B instructions for a reload workflow that does not require uninstalling the extension.
