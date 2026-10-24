@@ -339,7 +339,7 @@ function App() {
   const savedRows = studies.filter(s => saved.includes(s.id));
 
   return <main>
-    <header><div className="brand"><span className="mark" aria-hidden="true">t</span><div><h1>Treatable</h1><p>Studies worth asking about.</p></div></div><span className={cloud ? 'private cloud' : 'private'}><span aria-hidden="true">●</span> {cloud ? 'OpenAI scoring on' : settings.provider === 'local' ? 'Local LLM mode' : 'No model requests'}</span></header>
+    <header><div className="brand"><span className="mark" aria-hidden="true">t</span><div><h1>Treatable</h1><p>Studies worth asking about.</p></div></div><span className={cloud ? 'privacy-chip cloud' : 'privacy-chip'}><span aria-hidden="true">●</span> {cloud ? 'OpenAI scoring on' : settings.provider === 'local' ? 'Local LLM mode' : 'No model requests'}</span></header>
     <div className="privacy-note">{cloud ? 'OpenAI mode: your condition, age band, sex, spine region, and the public study text are sent to OpenAI. ZIP, notes, and saved studies are not included in requests. Not set up for protected health information.' : settings.provider === 'local' ? 'Local LLM mode: requests are sent to the local helper on this device. Browsing a website still makes normal website requests.' : 'In this mode the extension makes no model requests. Browsing a website still makes normal website requests.'}</div>
 
     {CONFIG.syntheticDemoBanner && <div className="message error demo-banner" role="alert"><strong>Synthetic demo.</strong> Enter synthetic example data only. Do not enter real health details in this build.</div>}

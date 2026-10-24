@@ -23,13 +23,15 @@ const BANNED_EVERYWHERE: RegExp[] = [
   /\bno data leaves\b/i,
   /(?<!promise of )\bencrypted\b/i,
 ];
+// In TypeScript source the `private` modifier is legal, so only prose uses are banned there.
 const BANNED_IN_DOCS: RegExp[] = [/\bprivate\b(?! retention| link)/i];
+const BANNED_IN_SRC: RegExp[] = [/\bprivate\b(?! retention| link)(?!\s+(?:readonly|async|static|[A-Za-z_]\w*\s*[:(=?!<;,)]))/i];
 
 test('no banned compliance, security, or validity claims in shipped strings and docs', () => {
   const hits: string[] = [];
   for (const file of [...srcFiles, ...docFiles]) {
     const text = read(file);
-    const patterns = docFiles.includes(file) ? [...BANNED_EVERYWHERE, ...BANNED_IN_DOCS] : BANNED_EVERYWHERE;
+    const patterns = docFiles.includes(file) ? [...BANNED_EVERYWHERE, ...BANNED_IN_DOCS] : [...BANNED_EVERYWHERE, ...BANNED_IN_SRC];
     for (const re of patterns) {
       const m = text.match(re);
       if (m) hits.push(`${file}: "${m[0]}"`);
