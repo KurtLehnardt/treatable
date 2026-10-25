@@ -54,7 +54,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  LOCAL_MODEL_UNAVAILABLE:'The chosen local model is not installed or cannot write text. Choose another one in Settings → Model provider, where the recommendation shows the exact ollama pull command. Nothing was sent to OpenAI.',
  LOCAL_MODEL_FAILED:'The local model could not run on this device, for example because there is not enough free memory. Close other apps or choose a smaller model in Settings, then retry. Nothing was sent to OpenAI.',
  LOCAL_OLLAMA_OUTDATED:'Ollama on this device is too old for the structured output Treatable needs (0.5 or later). Update it from ollama.com/download, then retry. Nothing was sent to OpenAI.',
- LOCAL_SESSION_TOO_SHORT:'Too little time is left in this five-minute study session for the local model. Close and reopen Treatable on this page, then generate the brief again. Nothing was sent.',
+ LOCAL_SESSION_TOO_SHORT:'Too little time is left in this study session for the local model. Choose Keep working, or close and reopen Treatable on this page, then generate the brief again. Nothing was sent.',
  LOCAL_MODEL_NOT_CHOSEN:'Choose a local model in Settings → Model provider first, or switch back to OpenAI. Nothing was sent.',
  LOCAL_TIMEOUT:'The local model took too long on this device and was stopped. Try a smaller model, select one study instead of two, or use OpenAI. Nothing was sent to OpenAI; the official excerpts are still shown.',
  LOCAL_INVALID_OUTPUT:'The local model returned output that failed validation, so it was discarded. The official record excerpts and standard questions are shown instead. Nothing was sent to OpenAI.',

@@ -12,7 +12,7 @@ import type {PreparedStudyBrief,StudyBriefResult,PublicStudyBrief,ApplyRecord,Ap
 /** Who generates the brief. OpenAI is the default; a local choice names the installed model chosen in Settings (or none yet). */
 export interface BriefEngineChoice{provider:'openai'|'local';localModel:string|null}
 const OPENAI:BriefEngineChoice={provider:'openai',localModel:null};
-/** A local brief needs time on this device; with less of the five-minute session left, the patient is asked to reopen Treatable first. */
+/** A local brief needs time on this device; with less of the session left, the patient is asked to keep working or reopen Treatable first. */
 const LOCAL_MIN_SESSION_MS=60000;
 export interface ApplyEnv{runtime:ApplyRuntime;loadZips:()=>Promise<ZipData>;userActivated:()=>boolean;today:()=>Date;now:()=>number;copyText:(text:string)=>Promise<void>;download:(name:string,text:string,type:string)=>void;openMailto:(url:string)=>void}
 export function browserApplyEnv():ApplyEnv{return{runtime:chrome.runtime,loadZips:async()=>{const r=await fetch(chrome.runtime.getURL('data/us-zip-centroids.json'));if(!r.ok)throw Error();return r.json()},userActivated:()=>typeof navigator!=='undefined'&&navigator.userActivation?.isActive===true,today:()=>new Date(),now:()=>Date.now(),copyText,download:downloadText,openMailto}}

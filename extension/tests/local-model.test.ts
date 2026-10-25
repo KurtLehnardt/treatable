@@ -144,8 +144,10 @@ test('study brief view: a local result says which model ran on this device, that
 
 test('broker: a local brief is not started without enough session left, and an OpenAI brief never carries a budget',async()=>{
  let t=Date.UTC(2026,9,24,15,15);const b=broker(()=>t),p=await b.open();
+ // Near the end of the sliding session (30 minutes without activity), with 40 seconds left.
+ t+=30*60*1000-40000;
  await b.send(p,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],provider:'local',model:'qwen3.5:9b'}});const n=b.natives[0];await b.reply(n,{id:'p',type:'result',ok:true,result:{...preparedBrief({provider:'local',model:'qwen3.5:9b'}),expiresAt:t+300000}});
- t+=260000;const sent=n.sent.length;await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'LOCAL_SESSION_TOO_SHORT');assert.equal(n.sent.length,sent,'nothing reached the helper');
+ const sent=n.sent.length;await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'LOCAL_SESSION_TOO_SHORT');assert.equal(n.sent.length,sent,'nothing reached the helper');
  const o=broker(),q=await o.open();await o.send(q,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});const m=o.natives[0];await o.reply(m,{id:'p',type:'result',ok:true,result:preparedBrief()});
  await o.send(q,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST,budgetMs:200000}});assert.deepEqual(m.sent.at(-1).payload,{token:TOKEN,digest:DIGEST});
 });
