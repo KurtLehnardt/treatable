@@ -8,23 +8,27 @@
 <li>The developer runs no servers and receives none of your data. There are no analytics, ads, trackers, or data sales.</li>
 <li>Details you type about yourself stay on your device, in memory, for the current session only.</li>
 <li>When you click "Generate study brief", public study text from ClinicalTrials.gov is sent to OpenAI through a helper program on your computer, using your own OpenAI API key. Your personal details are not included.</li>
+<li>With AI-matched results (on by default, and you can turn it off), the condition you searched for, short condition terms from "Your details" if you entered a condition, and the public records of the studies on the page are sent to OpenAI through the helper, after you allow it once per browser session.</li>
+<li>If you choose the local model option, briefs and rankings are produced by a model running on your own computer and nothing is sent to OpenAI.</li>
 </ul>
 <h2>Where Treatable works</h2>
 <p>Treatable only runs on <a href="https://clinicaltrials.gov">https://clinicaltrials.gov</a> and <a href="https://www.clinicaltrials.gov.">https://www.clinicaltrials.gov.</a> It does not read or change any other website.</p>
 <h2>Information you enter</h2>
-<p>In "Your details" you can enter your name, a description of your condition, symptoms or reason for seeking treatment, and anything else you want to include. You can also enter a ZIP code to estimate the distance to study sites.</p>
+<p>In "Your details" you can enter your name, an age range, your sex, a description of your condition, symptoms or reason for seeking treatment, and anything else you want to include. You can also enter a ZIP code to estimate the distance to study sites.</p>
 <ul>
 <li>This information is kept in memory on your device and is used only to fill your own email, call script and follow-up drafts.</li>
 <li>It is not written to disk by the extension and is cleared when you end the session, close Treatable, or reload the page.</li>
-<li>The extension never sends it to OpenAI, to ClinicalTrials.gov, or to the developer.</li>
+<li>The extension never sends your name, notes, ZIP code, age range or sex to OpenAI, to ClinicalTrials.gov, or to the developer. Your age range and sex are used only on your device, to move studies that clearly do not match to the end of the list.</li>
+<li>If you entered a condition, short condition terms taken from it are shown to you and used for AI-matched results as described below.</li>
 <li>When you choose to open a draft in your email app, copy it, or tap a Call button, the draft or phone number is handed to the app you choose on your own device. Treatable never sends an email or places a call for you.</li>
 </ul>
 <h2>Information stored on your device</h2>
 <p>Treatable stores only interface settings in Chrome's extension storage on your device:</p>
 <ul>
 <li>your display mode and theme;</li>
+<li>whether AI-matched results is on, and which model provider and local model you chose;</li>
 <li>a number recording that you finished or skipped the first-run guide;</li>
-<li>during a browsing session only, the current step of the guide.</li>
+<li>during a browsing session only, the current step of the guide, and a marker that you allowed AI-matched results for that session.</li>
 </ul>
 <p>It does not store searches, study lists, health details, names or other text you type.</p>
 <h2>Information sent to OpenAI</h2>
@@ -34,7 +38,10 @@
 <li>text from those studies' official public records on ClinicalTrials.gov.</li>
 </ul>
 <p>Your name, contact details, ZIP code, notes and the details you entered are not included.</p>
-<p>If the extension offers an optional profile-based analysis and you choose to use it, it first shows a privacy notice and the exact information to be sent, and asks you to confirm. In that case only a minimized profile (for example an age range, sex, a US state and condition terms) is sent. Minimized health information can still be sensitive and is not anonymous.</p>
+<p><strong>AI-matched results.</strong> When AI-matched results is on and you use OpenAI, the first ranking in a browser session shows a privacy notice and the exact information to be sent, and asks you to allow it for that session. After that, results pages are ranked automatically until the browser closes or you turn the feature off. Each ranking sends only the condition you searched for, short condition terms from "Your details" if you entered a condition, and the public records of up to ten studies on the page. The OpenAI Decisions API scores how relevant each study looks; it does not decide eligibility. Condition terms are health information and are not anonymous.</p>
+<p>Match percentages show how relevant a study looks to your search and details. They are not a medical opinion and do not decide eligibility; only the study team can.</p>
+<h2>Local model option</h2>
+<p>If you choose "Local model (Ollama on this device)", the helper runs a model on your own computer with Ollama for study briefs and AI-matched results. Nothing is sent to OpenAI, your OpenAI API key is not used, and the local model service the helper starts only listens on your own computer.</p>
 <p>OpenAI processes this data under its own terms and policies (<a href="https://openai.com/policies">https://openai.com/policies</a>). OpenAI's Agents API keeps conversation state until it is deleted; Treatable asks OpenAI to delete each session after use and shows you whether deletion was confirmed, but it cannot guarantee immediate or complete erasure. OpenAI may keep API data for a limited time for abuse monitoring, as described in its policies.</p>
 <h2>Information sent to ClinicalTrials.gov</h2>
 <p>Treatable fetches public study records from ClinicalTrials.gov, which is operated by the U.S. National Library of Medicine. Those requests, like your normal use of the site, are covered by ClinicalTrials.gov's own policies.</p>
