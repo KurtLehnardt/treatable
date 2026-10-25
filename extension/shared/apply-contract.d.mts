@@ -45,6 +45,10 @@ export interface StudyBriefTrace{agentsRequest:StudyBriefTraceBody;decisionsRequ
 export const STUDY_BRIEF_ROUTES:readonly StudyBriefRoute[];export const STUDY_BRIEF_TOOL_NAME:string;export const STUDY_BRIEF_TRACE_BODY_MAX_BYTES:number;export const STUDY_BRIEF_TRACE_MAX_TOOL_CALLS:number;export const STUDY_BRIEF_TRACE_MAX_DECISIONS:number;
 export function traceBody(body:unknown,maxCost?:number):StudyBriefTraceBody;
 export function traceBodyCost(body:unknown):number;
+export const KEY_LIKE_REDACTION:string;
+export function redactKeyLike(text:string):string;
+export function redactedTraceBody(body:unknown,maxCost?:number):StudyBriefTraceBody;
+export function redactedTraceBodyCost(body:unknown):number;
 export function parseStudyBriefTrace(t:unknown,result:Pick<StudyBriefResult,'briefs'|'studyPlans'|'decisionStatus'>):StudyBriefTrace;
 export type StudyBriefProvider='openai'|'local';
 export const STUDY_BRIEF_PROVIDERS:readonly StudyBriefProvider[];

@@ -19,7 +19,7 @@ test('stdio source-only prepare→Agenttool→Decisions pipeline handles selecte
 test('criterion excerpts retain inclusion/exclusion context and flipped requirements cannot be approved as claims',()=>{const raw=syntheticRaw();raw.protocolSection.eligibilityModule.eligibilityCriteria='Inclusion Criteria:\nLumbar pain\nExclusion Criteria:\nPrior lumbar surgery';const b=normalizeStudyBrief(raw,1),ex=b.items.find(x=>x.context==='exclusion');assert.equal(ex.text,'Exclusion Criteria:\nPrior lumbar surgery');assert.match(ex.label,/Exclusion/);const p=agentPlan(b);assert.throws(()=>parseBriefAgentOutput(JSON.stringify({studies:[{...p,claims:[{category:'eligibility',text:'Participants must have prior lumbar surgery.',evidenceIds:[ex.id],sourceQuotes:[ex.text]}]}]}),[b]),{code:'INVALID_AGENT_OUTPUT'});const copied={category:ex.category,text:ex.text,evidenceIds:[ex.id],sourceQuotes:[ex.text]};assert.equal(parseBriefAgentOutput(JSON.stringify({studies:[{...p,claims:[copied]}]}),[b])[0].claims[0].text,ex.text);});
 test('exact fragment authority rejects reanchored followup and strengthened crossover regardless of valid citations',()=>{const b=normalizeStudyBrief(syntheticRaw(),1),p=agentPlan(b);for(const[source,rewrite]of[[/post injection/,'Follow-up visits happen after your last injection.'],[/can cross over/,'Control participants receive treatment after follow-up.'],[/can cross over/,'Control participants will receive treatment.']]){const e=b.items.find(x=>source.test(x.text));assert.throws(()=>parseBriefAgentOutput(JSON.stringify({studies:[{...p,claims:[{category:e.category,text:rewrite,evidenceIds:[e.id],sourceQuotes:[e.text]}]}]}),[b]),{code:'INVALID_AGENT_OUTPUT'});}assert.ok(b.unknowns.some(x=>/which treatment each interval/.test(x)));});
 test('registry estimates preserve type and do not masquerade as participant schedule or outcomes visits',()=>{const raw=syntheticRaw();delete raw.protocolSection.descriptionModule;raw.protocolSection.statusModule.startDateStruct={date:'2027-01-01',type:'ESTIMATED'};raw.protocolSection.statusModule.primaryCompletionDateStruct={date:'2028-01-01',type:'ACTUAL'};raw.protocolSection.outcomesModule={primaryOutcomes:[{timeFrame:'3 months'}]};const b=normalizeStudyBrief(raw,1);assert.ok(b.items.some(x=>x.context==='registry_milestone'&&x.dateType==='ESTIMATED'&&/estimated/.test(x.label)));assert.ok(b.items.some(x=>x.context==='registry_milestone'&&x.dateType==='ACTUAL'));assert.ok(!b.items.some(x=>x.context==='participant_schedule'));assert.ok(b.unknowns.some(x=>/does not give a clear participation timeline/.test(x)));});
-import{utf8Bytes,MAX_MESSAGE_BYTES}from'../../shared/demo-contract.mjs';import{STUDY_BRIEF_MAX_BYTES,parseStudyBriefResult,traceBody}from'../../shared/apply-contract.mjs';import{briefDecisionAnswers}from'../study-brief.mjs';import{encodeMessage}from'../core.mjs';
+import{utf8Bytes,isRecord,MAX_MESSAGE_BYTES}from'../../shared/demo-contract.mjs';import{STUDY_BRIEF_MAX_BYTES,parseStudyBriefResult,traceBody,redactKeyLike,redactedTraceBody,redactedTraceBodyCost}from'../../shared/apply-contract.mjs';import{briefDecisionAnswers}from'../study-brief.mjs';import{encodeMessage}from'../core.mjs';
 // A record whose brief nears the per-study size cap, for the oversized-body tests.
 const sentence=i=>`Participants in cohort ${i} attend clinic visits every 4 weeks for assessments, ${'including blood draws, imaging and questionnaires '.repeat(8)}until week 52.`;
 const largeRaw=id=>({protocolSection:{identificationModule:{nctId:id,briefTitle:'Synthetic large record'},descriptionModule:{briefSummary:'This is a randomized, placebo-controlled study. '.repeat(30),detailedDescription:Array.from({length:10},(_,i)=>sentence(i)).join(' ')},designModule:{designInfo:{allocation:'RANDOMIZED',interventionModel:'PARALLEL',primaryPurpose:'TREATMENT',maskingInfo:{masking:'DOUBLE'}}},armsInterventionsModule:{armGroups:Array.from({length:4},(_,i)=>({label:'Arm '+i,description:'Participants receive study drug or matching placebo by subcutaneous injection. '.repeat(8)}))},statusModule:{overallStatus:'RECRUITING',startDateStruct:{date:'2025-01-01',type:'ACTUAL'}},eligibilityModule:{minimumAge:'18 Years',sex:'ALL',eligibilityCriteria:'Inclusion Criteria:\n\n'+Array.from({length:8},(_,i)=>'* Criterion '+i+' with a moderately long description of the requirement.').join('\n')},contactsLocationsModule:{}}});
@@ -150,6 +150,45 @@ test('the shared contract refuses tampered, mismatched or secret-bearing traces 
   assert.throws(()=>parseStudyBriefResult({...r,decisionStatus:'failed'}),undefined,'decisions cannot be listed for a failed classification');
   assert.ok(withTrace({agentsRequest:traceBody({text:'Participants complete a task-oriented-assessment-of-daily-living-activities'})}),'ordinary hyphenated words are not mistaken for keys');
   assert.ok(withTrace({agentsRequest:traceBody({text:'HIPAA authorization is required'})}),'ordinary public words are not mistaken for header text');
+ }finally{s.clear()}
+});
+// --- Public record text shaped like an API key must not cost the brief, or the rest of its trace ---
+const KEYED='sk-ABCDEFGHIJKLMNOPQRSTUVWX',REDACTED='[redacted key-like text]',KEY_SHAPE=/(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/;
+test('public record text shaped like an API key keeps the brief and its trace, hiding only the matching text',async()=>{
+ const s=new PreparedStudyBriefStore({fetchRecord:async id=>{const raw=syntheticRaw();raw.protocolSection.identificationModule.nctId=id;raw.protocolSection.descriptionModule.briefSummary=`Sponsor reference ${KEYED} for this protocol.`;return raw}});
+ try{
+  const p=await s.prepare(['NCT99999990','NCT99999991']),pin=s.take({token:p.token,digest:p.digest});
+  assert.ok(pin.briefs.every(b=>b.items.some(i=>i.text.includes(KEYED))),'the public excerpt reaches the request');
+  const transport=scripted(pin.briefs,{answer:answerWith}),r=await runPreparedStudyBrief(transport,pin),t=r.apiTrace;
+  // The brief is not lost.
+  assert.equal(r.agentStatus,'complete');assert.equal(r.decisionStatus,'complete');assert.deepEqual(r.failureCodes,[]);assert.equal(r.cleanup,'deleted');
+  assert.ok(r.briefs.every(b=>b.claims.length===1),'the validated claims are kept');
+  assert.ok(r.briefs.every(b=>b.items.some(i=>i.text.includes(KEYED))),'the verified public excerpt is shown exactly as published');
+  // The real request is unchanged.
+  const sent=JSON.stringify(bodyOf(transport,'/v1/decisions'),null,2);assert.ok(sent.includes(KEYED),'the API still receives the public text as published');
+  // The trace is kept, with only the key-shaped text replaced.
+  assert.ok(t,'the trace is not dropped');
+  assert.equal(t.decisionsRequest.text,sent.replaceAll(KEYED,REDACTED));assert.equal(t.decisionsRequest.bytes,utf8Bytes(t.decisionsRequest.text));assert.equal(t.decisionsRequest.truncated,false);
+  assert.ok(isRecord(JSON.parse(t.decisionsRequest.text)),'the display copy is still the request as JSON');
+  assert.equal(t.agentsRequest.text,JSON.stringify(bodyOf(transport,'/v1/agents/sessions'),null,2));
+  assert.equal(t.toolCalls.length,2);assert.equal(t.decisions.length,r.studyPlans.flatMap(x=>x.routes).length);
+  assert.ok(!KEY_SHAPE.test(JSON.stringify(t)),'no key-shaped text is in the trace');
+  assert.deepEqual(parseStudyBriefResult(structuredClone(r)),r,'the strict shared contract accepts the result');
+ }finally{s.clear()}
+});
+test('redactedTraceBody replaces every key-shaped substring before the display copy is cut, and the contract stays strict',async()=>{
+ const body={a:`one ${KEYED} two`,b:{c:`(${KEYED}_more-text-here)`},d:'Bearer sk-abcdefghijklmnopqrstuvwxyz012345',e:'a short sk-tooshort value',f:'x'.repeat(50)+KEYED};
+ const full=redactKeyLike(JSON.stringify(body,null,2));
+ assert.ok(!KEY_SHAPE.test(full));assert.equal(full.split(REDACTED).length-1,3,'a, b.c and d');assert.ok(full.includes('sk-tooshort')&&full.includes('x'+KEYED),'text that is not key-shaped (too short, or glued to a word) is left alone');
+ assert.deepEqual(redactedTraceBody(body),{text:full,bytes:utf8Bytes(full),truncated:false});
+ assert.equal(redactedTraceBodyCost(body),utf8Bytes(JSON.stringify(full))-2);
+ for(let cap=0;cap<=full.length;cap+=7){const t=redactedTraceBody(body,cap);assert.ok(full.startsWith(t.text),'a prefix of the redacted text');assert.ok(!KEY_SHAPE.test(t.text));assert.equal(t.bytes,utf8Bytes(full))}
+ const{s,pin}=await prepared();
+ try{
+  const r=await runPreparedStudyBrief(scripted(pin.briefs,{answer:answerWith}),pin),t=r.apiTrace;
+  assert.ok(parseStudyBriefResult({...r,apiTrace:{...t,agentsRequest:redactedTraceBody(body)}}),'a redacted copy is accepted');
+  assert.throws(()=>parseStudyBriefResult({...r,apiTrace:{...t,agentsRequest:traceBody(body)}}),/Invalid API trace/,'a copy that still holds the key-shaped text is refused');
+  assert.throws(()=>parseStudyBriefResult({...r,apiTrace:{...t,toolCalls:[{...t.toolCalls[0],summary:`Returned ${KEYED}`}]}}),/Invalid API trace/,'so is a tool-call summary that holds it');
  }finally{s.clear()}
 });
 test('stdio: the reply trace equals the bodies the installed helper sent and holds no header, key or Authorization text',async()=>{

@@ -157,12 +157,21 @@ export const STUDY_BRIEF_TRACE_MAX_TOOL_CALLS=6;
 export const STUDY_BRIEF_TRACE_MAX_DECISIONS=16;
 // The shape of an OpenAI API key; a body that contains one is refused rather than displayed.
 const KEY_LIKE=/(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/;
+const KEY_LIKE_EVERY=new RegExp(KEY_LIKE.source,'g');
+export const KEY_LIKE_REDACTION='[redacted key-like text]';
+/** Replaces every API-key-shaped substring of a display copy. Public record text can contain such a string (for example a sponsor reference),
+ * and the contract refuses it in a trace, so the native helper redacts it from the display copy instead of losing the trace or the brief. */
+export function redactKeyLike(text){return text.replace(KEY_LIKE_EVERY,KEY_LIKE_REDACTION);}
 // Size of text once it sits inside a JSON reply: quoted, with quotes and line breaks escaped (the two enclosing quotes excluded).
 const jsonCost=text=>utf8Bytes(JSON.stringify(text))-2;
 export function traceBodyCost(body){return jsonCost(JSON.stringify(body,null,2));}
 /** Pretty-prints one request body for display. A body whose reply cost exceeds maxCost is cut at a line (or character) boundary and flagged truncated;
  * `bytes` is always the full pretty-printed size. This only shortens the display copy; the API request itself is never changed. */
 export function traceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){return displayCopy(JSON.stringify(body,null,2),maxCost,STUDY_BRIEF_TRACE_BODY_MAX_BYTES);}
+/** Like traceBody, for a body that can carry public record text: key-shaped substrings are replaced (before any cut, so none survives a cut) and
+ * the rest of the body is shown. `bytes` is the size of the redacted copy. The request handed to the API is never changed. */
+export function redactedTraceBody(body,maxCost=STUDY_BRIEF_TRACE_BODY_MAX_BYTES){return displayCopy(redactKeyLike(JSON.stringify(body,null,2)),maxCost,STUDY_BRIEF_TRACE_BODY_MAX_BYTES);}
+export function redactedTraceBodyCost(body){return jsonCost(redactKeyLike(JSON.stringify(body,null,2)));}
 function displayCopy(full,maxCost,ceiling){
  const bytes=utf8Bytes(full),cap=Math.max(0,Math.min(Math.floor(maxCost),ceiling));
  if(jsonCost(full)<=cap)return{text:full,bytes,truncated:false};
