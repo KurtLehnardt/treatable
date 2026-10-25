@@ -69,3 +69,19 @@ test('stdio: prepareRank then executeRank ranks through Decisions once; the rece
   host.child.stdin.end();await host.exit;host=undefined;
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});}
 });
+
+test('the local provider pins per-study local requests, needs no transport and keeps per-study failures without probabilities',async()=>{
+ const store=new PreparedRankStore({fetchRecord:async id=>record(id)});const seen=[];
+ try{
+  assert.throws(()=>parseRankRequest({id:'r',type:'prepareRank',payload:{nctIds:ids,profile,provider:'local'}}),'a local ranking names its model');
+  assert.throws(()=>parseRankRequest({id:'r',type:'prepareRank',payload:{nctIds:ids,profile,model:'qwen3.5:9b'}}),'a model only goes with the local provider');
+  const p=await store.prepare({nctIds:ids,profile,provider:'local',model:'qwen3.5:9b'});assert.equal(p.provider,'local');assert.equal(p.preview.request.model,'qwen3.5:9b');assert.equal(p.preview.request.requests.length,2);
+  assert.doesNotMatch(JSON.stringify(p.preview.request.requests),/30_44|female/,'only the condition terms and public records reach the local model');
+  const pinned=store.take({token:p.token,digest:p.digest});
+  const runtime={version:'99.0.0',async ensure(){},async describe(){return{completion:true}},async chat(body){seen.push(body);const id=JSON.parse(body.messages.at(-1).content).nctId;if(id===ids[1])return{message:{content:'not json'}};return{message:{content:JSON.stringify({score:92,reasonId:'condition_match'})}}}};
+  const result=await runPreparedRank(undefined,pinned,{runtime});
+  assert.equal(result.provider,'local');assert.equal(seen.length,2);assert.deepEqual(result.scores,[{nctId:ids[0],score:92,reasonId:'condition_match'},{nctId:ids[1],failure:'LOCAL_INVALID_OUTPUT'}]);
+  assert.throws(()=>parseRankResult({...result,scores:[{nctId:ids[0],score:92,reasonId:'condition_match',probabilities:[0,0,0,1]},result.scores[1]]}),'a local result never claims probabilities');
+  assert.throws(()=>parseRankResult({...result,provider:'openai',scores:[{nctId:ids[0],failure:'LOCAL_TIMEOUT'},result.scores[1]]}),'an OpenAI result has no per-study failures');
+ }finally{store.discard();}
+});

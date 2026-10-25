@@ -1,10 +1,11 @@
 /** AI-matched results in the background. One run ranks the visible cards of one results page:
  * 1. local record checks (recruiting status, listed age range, listed sex) from public records the extension fetches itself;
- * 2. when the page has condition terms, one pinned helper ranking (prepareRank, then executeRank with its one-use receipt);
+ * 2. when the page has condition terms, one pinned helper ranking of those terms alone (prepareRank, then executeRank with its one-use receipt);
  *    with the OpenAI provider the first ranking in a browser session waits for the person's confirmation;
  * 3. the merged order and match percentages are applied to the page.
  * If the helper or the provider fails, the record checks still order the page and the overlay is told what failed. */
 import{parseRankReply,parsePreparedRank,parseRankResult,rankTerm,RANK_MAX_STUDIES,RANK_MAX_TERMS,RANK_SEXES,type RankProfile,type RankScore,type RankSex}from'../shared/rank-contract.mjs';
+import{isLocalModelName}from'../shared/local-model.mjs';
 import{AGE_BANDS,type AgeBand}from'../shared/real-contract.mjs';
 import{traceBody}from'../shared/apply-contract.mjs';
 import{NOT_SENT_CODES,NativeOperationError,failureCodeOf,nativeDisconnectCode}from'./failures';
@@ -15,7 +16,8 @@ import type{SiteSnapshot}from'./site-contract';
 import{readSiteSearchUrl}from'./site-search';
 import type{UiPrefs}from'./ui-prefs';
 export const RANK_NATIVE_HOST='com.treatable.local';
-export const RANK_CACHE_TTL_MS=5*60*1000;
+/** Ranked results stay in extension memory for the length of a Treatable session, so the page order can be put back without asking a model again. */
+export const RANK_CACHE_TTL_MS=30*60*1000;
 const PREPARE_TIMEOUT_MS=60000,EXECUTE_TIMEOUT_MS=150000,TRACE_ROOM=90_000;
 /** What the overlay may add from "Your details": a coarse age band, sex and short condition terms. Nothing else is accepted. */
 export interface RankDetails{ageBand?:AgeBand;sex?:RankSex;terms?:string[]}
@@ -77,7 +79,10 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
  /** Turning AI-matched results off, closing Treatable or leaving the tab: stop, forget cached results and any "Not now". */
  function stop(tabId:number){cancel(tabId);cache.delete(tabId);declined.delete(tabId);last.delete(tabId)}
  /** The page dropped an applied ranking on its own (its five-minute lease ended): tell the overlay so it offers to apply it again. */
- function lapsed(tabId:number,current?:SiteSnapshot){const entry=last.get(tabId);if(!entry?.state.applied||runs.has(tabId)||current&&(current.url!==entry.url||current.nctIds.join()!==entry.ids))return;const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}
+ function lapsed(tabId:number,current?:SiteSnapshot){const entry=last.get(tabId);if(!entry?.state.applied||runs.has(tabId)||current&&(current.url!==entry.url||current.nctIds.join()!==entry.ids))return;
+  // Put a still-valid ranking straight back (no model call); otherwise let the overlay offer to apply it again.
+  const cached=cache.get(tabId);if(current&&cached&&cached.expires>now()&&cached.ranked.map(r=>r.nctId).sort().join()===[...current.nctIds].sort().join()){void host.apply(tabId,current,cached.ranked).then(ok=>{if(ok||last.get(tabId)!==entry)return;const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}).catch(()=>{});return}
+  const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}
  async function run(tabId:number,entry:Run,details:RankDetails,force:boolean){
   const alive=()=>runs.get(tabId)===entry,post=(state:RankingState)=>{if(alive())host.post(tabId,state)},phase=(p:RankingState['phase'],total:number)=>{entry.phase=p;post({phase:p,total})};
   const prefs=await host.prefs().catch(()=>undefined);if(!alive())return;if(prefs?.aiRanking!=='on'){post({phase:'off'});return}
@@ -85,7 +90,8 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   if(!s.supported||!s.nctIds.length){post({phase:'unavailable',note:'no_cards',total:0});return}
   if(s.nctIds.length>RANK_MAX_STUDIES){post({phase:'unavailable',note:'too_many',total:s.nctIds.length});return}
   let cond:unknown;try{cond=readSiteSearchUrl(s.url).cond}catch{}
-  const conditions=rankConditions(cond,details.terms??[]),profile:RankProfile|undefined=conditions.length?{conditions,...(details.ageBand?{ageBand:details.ageBand}:{}),...(details.sex?{sex:details.sex}:{})}:undefined;
+  // Relevance needs only the condition terms. The age band and sex stay on this device and feed the record checks alone.
+  const conditions=rankConditions(cond,details.terms??[]),profile:RankProfile|undefined=conditions.length?{conditions}:undefined;
   const key=JSON.stringify({url:s.url,ids:s.nctIds,conditions,ageBand:details.ageBand??null,sex:details.sex??null}),cached=cache.get(tabId);
   if(!force&&cached&&cached.key===key&&cached.expires>now()){const applied=await host.apply(tabId,s,cached.ranked);if(alive())last.set(tabId,{state:{...cached.state,applied},url:s.url,ids:s.nctIds.join()});post({...cached.state,applied});return}
   const total=s.nctIds.length;phase('checking',total);
@@ -96,21 +102,26 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   else if(declined.has(tabId))note='declined';
   else{
    const session=new NativeRankSession(host);entry.session=session;
+   // The model provider setting also chooses who ranks: OpenAI, or the local model on this device (nothing leaves it).
+   const local=prefs.provider==='local',model=local?prefs.localModel:undefined;
    try{
+    if(local&&!isLocalModelName(model))throw new NativeOperationError('LOCAL_MODEL_NOT_CHOSEN');
     phase('preparing',total);
-    const prepared=parsePreparedRank(await session.request('prepareRank',{nctIds:s.nctIds,profile},PREPARE_TIMEOUT_MS));if(!alive())return;
-    if(JSON.stringify(prepared.nctIds)!==JSON.stringify(s.nctIds)||JSON.stringify(prepared.preview.profile)!==JSON.stringify(profile))throw new NativeOperationError('RESULT_MISMATCH');
+    const prepared=parsePreparedRank(await session.request('prepareRank',{nctIds:s.nctIds,profile,...(local?{provider:'local',model}:{})},PREPARE_TIMEOUT_MS));if(!alive())return;
+    if(prepared.provider!==(local?'local':'openai')||JSON.stringify(prepared.nctIds)!==JSON.stringify(s.nctIds)||JSON.stringify(prepared.preview.profile)!==JSON.stringify(profile))throw new NativeOperationError('RESULT_MISMATCH');
     provider=prepared.provider;request=traceBody(prepared.preview.request,TRACE_ROOM);sent=prepared.preview.profile;
     // A local model keeps everything on this device, so only the OpenAI provider needs the browser-session confirmation.
     if(prepared.provider==='openai'&&!await host.consent.has()){
      if(!alive())return;phase('confirming',total);
-     const outcome=await host.confirm(tabId,{provider:'openai',conditions:[...profile.conditions],...(profile.ageBand?{ageBand:profile.ageBand}:{}),...(profile.sex?{sex:profile.sex}:{}),studies:s.nctIds.map((nctId,i)=>({nctId,title:facts[i]?.title||nctId})),exactPayload:prepared.preview.request});
+     const outcome=await host.confirm(tabId,{provider:'openai',conditions:[...profile.conditions],studies:s.nctIds.map((nctId,i)=>({nctId,title:facts[i]?.title||nctId})),exactPayload:prepared.preview.request});
      if(!alive())return;if(outcome==='accepted')await host.consent.grant();else{if(outcome==='declined')declined.add(tabId);note='declined';failure='CONFIRMATION_CANCELLED'}
     }
     if(!failure){
      phase('scoring',total);attempted=true;const result=parseRankResult(await session.request('executeRank',{token:prepared.token,digest:prepared.digest},EXECUTE_TIMEOUT_MS));if(!alive())return;
      if(result.digest!==prepared.digest||result.provider!==prepared.provider||result.scores.length!==s.nctIds.length||result.scores.some(x=>!s.nctIds.includes(x.nctId)))throw new NativeOperationError('RESULT_MISMATCH');
-     scores=result.scores;mode=result.mode;
+     // A local model can fail for single studies; those stay unscored. If none was scored, the first failure explains why.
+     const scored=result.scores.filter((x):x is RankScore=>'score' in x),failed=result.scores.find(x=>'failure' in x) as {failure:string}|undefined;
+     if(scored.length){scores=scored;mode=result.mode}else failure=failed?.failure??'INVALID_NATIVE_REPLY';
     }
    }catch(e){if(!alive())return;failure=failureCodeOf(e)}
    finally{session.close();if(entry.session===session)entry.session=undefined}

@@ -79,7 +79,7 @@ test('turning AI-matched results off stops ranking and saves the choice; off fro
   const toggle=m.root().findAll(n=>n.type==='input'&&n.props.role==='switch')[0];assert.equal(toggle.props.checked,true);
   await act(async()=>toggle.props.onChange({target:{checked:false}}));await settle(1000);
   assert.equal(m.requests('site.aiRankStop').length,1);assert.equal(m.requests('site.aiRank').length,1,'no new ranking while off');
-  assert.deepEqual(m.storageWrites.at(-1),{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',aiRanking:'off'}});assert.match(m.shown(),/AI-matched results are off/);
+  assert.deepEqual(m.storageWrites.at(-1),{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'openai',localModel:null,aiRanking:'off'}});assert.match(m.shown(),/AI-matched results are off/);
  }finally{m.restore()}
  const off=mount({prefs:{...DEFAULT_UI_PREFS,aiRanking:'off'}});try{await off.start();await settle(1000);assert.equal(off.requests('site.aiRank').length,0);assert.match(off.shown(),/AI-matched results are off/)}finally{off.restore()}
 });

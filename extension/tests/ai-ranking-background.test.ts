@@ -31,7 +31,7 @@ test('the first ranking opens one top-level confirmation with the exact request;
  await until(()=>h.windows.length===1);assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank'],'nothing is scored while the confirmation is open');
  let context:any=undefined;h.messages.emit({kind:'site.confirmContext'},{...h.confirmSender,frameId:3},(v:any)=>context=v);assert.equal(context,undefined,'only the top-level confirmation page may read it');
  h.messages.emit({kind:'site.confirmContext'},h.confirmSender,(v:any)=>context=v);context=context as any;assert.equal(context.ok,true);assert.equal(context.operation,'rank');
- assert.deepEqual(context.summary.conditions,['Asthma']);assert.equal(context.summary.ageBand,'30_44');assert.deepEqual(context.summary.studies.map((s:any)=>s.title),['Study A','Study B','Study C']);assert.equal(context.summary.exactPayload.model,'gpt-6-luna');
+ assert.deepEqual(context.summary.conditions,['Asthma']);assert.equal(context.summary.ageBand,undefined,'age band and sex stay on this device');assert.equal(context.summary.sex,undefined);assert.deepEqual(context.summary.studies.map((s:any)=>s.title),['Study A','Study B','Study C']);assert.equal(context.summary.exactPayload.model,'gpt-6-luna');
  assert.doesNotMatch(JSON.stringify(context),new RegExp(`${TOKEN}|${DIGEST}|Authorization`),'the receipt never reaches the confirmation page');
  h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});
  await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
@@ -74,7 +74,7 @@ test('closing the overlay mid-ranking stops it before anything is scored; switch
  const again=rig(),q=await connected(again);again.session.set('consent',true);
  await again.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}});await until(()=>ranking(q).some((s:any)=>s.phase==='done'));
  const before=again.commands.filter(c=>c.type==='restore').length;
- again.prefsChanged.emit({'treatable.uiPrefs':{newValue:{displayMode:'popup',theme:'system',aiRanking:'off'}}},'local');await flush();
+ again.prefsChanged.emit({'treatable.uiPrefs':{newValue:{displayMode:'popup',theme:'system',provider:'openai',localModel:null,aiRanking:'off'}}},'local');await flush();
  assert.equal(again.session.has('consent'),false,'off forgets the browser-session confirmation even without an overlay request');
  assert.equal(again.commands.filter(c=>c.type==='restore').length,before+1,'the ranked page goes back to the website order');
  q.disconnect();
@@ -93,7 +93,7 @@ test('a replacement overlay stops the earlier overlay ranking before anything is
 test('switching AI-matched results off while the first-ranking window is open closes it and scores nothing',async()=>{
  const h=rig(),p=await connected(h);let removed=0;h.api.windows.remove=async()=>{removed++};
  await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length===1);
- h.prefsChanged.emit({'treatable.uiPrefs':{newValue:{displayMode:'popup',theme:'system',aiRanking:'off'}}},'local');await flush();
+ h.prefsChanged.emit({'treatable.uiPrefs':{newValue:{displayMode:'popup',theme:'system',provider:'openai',localModel:null,aiRanking:'off'}}},'local');await flush();
  assert.equal(removed,1,'the confirmation window is closed');assert.equal(h.service.ranker.isRunning(1),false);
  h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});await new Promise(r=>setTimeout(r,20));
  assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank']);assert.equal(h.session.has('consent'),false);

@@ -91,7 +91,7 @@ test('first OpenAI ranking: nothing is scored before the confirmation; accepting
  const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):m.type==='executeRank'?ranked(m):undefined});const service=createRankService(h.host);
  service.start(1,details);await until(()=>!!done(h.posts));
  assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank']);
- assert.equal(h.confirms.length,1,'the first ranking asks once');assert.deepEqual(h.confirms[0].conditions,['Asthma','wheezing']);assert.equal(h.confirms[0].ageBand,'30_44');assert.ok(h.confirms[0].exactPayload.questions,'the exact request body is offered in the confirmation');
+ assert.equal(h.confirms.length,1,'the first ranking asks once');assert.deepEqual(h.confirms[0].conditions,['Asthma','wheezing']);assert.equal(h.confirms[0].ageBand,undefined,'age band and sex are not part of what is sent');assert.ok(h.confirms[0].exactPayload.questions,'the exact request body is offered in the confirmation');
  assert.equal(h.consented(),true);
  const state=done(h.posts)!;assert.equal(state.phase,'done');assert.equal(state.applied,true);assert.equal(state.provider,'openai');assert.equal(state.mode,'test');
  assert.deepEqual(state.studies!.map(s=>[s.nctId,s.percent,s.reasonId]),[[D,67,'possible_match'],[A,33,'unclear'],[B,10,'not_recruiting'],[C,7,'outside_age_range'],[E,0,'sex_mismatch']]);
@@ -102,10 +102,10 @@ test('first OpenAI ranking: nothing is scored before the confirmation; accepting
  assert.equal(h.confirms.length,1,'no second confirmation');assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank','prepareRank','executeRank']);
 });
 
-test('the helper payload holds only condition terms, an age band and a sex: no name, exact age, ZIP, coordinates or notes',async()=>{
+test('the helper payload holds only condition terms: no name, age band, exact age, sex, ZIP, coordinates or notes',async()=>{
  const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):m.type==='executeRank'?ranked(m):undefined,url:'https://clinicaltrials.gov/search?cond=Asthma&locStr=Boise&lat=43.6&lng=-116.2&distance=50'});h.setConsent(true);
  createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
- const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.deepEqual(Object.keys(prepare.payload).sort(),['nctIds','profile']);assert.deepEqual(prepare.payload.profile,{conditions:['Asthma','wheezing'],ageBand:'30_44',sex:'male'});
+ const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.deepEqual(Object.keys(prepare.payload).sort(),['nctIds','profile']);assert.deepEqual(prepare.payload.profile,{conditions:['Asthma','wheezing']},'only condition terms are sent; age band and sex stay on this device');
  assert.doesNotMatch(JSON.stringify(h.native.sent),/Boise|43\.6|116\.2|lat|lng|zip|name|notes|PRIVATE/i);
  assert.throws(()=>parseRankDetails({ageBand:'30_44',name:'Pat Canary'}),'the background refuses any extra detail field');
 });
@@ -139,9 +139,7 @@ test('AI-matched results off: nothing is fetched, sent or applied',async()=>{
  assert.equal(done(h.posts)!.phase,'off');assert.equal(h.native.sent.length,0);assert.equal(h.applied.length,0);
 });
 
-test('a local model provider needs no OpenAI confirmation; no condition means record checks only',async()=>{
- const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m,'local'):ranked(m,'local')});createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
- assert.equal(h.confirms.length,0);assert.equal(done(h.posts)!.provider,'local');assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank']);
+test('no condition means record checks only, with nothing sent',async()=>{
  const none=hostFake({reply:()=>{throw Error('no native call expected')},url:'https://clinicaltrials.gov/search?locStr=Boise'});createRankService(none.host).start(1,{});await until(()=>!!done(none.posts));
  assert.equal(done(none.posts)!.note,'no_condition');assert.equal(none.native.sent.length,0);assert.equal(done(none.posts)!.applied,true);
 });
@@ -155,11 +153,28 @@ test('a newer request supersedes a running one; one that arrives during the conf
  service.stop(1);assert.equal(service.isRunning(1),false);
 });
 
-test('when the page drops an applied ranking on its own, the overlay is told so it can offer to apply it again',async()=>{
+test('when the page drops an applied ranking on its own, a cached ranking goes straight back; otherwise the overlay is told',async()=>{
  const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});h.setConsent(true);const service=createRankService(h.host);
- service.start(1,details);await until(()=>!!done(h.posts));assert.equal(done(h.posts)!.applied,true);
- service.lapsed(1,{generation:'g9',url:'https://clinicaltrials.gov/search?cond=Other',nctIds:[A],diagnostic:'',supported:true});assert.equal(h.posts.length,h.posts.filter(Boolean).length);assert.equal(h.posts.at(-1)!.applied,true,'a different page never gets the old ranking');
- service.lapsed(1,{generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[...ids],diagnostic:'',supported:true});const last=h.posts.at(-1)!;assert.equal(last.phase,'done');assert.equal(last.applied,false);assert.equal(last.studies!.length,5);
- const count=h.posts.length;service.lapsed(1);assert.equal(h.posts.length,count,'only once');
- service.stopAll();service.lapsed(1);assert.equal(h.posts.length,count);
+ service.start(1,details);await until(()=>!!done(h.posts));assert.equal(done(h.posts)!.applied,true);assert.equal(h.applied.length,1);
+ const page={generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[...ids],diagnostic:'',supported:true};
+ service.lapsed(1,{...page,url:'https://clinicaltrials.gov/search?cond=Other'});await until(()=>true);assert.equal(h.applied.length,1,'a different page never gets the old ranking');
+ const posts=h.posts.length;service.lapsed(1,page);await until(()=>h.applied.length===2);assert.equal(h.posts.length,posts,'re-applied from memory, with no new model call and nothing to report');
+ assert.equal(h.native.sent.filter(m=>m.type==='executeRank').length,1);
+ const failing=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED')});failing.setConsent(true);const other=createRankService(failing.host);
+ other.start(1,details);await until(()=>!!done(failing.posts));other.lapsed(1,page);const last=failing.posts.at(-1)!;assert.equal(last.applied,false,'without a cached ranking the overlay offers to apply again');
+ const count=failing.posts.length;other.lapsed(1,page);assert.equal(failing.posts.length,count,'only once');other.stopAll();other.lapsed(1,page);assert.equal(failing.posts.length,count);
+});
+
+test('with the local model provider the ranking runs on this device: no confirmation, a model name, unscored studies stay unscored',async()=>{
+ const local=(m:any)=>m.type==='prepareRank'?prepared(m,'local'):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'local',digest:DIGEST,scores:[{nctId:A,score:90,reasonId:'condition_match'},{nctId:B,failure:'LOCAL_INVALID_OUTPUT'},{nctId:C,score:40,reasonId:'broad_population'},{nctId:D,score:20,reasonId:'different_condition'},{nctId:E,score:95,reasonId:'condition_match'}]}};
+ const h=hostFake({reply:local});h.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b',aiRanking:'on'});
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ assert.equal(h.confirms.length,0,'nothing leaves the device, so nothing to confirm');
+ const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.equal(prepare.payload.provider,'local');assert.equal(prepare.payload.model,'qwen3.5:9b');
+ const state=done(h.posts)!;assert.equal(state.provider,'local');assert.equal(state.failure,undefined);
+ assert.deepEqual(state.studies!.map(s=>[s.nctId,s.percent,s.reasonId]),[[A,90,'condition_match'],[D,20,'different_condition'],[E,10,'sex_mismatch'],[C,4,'outside_age_range'],[B,0,'not_recruiting']]);
+ const none=hostFake({reply:()=>{throw Error('no native call expected')}});none.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:null,aiRanking:'on'});
+ createRankService(none.host).start(1,details);await until(()=>!!done(none.posts));assert.equal(done(none.posts)!.failure,'LOCAL_MODEL_NOT_CHOSEN');assert.equal(none.native.sent.length,0);assert.equal(done(none.posts)!.applied,true);
+ const allFailed=hostFake({reply:m=>m.type==='prepareRank'?prepared(m,'local'):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'local',digest:DIGEST,scores:ids.map(nctId=>({nctId,failure:'LOCAL_NOT_INSTALLED'}))}}});allFailed.host.prefs=h.host.prefs;
+ createRankService(allFailed.host).start(1,details);await until(()=>!!done(allFailed.posts));assert.equal(done(allFailed.posts)!.failure,'LOCAL_NOT_INSTALLED');
 });

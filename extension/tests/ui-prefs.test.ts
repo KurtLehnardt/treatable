@@ -112,10 +112,10 @@ test('no other key, value or health data can be written through the preferences 
  assert.deepEqual(area.calls, ['set:' + UI_PREFS_KEY]);
  assert.deepEqual([...area.store.keys()], [UI_PREFS_KEY]);
  assert.doesNotMatch(JSON.stringify([...area.store]), /PRIVATE_CANARY|83702|Pat Example|NCT0|fibromyalgia/);
- assert.deepEqual(area.store.get(UI_PREFS_KEY), LEGACY_LOADED, 'every save writes the full four-field record');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), LEGACY_LOADED, 'every save writes the full five-field record');
  assert.equal(await saveUiPrefs(area, SAVED), true);
  assert.deepEqual(area.store.get(UI_PREFS_KEY), SAVED);
- assert.deepEqual(Object.keys(area.store.get(UI_PREFS_KEY) as object).sort(), ['displayMode', 'localModel', 'provider', 'theme']);
+ assert.deepEqual(Object.keys(area.store.get(UI_PREFS_KEY) as object).sort(), ['aiRanking', 'displayMode', 'localModel', 'provider', 'theme']);
 });
 
 test('subscription delivers only valid local preference changes', () => {
@@ -359,6 +359,6 @@ test('a model choice saved by another Treatable page is kept when this page late
  act(()=>listeners.forEach(f=>f({[UI_PREFS_KEY]:{newValue:other}},'local')));
  assert.equal(latest.provider,'local');assert.equal(latest.localModel,'qwen3.5:9b');
  act(()=>latest.setTheme('dark'));
- assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark'},'the other page\'s Local choice is not reverted');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark',aiRanking:'on'},'the other page\'s Local choice is not reverted');
  act(()=>renderer.unmount());
 });

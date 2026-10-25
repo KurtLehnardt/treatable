@@ -1,12 +1,14 @@
 import type {AgeBand} from './real-contract.mjs';
 export type RankProvider='openai'|'local';
 export type RankSex='female'|'male';
-export type RankReason='strong_match'|'possible_match'|'unclear'|'unrelated';
+import type {RankReasonId as LocalRankReason} from './local-ranking.mjs';
+export type RankReason='strong_match'|'possible_match'|'unclear'|'unrelated'|LocalRankReason;
 export interface RankProfile{conditions:string[];ageBand?:AgeBand;sex?:RankSex}
 export interface PreparedRank{kind:'preparedRank';token:string;digest:string;expiresAt:number;provider:RankProvider;nctIds:string[];preview:{profile:RankProfile;request:Record<string,unknown>}}
 export interface RankScore{nctId:string;score:number;reasonId:RankReason;probabilities?:number[]}
-export interface RankResult{kind:'rankResult';mode:'live'|'test';provider:RankProvider;digest:string;scores:RankScore[]}
-export type RankRequest={id:string}&({type:'prepareRank';payload:{nctIds:string[];profile:RankProfile}}|{type:'executeRank';payload:{token:string;digest:string}}|{type:'revokeRank';payload:{token?:string}});
+export interface RankFailureEntry{nctId:string;failure:string}
+export interface RankResult{kind:'rankResult';mode:'live'|'test';provider:RankProvider;digest:string;scores:(RankScore|RankFailureEntry)[]}
+export type RankRequest={id:string}&({type:'prepareRank';payload:{nctIds:string[];profile:RankProfile;provider?:RankProvider;model?:string}}|{type:'executeRank';payload:{token:string;digest:string}}|{type:'revokeRank';payload:{token?:string}});
 export const RANK_REQUEST_TYPES:readonly string[];
 export const RANK_MAX_STUDIES:10;
 export const RANK_MAX_TERMS:6;

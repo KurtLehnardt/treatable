@@ -1,17 +1,20 @@
 // AI ranking contract, shared by the extension and the native helper. It is provider-neutral: one operation shape takes a
 // minimized profile plus up to ten public ClinicalTrials.gov records and returns one relevance score per study.
 //
-//   prepareRank  {nctIds, profile}            -> preparedRank {token, digest, expiresAt, provider, nctIds, preview:{profile, request}}
-//   executeRank  {token, digest}              -> rankResult   {mode, provider, digest, scores:[{nctId, score, reasonId, probabilities?}]}
+//   prepareRank  {nctIds, profile, provider?, model?} -> preparedRank {token, digest, expiresAt, provider, nctIds, preview:{profile, request}}
+//   executeRank  {token, digest}              -> rankResult   {mode, provider, digest, scores:[{nctId, score, reasonId, probabilities?} | {nctId, failure}]}
 //   revokeRank   {token?}                     -> ok
 //
 // The helper fetches the public records itself; the caller only names public NCT IDs. The profile never holds a name, exact
 // age, ZIP code, coordinates or notes: condition terms are short, refuse three digits in a row and age phrases, and age is a coarse band.
 // `preview.request` is the exact provider request body (for OpenAI, the Decisions request) so it can be shown before and after sending.
-// `probabilities` are the Decisions probabilities for the four relevance levels (RANK_LEVELS order). A provider without
-// probabilities (for example a local model) omits them.
+// `provider` is 'openai' (the default) or 'local'; 'local' names an installed Ollama model in `model` and keeps everything on this
+// device. `probabilities` are the Decisions probabilities for the four relevance levels (RANK_LEVELS order); OpenAI results always carry
+// them and a local model never does. A local model may fail for one study and still score the rest: that study carries only `failure`.
 import {AGE_BANDS} from './real-contract.mjs';
 import {exactKeys,isRecord,validId,utf8Bytes,MAX_MESSAGE_BYTES} from './demo-contract.mjs';
+import {isLocalModelName} from './local-model.mjs';
+import {RANK_REASONS as LOCAL_RANK_REASONS} from './local-ranking.mjs';
 export const RANK_REQUEST_TYPES=Object.freeze(['prepareRank','executeRank','revokeRank']);
 export const RANK_MAX_STUDIES=10;
 export const RANK_MAX_TERMS=6;
@@ -21,7 +24,7 @@ export const RANK_TTL_MS=5*60*1000;
 export const RANK_PROVIDERS=Object.freeze(['openai','local']);
 export const RANK_SEXES=Object.freeze(['female','male']);
 /** Short relevance reason ids a provider returns with each score. Deterministic record checks have their own ids in the extension. */
-export const RANK_REASONS=Object.freeze(['strong_match','possible_match','unclear','unrelated']);
+export const RANK_REASONS=Object.freeze(['strong_match','possible_match','unclear','unrelated',...Object.keys(LOCAL_RANK_REASONS)]);
 /** Decisions relevance levels, lowest first. Probabilities follow this order. */
 export const RANK_LEVELS=Object.freeze(['Unrelated','Unclear','Related','Strongly related']);
 const HASH=/^[a-f0-9]{64}$/,TOKEN=/^[A-Za-z0-9_-]{43}$/;
@@ -57,7 +60,7 @@ export function parseRankProfile(v){
 }
 export function parseRankRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid ranking operation');const p=v.payload;
- if(v.type==='prepareRank'){if(!exactKeys(p,['nctIds','profile']))throw Error('Invalid ranking preparation');rankNctIds(p.nctIds);parseRankProfile(p.profile);}
+ if(v.type==='prepareRank'){if(!exactKeys(p,['nctIds','profile','provider','model'])||p.provider!==undefined&&!RANK_PROVIDERS.includes(p.provider)||(p.provider==='local'?!isLocalModelName(p.model):p.model!==undefined))throw Error('Invalid ranking preparation');rankNctIds(p.nctIds);parseRankProfile(p.profile);}
  else if(v.type==='executeRank'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid ranking receipt');}
  else if(v.type==='revokeRank'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid ranking revocation');}
  else throw Error('Unsupported ranking operation');return v;
@@ -69,7 +72,11 @@ export function parsePreparedRank(v){
 function probabilities(v){if(v===undefined)return true;if(!Array.isArray(v)||v.length!==RANK_LEVELS.length||v.some(x=>typeof x!=='number'||!Number.isFinite(x)||x<0||x>1))return false;return Math.abs(v.reduce((a,b)=>a+b,0)-1)<=0.002;}
 export function parseRankResult(v){
  if(!exactKeys(v,['kind','mode','provider','digest','scores'])||v.kind!=='rankResult'||!['live','test'].includes(v.mode)||!RANK_PROVIDERS.includes(v.provider)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Array.isArray(v.scores)||utf8Bytes(v)>MAX_MESSAGE_BYTES)throw Error('Invalid ranking result');
- rankNctIds(v.scores.map(x=>x?.nctId));for(const s of v.scores)if(!exactKeys(s,['nctId','score','reasonId','probabilities'])||!Number.isInteger(s.score)||s.score<0||s.score>100||!RANK_REASONS.includes(s.reasonId)||!probabilities(s.probabilities)||v.provider==='openai'&&s.probabilities===undefined)throw Error('Invalid study ranking');
+ rankNctIds(v.scores.map(x=>x?.nctId));
+ for(const s of v.scores){
+  if(isRecord(s)&&s.failure!==undefined){if(v.provider==='openai'||!exactKeys(s,['nctId','failure'])||typeof s.failure!=='string'||!/^[A-Z_]{1,40}$/.test(s.failure))throw Error('Invalid study ranking failure');continue;}
+  if(!exactKeys(s,['nctId','score','reasonId','probabilities'])||!Number.isInteger(s.score)||s.score<0||s.score>100||!RANK_REASONS.includes(s.reasonId)||!probabilities(s.probabilities)||v.provider==='openai'&&s.probabilities===undefined||v.provider==='local'&&s.probabilities!==undefined)throw Error('Invalid study ranking');
+ }
  return v;
 }
 export function parseRankReply(v,expectedId){
