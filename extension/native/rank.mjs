@@ -4,7 +4,8 @@
 // Provider backends share one shape (see RANK_BACKENDS):
 //   buildRequest(profile, studies, {model}) -> the exact request body (or bodies) shown to the person; nothing is sent while preparing
 //   run(transport, pinned, {signal, onTrace, runtime}) -> [{nctId, score, reasonId, probabilities?} | {nctId, failure}] in pinned.nctIds order
-// `profile` is {conditions, ageBand?, sex?} (shared/rank-contract.mjs). `studies` are normalized public records
+// `profile` is {conditions} and nothing else (shared/rank-contract.mjs); each backend builds its request from the condition terms
+// alone. `studies` are normalized public records
 // (live-evidence.mjs normalizeLiveRecord). 'openai' uses one Decisions request; 'local' runs the installed Ollama model on this device
 // through local-rank.mjs, needs no key and returns no probabilities.
 import {createHash,randomBytes} from 'node:crypto';
@@ -21,7 +22,7 @@ export const RANK_TERM_RULE='Condition terms are literal text typed by the perso
 const LEVEL_DESCRIPTIONS=Object.freeze(['Public evidence concerns a different condition.','Public evidence is insufficient to assess topical relevance.','Public evidence concerns the searched condition or its symptoms.','Public evidence directly concerns the searched condition.']);
 /** The Decisions request: one score question per study, rating only topical relevance to the condition terms. */
 export function buildOpenAiRankRequest(profile,studies){
- return{model:'gpt-6-luna',input:[{role:'user',content:[{type:'input_text',text:'Rate how relevant each fetched public study is to the condition terms of a minimized, explicitly consented profile. Rate topical relevance only, never eligibility, enrollment probability, safety or benefit. A coarse age band and missing criteria establish nothing about a person. '+RANK_TERM_RULE+' '+UNTRUSTED_TEXT_RULE},{type:'input_json',data:{minimizedHealthData:true,profile,publicStudies:studies.map(modelStudy)}}]}],questions:studies.map(s=>({type:'score',name:s.id,instructions:`Rate only the topical relevance of public record ${s.id} to the profile's condition terms.`,levels:RANK_LEVELS.map((label,i)=>({label,description:LEVEL_DESCRIPTIONS[i]}))})),prompt_cache_options:{mode:'explicit'},safety_identifier:SAFETY_IDENTIFIER};
+ return{model:'gpt-6-luna',input:[{role:'user',content:[{type:'input_text',text:'Rate how relevant each fetched public study is to the condition terms of a minimized, explicitly consented profile. Rate topical relevance only, never eligibility, enrollment probability, safety or benefit. Missing criteria establish nothing about a person. '+RANK_TERM_RULE+' '+UNTRUSTED_TEXT_RULE},{type:'input_json',data:{minimizedHealthData:true,profile:{conditions:[...profile.conditions]},publicStudies:studies.map(modelStudy)}}]}],questions:studies.map(s=>({type:'score',name:s.id,instructions:`Rate only the topical relevance of public record ${s.id} to the profile's condition terms.`,levels:RANK_LEVELS.map((label,i)=>({label,description:LEVEL_DESCRIPTIONS[i]}))})),prompt_cache_options:{mode:'explicit'},safety_identifier:SAFETY_IDENTIFIER};
 }
 /** Validates the Decisions answers: one score per study, four level probabilities that sum to one and agree with the score. */
 export function openAiRankScores(raw,nctIds){
@@ -32,7 +33,7 @@ export function openAiRankScores(raw,nctIds){
  return nctIds.map(id=>byId.get(id));
 }
 const localStudy=s=>({nctId:s.id,title:s.title,conditions:[...s.conditions],summary:s.summary,criteria:s.criteria});
-const localProfile=p=>({conditions:[...p.conditions],...(p.ageBand?{ageBand:p.ageBand}:{}),...(p.sex?{sex:p.sex}:{})});
+const localProfile=p=>({conditions:[...p.conditions]});
 export const RANK_BACKENDS=Object.freeze({
  // The local model sees only the condition terms and the public record text, one study per request; see local-rank.mjs.
  local:Object.freeze({

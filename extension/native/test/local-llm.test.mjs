@@ -206,13 +206,15 @@ test('installer: Ollama overrides are refused outside an isolated test home, bef
 import{runLocalRanking,buildLocalRankRequest,parseLocalRankOutput}from'../local-rank.mjs';
 import{parseRankingProfile,parseRankingStudies,parseLocalRankingResult,RANK_REASONS}from'../../shared/local-ranking.mjs';
 const rankStudies=n=>Array.from({length:n},(_,i)=>({nctId:`NCT9999990${i}`,title:`Synthetic public study ${i}`,conditions:['Fibromyalgia'],summary:'A public synthetic summary.',criteria:'Inclusion Criteria: adults.'}));
-const PROFILE={conditions:['fibromyalgia'],ageBand:'45_59',sex:'female',state:'ID'};
+const PROFILE={conditions:['fibromyalgia']},DETAILED={...PROFILE,ageBand:'45_59',sex:'female',state:'ID'};
 test('ranking contract: minimized profile and public records only; strict scores, catalog reasons and no probabilities',()=>{
- parseRankingProfile(PROFILE);parseRankingProfile({conditions:['fibromyalgia']});
- for(const bad of[{conditions:[]},{conditions:['x'],name:'PATIENT_CANARY'},{conditions:['x'],ageBand:'47'},{conditions:['x'],zip:'83702'},{conditions:['a\u0000']},{conditions:Array(7).fill('x').map((x,i)=>x+i)}])assert.throws(()=>parseRankingProfile(bad),JSON.stringify(bad));
+ parseRankingProfile(PROFILE);
+ for(const extra of[{ageBand:'45_59'},{sex:'female'},{state:'ID'},{ageBand:'45_59',sex:'female',state:'ID'}])assert.throws(()=>parseRankingProfile({...PROFILE,...extra}),JSON.stringify(extra));
+ for(const bad of[{conditions:[]},{conditions:['x'],name:'PATIENT_CANARY'},{conditions:['x'],ageBand:'47'},{},{conditions:undefined},{conditions:['x'],zip:'83702'},{conditions:['a\u0000']},{conditions:Array(7).fill('x').map((x,i)=>x+i)}])assert.throws(()=>parseRankingProfile(bad),JSON.stringify(bad));
  parseRankingStudies(rankStudies(10));assert.throws(()=>parseRankingStudies(rankStudies(11)));assert.throws(()=>parseRankingStudies([{...rankStudies(1)[0],notes:'x'}]));
  const body=buildLocalRankRequest(PROFILE,rankStudies(1)[0],'qwen3.5:9b'),sent=JSON.stringify(body);
- assert.ok(!/45_59|female|"ID"|ageBand|state/.test(sent.replace(body.messages[0].content,'')),'age band, sex and state never reach the model');assert.match(body.messages[1].content,/fibromyalgia/);assert.deepEqual(Object.keys(body.format.properties),['score','reasonId']);
+ assert.ok(!/45_59|female|"ID"|ageBand|state/.test(sent.replace(body.messages[0].content,'')),'age band, sex and state never reach the model');assert.equal(body.messages[1].content,JSON.stringify({searchedConditions:['fibromyalgia']}),'the searched terms are the only profile content');
+ assert.deepEqual(buildLocalRankRequest(DETAILED,rankStudies(1)[0],'qwen3.5:9b'),body,'the request is built from the condition terms alone, so extra profile fields change nothing');assert.match(body.messages[1].content,/fibromyalgia/);assert.deepEqual(Object.keys(body.format.properties),['score','reasonId']);
  assert.deepEqual(parseLocalRankOutput('{"score":91,"reasonId":"condition_match"}'),{score:91,reasonId:'condition_match'});
  for(const bad of['{"score":95,"reasonId":"different_condition"}','{"score":10,"reasonId":"condition_match"}','{"score":91.5,"reasonId":"condition_match"}','{"score":101,"reasonId":"condition_match"}','{"score":80,"reasonId":"eligible"}','{"score":80,"reasonId":"condition_match","probability":0.9}','not json'])assert.throws(()=>parseLocalRankOutput(bad),{code:'LOCAL_INVALID_OUTPUT'},bad);
  assert.throws(()=>parseLocalRankingResult({provider:'local',model:'qwen3.5:9b',version:null,durationMs:1,studies:[{nctId:'NCT99999900',score:80,reasonId:'condition_match',probabilities:[1]}]},['NCT99999900']));
@@ -232,6 +234,7 @@ test('ranking against the fake runtime: ten studies in input order, per-study va
   r=await runLocalRanking(MISSING_RUNTIME,{profile:PROFILE,studies:studies.slice(0,2),model:'qwen3.5:9b'});assert.ok(r.studies.every(s=>s.failure==='LOCAL_NOT_INSTALLED'));
   await fake.set({rank:'slow',chatDelay:20000});const controller=new AbortController();setTimeout(()=>controller.abort(),400);await assert.rejects(runLocalRanking(rt,{profile:PROFILE,studies,model:'qwen3.5:9b'},{signal:controller.signal}),{code:'CANCELLED'});
   await assert.rejects(runLocalRanking(rt,{profile:{conditions:['x'],name:'PATIENT_CANARY'},studies,model:'qwen3.5:9b'}));
+  await assert.rejects(runLocalRanking(rt,{profile:DETAILED,studies,model:'qwen3.5:9b'}),{message:/Invalid ranking profile/},'a profile with an age band, sex or state never reaches the model');
  }finally{await rt?.stop();await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:100})}
 });
 

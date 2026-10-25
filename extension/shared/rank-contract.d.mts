@@ -1,9 +1,8 @@
-import type {AgeBand} from './real-contract.mjs';
 export type RankProvider='openai'|'local';
 export type RankSex='female'|'male';
 import type {RankReasonId as LocalRankReason} from './local-ranking.mjs';
 export type RankReason='strong_match'|'possible_match'|'unclear'|'unrelated'|LocalRankReason;
-export interface RankProfile{conditions:string[];ageBand?:AgeBand;sex?:RankSex}
+export interface RankProfile{conditions:string[]}
 export interface PreparedRank{kind:'preparedRank';token:string;digest:string;expiresAt:number;provider:RankProvider;nctIds:string[];preview:{profile:RankProfile;request:Record<string,unknown>}}
 export interface RankScore{nctId:string;score:number;reasonId:RankReason;probabilities?:number[]}
 export interface RankFailureEntry{nctId:string;failure:string}

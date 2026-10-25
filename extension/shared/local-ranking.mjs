@@ -1,10 +1,9 @@
 // Local-model backend for AI result ranking: the input and output shapes the ranking operation uses, validated strictly.
-// Input: a minimized profile (public condition terms from the page search, optional age band, sex and US state) and 1–10 public study
-// records. Only the condition terms and the public records reach the local model; age, sex, state and recruitment checks are deterministic
-// and stay outside the model. Output per study: a 0–100 relevance score and one reason ID from the fixed catalog below, or a failure
+// Input: a minimized profile (public condition terms from the page search and nothing else) and 1–10 public study records. Only the
+// condition terms and the public records reach the local model; age, sex, state and recruitment checks are deterministic and stay on
+// the device, outside this contract. Output per study: a 0–100 relevance score and one reason ID from the fixed catalog below, or a failure
 // code. A local model reports no probabilities, so none are returned or invented.
 import{exactKeys,isRecord,utf8Bytes}from'./demo-contract.mjs';
-import{AGE_BANDS,US_STATES}from'./real-contract.mjs';
 import{isLocalModelName}from'./local-model.mjs';
 export const RANK_MAX_STUDIES=10;
 // Why a study got its score. Rendered only from this table; the model returns the ID.
@@ -21,9 +20,9 @@ export const RANK_REASONS=Object.freeze({
 export const RANK_REASON_SCORE_BOUNDS=Object.freeze({condition_match:[50,100],related_condition:[25,95],symptom_focus:[25,95],broad_population:[10,80],different_condition:[0,45],healthy_volunteers:[0,45],insufficient_information:[0,60]});
 const NCT=/^NCT[0-9]{8}$/;
 const text=(v,max)=>typeof v==='string'&&v.length<=max&&!/[\u0000-\u0008\u000b-\u001f\u007f]/.test(v);
+/** Exactly {conditions}: any other key, including ageBand, sex and state, is refused rather than ignored. */
 export function parseRankingProfile(v){
- if(!exactKeys(v,['conditions','ageBand','sex','state'])||!Array.isArray(v.conditions)||!v.conditions.length||v.conditions.length>6||v.conditions.some(c=>!text(c,120)||!c.trim())||new Set(v.conditions).size!==v.conditions.length)throw Error('Invalid ranking profile');
- if(v.ageBand!==undefined&&!AGE_BANDS.includes(v.ageBand)||v.sex!==undefined&&!['female','male','other','prefer_not_to_say'].includes(v.sex)||v.state!==undefined&&!US_STATES.includes(v.state))throw Error('Invalid optional ranking profile field');
+ if(!isRecord(v)||Object.keys(v).length!==1||!Object.hasOwn(v,'conditions')||!Array.isArray(v.conditions)||!v.conditions.length||v.conditions.length>6||v.conditions.some(c=>!text(c,120)||!c.trim())||new Set(v.conditions).size!==v.conditions.length)throw Error('Invalid ranking profile');
  return v;
 }
 export function parseRankingStudies(v){

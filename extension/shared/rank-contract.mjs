@@ -5,13 +5,13 @@
 //   executeRank  {token, digest}              -> rankResult   {mode, provider, digest, scores:[{nctId, score, reasonId, probabilities?} | {nctId, failure}]}
 //   revokeRank   {token?}                     -> ok
 //
-// The helper fetches the public records itself; the caller only names public NCT IDs. The profile never holds a name, exact
-// age, ZIP code, coordinates or notes: condition terms are short, refuse three digits in a row and age phrases, and age is a coarse band.
+// The helper fetches the public records itself; the caller only names public NCT IDs. The profile holds condition terms and nothing
+// else: no name, age, age band, sex, ZIP code, coordinates or notes. Condition terms are short and refuse three digits in a row and
+// age phrases. The extension checks age and sex against the public records on the device and never sends them.
 // `preview.request` is the exact provider request body (for OpenAI, the Decisions request) so it can be shown before and after sending.
 // `provider` is 'openai' (the default) or 'local'; 'local' names an installed Ollama model in `model` and keeps everything on this
 // device. `probabilities` are the Decisions probabilities for the four relevance levels (RANK_LEVELS order); OpenAI results always carry
 // them and a local model never does. A local model may fail for one study and still score the rest: that study carries only `failure`.
-import {AGE_BANDS} from './real-contract.mjs';
 import {exactKeys,isRecord,validId,utf8Bytes,MAX_MESSAGE_BYTES} from './demo-contract.mjs';
 import {isLocalModelName} from './local-model.mjs';
 import {RANK_REASONS as LOCAL_RANK_REASONS} from './local-ranking.mjs';
@@ -22,6 +22,7 @@ export const RANK_TERM_MAX_CHARS=80;
 export const RANK_TTL_MS=5*60*1000;
 /** Providers the helper may report. A local model backend adds its own id here and to the extension's provider handling. */
 export const RANK_PROVIDERS=Object.freeze(['openai','local']);
+/** Sexes the extension accepts for its on-device record checks. They are never part of the ranking profile. */
 export const RANK_SEXES=Object.freeze(['female','male']);
 /** Short relevance reason ids a provider returns with each score. Deterministic record checks have their own ids in the extension. */
 export const RANK_REASONS=Object.freeze(['strong_match','possible_match','unclear','unrelated',...Object.keys(LOCAL_RANK_REASONS)]);
@@ -52,11 +53,11 @@ export function rankTerm(v){if(typeof v!=='string')return undefined;const text=v
 /** Reason id for a 0-100 relevance score, used when a provider has no reason of its own. */
 export function rankReasonForScore(score){return score>=75?'strong_match':score>=50?'possible_match':score>=25?'unclear':'unrelated';}
 export function rankNctIds(v){if(!Array.isArray(v)||!v.length||v.length>RANK_MAX_STUDIES||new Set(v).size!==v.length||v.some(x=>typeof x!=='string'||!/^NCT[0-9]{8}$/.test(x)))throw Error('Choose one to ten unique public NCT IDs');return [...v];}
+/** The profile is exactly {conditions}: any other key, including ageBand and sex, is refused rather than ignored. */
 export function parseRankProfile(v){
- if(!exactKeys(v,['conditions','ageBand','sex'])||!Array.isArray(v.conditions)||!v.conditions.length||v.conditions.length>RANK_MAX_TERMS)throw Error('Invalid ranking profile');
+ if(!isRecord(v)||Object.keys(v).length!==1||!Object.hasOwn(v,'conditions')||!Array.isArray(v.conditions)||!v.conditions.length||v.conditions.length>RANK_MAX_TERMS)throw Error('Invalid ranking profile');
  const conditions=v.conditions.map(rankTerm);if(conditions.some((x,i)=>x===undefined||x!==v.conditions[i])||new Set(conditions.map(x=>x.toLocaleLowerCase('en-US'))).size!==conditions.length)throw Error('Invalid condition terms');
- if(v.ageBand!==undefined&&!AGE_BANDS.includes(v.ageBand))throw Error('Invalid age band');if(v.sex!==undefined&&!RANK_SEXES.includes(v.sex))throw Error('Invalid sex');
- return{conditions:[...conditions],...(v.ageBand!==undefined?{ageBand:v.ageBand}:{}),...(v.sex!==undefined?{sex:v.sex}:{})};
+ return{conditions:[...conditions]};
 }
 export function parseRankRequest(v){
  if(!exactKeys(v,['id','type','payload'])||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||!isRecord(v.payload))throw Error('Invalid ranking operation');const p=v.payload;

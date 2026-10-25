@@ -1,21 +1,26 @@
 // AI ranking (prepareRank/executeRank/revokeRank): provider request shape, Decisions validation, one-use pinned receipts and host routing.
 import test,{mock}from'node:test';import assert from'node:assert/strict';import{rm}from'node:fs/promises';
-import{PreparedRankStore,runPreparedRank,buildOpenAiRankRequest,openAiRankScores,RANK_TERM_RULE}from'../rank.mjs';
+import{PreparedRankStore,runPreparedRank,buildOpenAiRankRequest,openAiRankScores,RANK_BACKENDS,RANK_TERM_RULE}from'../rank.mjs';
 import{normalizeLiveRecord}from'../live-evidence.mjs';import{ApiError}from'../transport.mjs';
-import{parseRankRequest,parsePreparedRank,parseRankResult,RANK_LEVELS,RANK_TTL_MS}from'../../shared/rank-contract.mjs';
+import{parseRankRequest,parsePreparedRank,parseRankProfile,parseRankResult,RANK_LEVELS,RANK_TTL_MS}from'../../shared/rank-contract.mjs';
 import{installHost,writeHook,startHost,readLines}from'./host-harness.mjs';
 const ids=['NCT99999910','NCT99999911'];
 const record=(nctId,status='RECRUITING')=>({hasResults:false,protocolSection:{identificationModule:{nctId,briefTitle:`Fictional public study ${nctId}`},statusModule:{overallStatus:status},conditionsModule:{conditions:['Fictional asthma']},descriptionModule:{briefSummary:'Public summary'},eligibilityModule:{eligibilityCriteria:'Public criteria',minimumAge:'18 Years',maximumAge:'65 Years',sex:'ALL',healthyVolunteers:false}}});
-const profile={conditions:['Asthma'],ageBand:'30_44',sex:'female'};
+const profile={conditions:['Asthma']},withDetails={...profile,ageBand:'30_44',sex:'female'};
+const DETAIL_LEAK=/30_44|female|ageBand|age band|\bsex\b/i;
 const answer=(name,level)=>({type:'score',name,score:level,confidence:.9,probabilities:RANK_LEVELS.map((label,value)=>({value,label,probability:value===level?1:0}))});
 const scripted=(answers,{fail}={})=>{const calls=[];return{mode:'test',calls,async request(method,path,body){calls.push({method,path,body:structuredClone(body)});if(fail)throw new ApiError(fail);return{answers:answers(body)}}}};
 
-test('the OpenAI ranking request carries only the minimized profile, one relevance question per study and the literal-term rule',()=>{
+test('the OpenAI ranking request carries only the condition terms and public records, one relevance question per study and the literal-term rule',()=>{
  const studies=ids.map(id=>normalizeLiveRecord(record(id),id,1));const request=buildOpenAiRankRequest(profile,studies);
  assert.equal(request.model,'gpt-6-luna');assert.deepEqual(request.questions.map(q=>q.name),ids);assert.ok(request.questions.every(q=>q.type==='score'&&q.levels.length===4));
- assert.deepEqual(request.input[0].content[1].data.profile,profile);assert.match(request.input[0].content[0].text,new RegExp(RANK_TERM_RULE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
- assert.match(request.input[0].content[0].text,/never eligibility/);
- for(const banned of [/zip/i,/latitude|longitude/i,/notes?"/i,/"name"/i,/"age"/])assert.doesNotMatch(JSON.stringify(request.input[0].content[1].data.profile),banned);
+ const [prompt,data]=request.input[0].content;assert.deepEqual(data.data.profile,profile);assert.match(prompt.text,new RegExp(RANK_TERM_RULE.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+ assert.match(prompt.text,/never eligibility/);assert.doesNotMatch(prompt.text,/\bage\b|age band|\bsex\b/i,'the prompt never mentions age or sex');
+ assert.deepEqual(Object.keys(data.data).sort(),['minimizedHealthData','profile','publicStudies']);assert.deepEqual(data.data.publicStudies.map(x=>x.id),ids);
+ for(const banned of [/zip/i,/latitude|longitude/i,/notes?"/i,/"name"/i,/"age"/])assert.doesNotMatch(JSON.stringify(data.data.profile),banned);
+ // The request is built from the condition terms alone, so even a profile object that carries more cannot leak it.
+ const polluted=buildOpenAiRankRequest(withDetails,studies);assert.deepEqual(polluted,request,'extra profile keys change nothing');
+ const {publicStudies:_records,...withoutRecords}=polluted.input[0].content[1].data;assert.deepEqual(withoutRecords,{minimizedHealthData:true,profile:{conditions:['Asthma']}});assert.doesNotMatch(JSON.stringify([polluted.input[0].content[0],withoutRecords,polluted.questions]),DETAIL_LEAK);
 });
 
 test('Decisions answers become 0-100 scores with level probabilities; malformed answers are refused',()=>{
@@ -27,10 +32,21 @@ test('Decisions answers become 0-100 scores with level probabilities; malformed 
  for(const raw of bad)assert.throws(()=>openAiRankScores(raw,ids),{code:'INVALID_DECISIONS_OUTPUT'});
 });
 
+test('the profile holds exactly the condition terms: ageBand, sex and every other key are refused',()=>{
+ const prepare=p=>parseRankRequest({id:'r1',type:'prepareRank',payload:{nctIds:ids,profile:p}});
+ assert.deepEqual(parseRankProfile(profile),profile);assert.deepEqual(parseRankProfile({conditions:['Asthma','Type 2 diabetes']}),{conditions:['Asthma','Type 2 diabetes']});
+ for(const extra of [{ageBand:'30_44'},{sex:'female'},{sex:'male'},{ageBand:'30_44',sex:'female'},{state:'ID'},{age:45},{name:'Pat Example'},{zip:'90210'},{notes:'x'},{extra:1},{ageBand:undefined},{sex:undefined}]){
+  assert.throws(()=>parseRankProfile({...profile,...extra}),JSON.stringify(extra));assert.throws(()=>prepare({...profile,...extra}),JSON.stringify(extra));
+  assert.throws(()=>parsePreparedRank({kind:'preparedRank',token:'t'.repeat(43),digest:'a'.repeat(64),expiresAt:1,provider:'openai',nctIds:ids,preview:{profile:{...profile,...extra},request:{}}}),'a prepared ranking never previews '+JSON.stringify(extra));
+ }
+ for(const bad of [undefined,null,[],'Asthma',{},{ageBand:'30_44'},{conditions:undefined},{conditions:'Asthma'},{conditions:[]},{conditions:['Asthma',7]}])assert.throws(()=>parseRankProfile(bad),JSON.stringify(bad));
+ assert.deepEqual(Object.keys(parseRankProfile(profile)),['conditions'],'the parsed profile is rebuilt, never the input object');
+});
+
 test('the contract refuses names, ZIP codes, exact ages, extra profile fields and unpinned results',()=>{
  const prepare=p=>parseRankRequest({id:'r1',type:'prepareRank',payload:{nctIds:ids,profile:p}});
  assert.equal(prepare(profile).type,'prepareRank');
- for(const p of [{...profile,name:'Pat Example'},{...profile,zip:'90210'},{...profile,age:45},{...profile,notes:'x'},{conditions:['asthma 90210']},{conditions:['45 years old']},{conditions:[]},{conditions:['a','b','c','d','e','f','g']},{...profile,ageBand:'45'},{...profile,sex:'other'},{conditions:['Asthma','asthma']}])assert.throws(()=>prepare(p),JSON.stringify(p));
+ for(const p of [{...profile,name:'Pat Example'},{...profile,zip:'90210'},{...profile,age:45},{...profile,notes:'x'},{conditions:['asthma 90210']},{conditions:['45 years old']},{conditions:[]},{conditions:['a','b','c','d','e','f','g']},{...profile,ageBand:'45'},{...profile,sex:'other'},{...profile,ageBand:'30_44'},{...profile,sex:'female'},{conditions:['Asthma','asthma']}])assert.throws(()=>prepare(p),JSON.stringify(p));
  assert.throws(()=>parseRankRequest({id:'r2',type:'executeRank',payload:{token:'x'.repeat(43),digest:'a'.repeat(64),extra:1}}));
  assert.throws(()=>parseRankResult({kind:'rankResult',mode:'live',provider:'openai',digest:'a'.repeat(64),scores:[{nctId:ids[0],score:101,reasonId:'strong_match'}]}));
  assert.throws(()=>parseRankResult({kind:'rankResult',mode:'live',provider:'openai',digest:'a'.repeat(64),scores:[{nctId:ids[0],score:50,reasonId:'eligible'}]}));
@@ -44,6 +60,8 @@ test('a prepared ranking is pinned: one use, exact receipt, fixed expiry, revoca
  let time=0,invalidations=0;const fetched=[];const store=new PreparedRankStore({fetchRecord:async id=>{fetched.push(id);return record(id)},now:()=>time,wallNow:()=>1000+time,onInvalidate:()=>invalidations++});
  try{
   const p=await store.prepare({nctIds:ids,profile});parsePreparedRank(p);assert.deepEqual(fetched,ids);assert.equal(p.provider,'openai');assert.equal(p.expiresAt,1000+RANK_TTL_MS);assert.deepEqual(p.preview.profile,profile);
+  const [,previewData]=p.preview.request.input[0].content;assert.deepEqual(previewData.data.profile,profile);assert.deepEqual(previewData.data.publicStudies.map(x=>x.id),ids);assert.doesNotMatch(JSON.stringify([p.preview.profile,p.preview.request.input[0].content[0],previewData.data.profile,p.preview.request.questions]),DETAIL_LEAK,'the Decisions body holds condition terms and public records only');
+  await assert.rejects(store.prepare({nctIds:ids,profile:withDetails}),{message:/Invalid ranking profile/},'a profile with an age band or sex is refused before any record is fetched');assert.deepEqual(fetched,ids);
   assert.throws(()=>store.take({token:p.token,digest:'0'.repeat(64)}),{code:'INVALID_CONSENT_RECEIPT'});
   const pinned=store.take({token:p.token,digest:p.digest});assert.deepEqual(pinned.request,p.preview.request);assert.throws(()=>store.take({token:p.token,digest:p.digest}),{code:'INVALID_CONSENT_RECEIPT'},'one use');
   const transport=scripted(body=>body.questions.map((q,i)=>answer(q.name,i?1:3)));const result=await runPreparedRank(transport,pinned,{});
@@ -66,6 +84,7 @@ test('stdio: prepareRank then executeRank ranks through Decisions once; the rece
   const sent=await openai();assert.deepEqual(sent.map(x=>x.method+' '+x.path),['POST /v1/decisions']);assert.deepEqual(sent[0].body,prepared.result.preview.request);
   assert.equal((await host.call({id:'rankReplay',type:'executeRank',payload:{token:prepared.result.token,digest:prepared.result.digest}})).code,'INVALID_CONSENT_RECEIPT');
   assert.equal((await host.call({id:'rankBad',type:'prepareRank',payload:{nctIds:ids,profile:{...profile,zip:'90210'}}})).code,'INVALID_REQUEST');
+  for(const extra of [{ageBand:'30_44'},{sex:'female'}])assert.equal((await host.call({id:'rankBad2',type:'prepareRank',payload:{nctIds:ids,profile:{...profile,...extra}}})).code,'INVALID_REQUEST',JSON.stringify(extra));
   host.child.stdin.end();await host.exit;host=undefined;
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});}
 });
@@ -76,11 +95,14 @@ test('the local provider pins per-study local requests, needs no transport and k
   assert.throws(()=>parseRankRequest({id:'r',type:'prepareRank',payload:{nctIds:ids,profile,provider:'local'}}),'a local ranking names its model');
   assert.throws(()=>parseRankRequest({id:'r',type:'prepareRank',payload:{nctIds:ids,profile,model:'qwen3.5:9b'}}),'a model only goes with the local provider');
   const p=await store.prepare({nctIds:ids,profile,provider:'local',model:'qwen3.5:9b'});assert.equal(p.provider,'local');assert.equal(p.preview.request.model,'qwen3.5:9b');assert.equal(p.preview.request.requests.length,2);
-  assert.doesNotMatch(JSON.stringify(p.preview.request.requests),/30_44|female/,'only the condition terms and public records reach the local model');
+  assert.doesNotMatch(JSON.stringify(p.preview.request.requests),DETAIL_LEAK,'only the condition terms and public records reach the local model');
+  for(const r of p.preview.request.requests)assert.equal(r.messages[1].content,JSON.stringify({searchedConditions:['Asthma']}),'the searched terms are the only profile content');
+  await assert.rejects(store.prepare({nctIds:ids,profile:withDetails,provider:'local',model:'qwen3.5:9b'}),{message:/Invalid ranking profile/});
+  const studies=ids.map(id=>normalizeLiveRecord(record(id),id,1)),polluted=RANK_BACKENDS.local.buildRequest(withDetails,studies,{model:'qwen3.5:9b'});assert.deepEqual(polluted,p.preview.request,'the local request is built from the condition terms alone');
   const pinned=store.take({token:p.token,digest:p.digest});
   const runtime={version:'99.0.0',async ensure(){},async describe(){return{completion:true}},async chat(body){seen.push(body);const id=JSON.parse(body.messages.at(-1).content).nctId;if(id===ids[1])return{message:{content:'not json'}};return{message:{content:JSON.stringify({score:92,reasonId:'condition_match'})}}}};
   const result=await runPreparedRank(undefined,pinned,{runtime});
-  assert.equal(result.provider,'local');assert.equal(seen.length,2);assert.deepEqual(result.scores,[{nctId:ids[0],score:92,reasonId:'condition_match'},{nctId:ids[1],failure:'LOCAL_INVALID_OUTPUT'}]);
+  assert.equal(result.provider,'local');assert.equal(seen.length,2);assert.ok(seen.every(b=>b.messages[1].content===JSON.stringify({searchedConditions:['Asthma']})&&!DETAIL_LEAK.test(JSON.stringify(b.messages.slice(1)))),'every request sent to the local model holds the condition terms and public records only');assert.deepEqual(result.scores,[{nctId:ids[0],score:92,reasonId:'condition_match'},{nctId:ids[1],failure:'LOCAL_INVALID_OUTPUT'}]);
   assert.throws(()=>parseRankResult({...result,scores:[{nctId:ids[0],score:92,reasonId:'condition_match',probabilities:[0,0,0,1]},result.scores[1]]}),'a local result never claims probabilities');
   assert.throws(()=>parseRankResult({...result,provider:'openai',scores:[{nctId:ids[0],failure:'LOCAL_TIMEOUT'},result.scores[1]]}),'an OpenAI result has no per-study failures');
  }finally{store.discard();}
