@@ -11,7 +11,7 @@ const guideSources = sources.filter(source => /^(guide-|use-guide)/.test(source.
 
 test('only the guide state module touches extension storage beyond the existing deletion-only legacy cleanup', () => {
   const touching = sources.filter(({ text }) => /\bstorage\??\.(local|session)\b|\.storage\b/.test(text)).map(source => source.name).sort();
-  assert.deepEqual(touching, ['guide-state.ts', 'ui-prefs.ts', 'use-panel-controller.ts', 'use-private-matching.ts'] /* ui-prefs.ts is the display preferences module; the last two only call the deletion-only legacy cleanup */);
+  assert.deepEqual(touching, ['guide-state.ts', 'ranking-consent.ts', 'ui-prefs.ts', 'use-panel-controller.ts', 'use-private-matching.ts'] /* ui-prefs.ts is the display preferences module; ranking-consent.ts holds one fixed session-only marker (strict test in hardening.test.ts); the last two only call the deletion-only legacy cleanup */);
   const state = sources.find(source => source.name === 'guide-state.ts')!.text;
   assert.deepEqual(state.match(/\.(set|get|remove|clear|getKeys|getBytesInUse|setAccessLevel|onChanged)\(/g)?.map(call => call.slice(1, -1)).sort().filter((v, i, all) => all.indexOf(v) === i), ['get', 'remove', 'set']);
   assert.doesNotMatch(state, /\.(clear|getKeys|getBytesInUse|setAccessLevel|onChanged)\b/);

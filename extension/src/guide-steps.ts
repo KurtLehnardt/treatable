@@ -4,27 +4,27 @@ import type { PageKind } from './guide-finders';
  * The intro guide as one flat, ordered list. The index into this list is the only progress value ever stored
  * (in session storage, as a bare number), so the order may only change together with ONBOARDING_VERSION.
  */
-export const ONBOARDING_VERSION = 1;
+export const ONBOARDING_VERSION = 2;
 
 export type IntroStepId =
-  | 'welcome' | 'appearance' | 'search-first' | 'condition' | 'filters-offer' | 'filters'
+  | 'welcome' | 'appearance' | 'ai-ranking' | 'search-first' | 'condition' | 'filters-offer' | 'filters'
   | 'results' | 'understand' | 'brief' | 'personalize' | 'draft' | 'send' | 'done';
 
 export const INTRO_STEPS: readonly IntroStepId[] = [
-  'welcome', 'appearance', 'search-first', 'condition', 'filters-offer', 'filters',
+  'welcome', 'appearance', 'ai-ranking', 'search-first', 'condition', 'filters-offer', 'filters',
   'results', 'understand', 'brief', 'personalize', 'draft', 'send', 'done',
 ];
 
 /** Which part of the experience hosts the step. Page steps point at ClinicalTrials.gov itself. */
 export const STEP_HOST: Record<IntroStepId, 'panel' | 'page'> = {
-  welcome: 'panel', appearance: 'panel', 'search-first': 'panel', condition: 'page', 'filters-offer': 'page',
+  welcome: 'panel', appearance: 'panel', 'ai-ranking': 'panel', 'search-first': 'panel', condition: 'page', 'filters-offer': 'page',
   filters: 'page', results: 'page', understand: 'panel', brief: 'panel', personalize: 'panel', draft: 'panel',
   send: 'panel', done: 'panel',
 };
 
 /** The Treatable control a panel step points at, matched by the data-treatable-guide attribute. */
 export const PANEL_TARGET: Partial<Record<IntroStepId, string>> = {
-  appearance: 'appearance', understand: 'understand', brief: 'brief', personalize: 'personalize', draft: 'draft', send: 'send',
+  appearance: 'appearance', 'ai-ranking': 'ai-ranking', understand: 'understand', brief: 'brief', personalize: 'personalize', draft: 'draft', send: 'send',
 };
 
 export interface StepContext { page: PageKind }
@@ -79,6 +79,17 @@ export const COPY = {
       'Open Settings (the gear) to change how Treatable looks.',
       'Popup is a window in the middle of the page. This is the default. Overlay is a small card at the side, and the website stays easy to use. Sidebar docks Treatable along the right edge.',
       'Theme can follow your computer (System), or you can pick Light or Dark.',
+    ],
+    next: 'Next',
+    back: 'Back',
+    skip: 'Skip',
+  },
+  aiRanking: {
+    title: 'AI-matched results are on',
+    body: [
+      'On a ClinicalTrials.gov results page, Treatable puts the studies that best match your search first and shows a match percentage in a small circle on each card. Studies that clearly do not fit, such as ones that are not recruiting, move to the end.',
+      'Before the first ranking, Treatable shows you what it sends to OpenAI and asks once for this browser session.',
+      'Prefer the website’s own order? Switch off AI-matched results here at any time.',
     ],
     next: 'Next',
     back: 'Back',

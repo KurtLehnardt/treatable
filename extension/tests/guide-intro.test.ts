@@ -51,9 +51,10 @@ function rig(options: { page?: PageKind; choices?: Array<GuideChoice | 'hold'>; 
 const begin = async (promise: Promise<unknown>) => { void promise.catch(() => {}); await flush(); };
 const flush = async () => { for (let i = 0; i < 30; i++) await new Promise<void>(resolve => queueMicrotask(resolve)); };
 
-test('the step list starts with the welcome and ends with done, and the appearance step comes right after the welcome', () => {
+test('the step list starts with the welcome and ends with done, and the appearance and AI-matched results steps come right after the welcome', () => {
   assert.equal(INTRO_STEPS[0], 'welcome');
   assert.equal(INTRO_STEPS[1], 'appearance');
+  assert.equal(INTRO_STEPS[2], 'ai-ranking');
   assert.equal(INTRO_STEPS.at(-1), 'done');
   assert.ok(INTRO_STEPS.indexOf('understand') < INTRO_STEPS.indexOf('brief'));
   assert.ok(INTRO_STEPS.indexOf('brief') < INTRO_STEPS.indexOf('personalize'));
@@ -63,27 +64,27 @@ test('the step list starts with the welcome and ends with done, and the appearan
 
 test('steps apply only to the pages they are about', () => {
   const on = (page: PageKind) => INTRO_STEPS.filter(id => stepApplies(id, { page }));
-  assert.deepEqual(on('home'), ['welcome', 'appearance', 'condition', 'done']);
-  assert.deepEqual(on('search'), ['welcome', 'appearance', 'condition', 'filters-offer', 'results', 'done']);
-  assert.deepEqual(on('study'), ['welcome', 'appearance', 'search-first', 'understand', 'brief', 'personalize', 'draft', 'send', 'done']);
-  assert.deepEqual(on('other'), ['welcome', 'appearance', 'search-first', 'done']);
+  assert.deepEqual(on('home'), ['welcome', 'appearance', 'ai-ranking', 'condition', 'done']);
+  assert.deepEqual(on('search'), ['welcome', 'appearance', 'ai-ranking', 'condition', 'filters-offer', 'results', 'done']);
+  assert.deepEqual(on('study'), ['welcome', 'appearance', 'ai-ranking', 'search-first', 'understand', 'brief', 'personalize', 'draft', 'send', 'done']);
+  assert.deepEqual(on('other'), ['welcome', 'appearance', 'ai-ranking', 'search-first', 'done']);
   assert.equal(stepFrom(INTRO_STEPS.length - 1, 1, { page: 'study' }), undefined);
   assert.equal(stepFrom(0, -1, { page: 'study' }), undefined);
 });
 
-test('on a study page the tour walks welcome, appearance, search offer, then every Treatable control in order, and finishes', async () => {
-  const t = rig({ page: 'study', choices: ['next', 'next', 'back' /* Not now on the search offer */] });
+test('on a study page the tour walks welcome, appearance, AI-matched results, search offer, then every Treatable control in order, and finishes', async () => {
+  const t = rig({ page: 'study', choices: ['next', 'next', 'next', 'back' /* Not now on the search offer */] });
   await t.intro.start();
   await flush();
-  assert.deepEqual(t.panelSteps, ['welcome', 'appearance', 'search-first', 'understand', 'brief', 'personalize', 'draft', 'send', 'done']);
+  assert.deepEqual(t.panelSteps, ['welcome', 'appearance', 'ai-ranking', 'search-first', 'understand', 'brief', 'personalize', 'draft', 'send', 'done']);
   assert.equal(t.intro.active, false);
   assert.deepEqual(t.pageCommands, [], 'no step was run on the page itself');
-  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: 1 }], 'finishing writes exactly the one allowed flag');
+  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: ONBOARDING_VERSION }], 'finishing writes exactly the one allowed flag');
   assert.deepEqual(t.session.data.has(ONBOARDING_STEP_KEY), false, 'the saved step is removed at the end');
 });
 
 test('every stored step is a bare in-range integer and nothing else is ever written', async () => {
-  const t = rig({ page: 'study', choices: ['next', 'next', 'back'] });
+  const t = rig({ page: 'study', choices: ['next', 'next', 'next', 'back'] });
   await t.intro.start();
   await flush();
   const steps = t.session.writes.map(w => { assert.deepEqual(Object.keys(w), [ONBOARDING_STEP_KEY]); return w[ONBOARDING_STEP_KEY]; });
@@ -99,7 +100,7 @@ test('Skip finishes the tour at once, stores only the done flag and cleans up th
   await flush();
   assert.deepEqual(t.panelSteps, ['welcome', 'appearance']);
   assert.equal(t.intro.active, false);
-  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: 1 }]);
+  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: ONBOARDING_VERSION }]);
   assert.equal(t.session.data.has(ONBOARDING_STEP_KEY), false);
   assert.ok(t.log.includes('closePanel') && t.log.includes('cancelPage'));
   assert.equal(t.log.at(-1), 'expand', 'the panel is expanded again at the end');
@@ -113,10 +114,10 @@ test('Back returns to the previous applicable step', async () => {
 });
 
 test('on a study page the search offer opens ClinicalTrials.gov and saves the next step for the new page', async () => {
-  const t = rig({ page: 'study', choices: ['next', 'next', 'next'] });
+  const t = rig({ page: 'study', choices: ['next', 'next', 'next', 'next'] });
   await t.intro.start();
   await flush();
-  assert.deepEqual(t.panelSteps, ['welcome', 'appearance', 'search-first']);
+  assert.deepEqual(t.panelSteps, ['welcome', 'appearance', 'ai-ranking', 'search-first']);
   assert.ok(t.log.includes('openSearch'));
   assert.equal(t.session.data.get(ONBOARDING_STEP_KEY), INTRO_STEPS.indexOf('condition'));
   assert.equal(t.local.data.has(ONBOARDING_FLAG_KEY), false, 'not finished yet');
@@ -176,7 +177,7 @@ test('a skip reported from the page ends the tour and records it as seen', async
   await t.intro.handlePageEvent({ op: 'condition', action: 'skip', page: 'search' });
   await flush();
   assert.equal(t.intro.active, false);
-  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: 1 }]);
+  assert.deepEqual(t.local.writes, [{ [ONBOARDING_FLAG_KEY]: ONBOARDING_VERSION }]);
 });
 
 test('when the page changes under the tour (a study opens), steps that no longer fit are skipped', async () => {

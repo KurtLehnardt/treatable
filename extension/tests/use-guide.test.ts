@@ -4,7 +4,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { useGuide, type GuideHost, type GuideViewModel } from '../src/use-guide';
 import { ONBOARDING_FLAG_KEY, ONBOARDING_STEP_KEY, createOnboardingStore, type StorageAreaLike } from '../src/guide-state';
-import { INTRO_STEPS, type IntroStepId } from '../src/guide-steps';
+import { INTRO_STEPS, ONBOARDING_VERSION, type IntroStepId } from '../src/guide-steps';
 import type { PanelGuide } from '../src/guide-panel';
 import type { PageGuideEvent } from '../src/guide-protocol';
 import type { GuideChoice } from '../src/guide-mount';
@@ -24,7 +24,7 @@ function fakeArea() {
 
 function setup(options: { url?: string; done?: boolean; saved?: number; collapsed?: boolean } = {}) {
   const local = fakeArea(), session = fakeArea();
-  if (options.done) local.data.set(ONBOARDING_FLAG_KEY, 1);
+  if (options.done) local.data.set(ONBOARDING_FLAG_KEY, ONBOARDING_VERSION);
   if (options.saved !== undefined) session.data.set(ONBOARDING_STEP_KEY, options.saved);
   const store = createOnboardingStore({ local: local.area, session: session.area });
   const shown: IntroStepId[] = [];
@@ -93,13 +93,13 @@ test('after a page navigation the saved step number is resumed instead of starti
 test('finishing the tour from the panel stores the done flag and removes the saved step', async () => {
   const t = setup();
   await t.mount();
-  for (let i = 0; i < 12 && t.vm.active; i++) {
+  for (let i = 0; i < 14 && t.vm.active; i++) {
     const hold = t.holds.shift();
     if (!hold) break;
     await t.act(() => hold(t.shown.at(-1) === 'search-first' ? 'back' : 'next'));
   }
   assert.equal(t.vm.active, false);
-  assert.equal(t.local.data.get(ONBOARDING_FLAG_KEY), 1);
+  assert.equal(t.local.data.get(ONBOARDING_FLAG_KEY), ONBOARDING_VERSION);
   assert.equal(t.session.data.has(ONBOARDING_STEP_KEY), false);
   assert.deepEqual([...t.local.data.keys()], [ONBOARDING_FLAG_KEY], 'nothing else is stored');
   await t.unmount();
@@ -110,7 +110,7 @@ test('skipping at the welcome records it as seen so the tour does not return on 
   await t.mount();
   await t.act(() => t.holds.shift()!('skip'));
   assert.equal(t.vm.active, false);
-  assert.equal(t.local.data.get(ONBOARDING_FLAG_KEY), 1);
+  assert.equal(t.local.data.get(ONBOARDING_FLAG_KEY), ONBOARDING_VERSION);
   await t.unmount();
   const next = setup({ done: true });
   await next.mount();
@@ -158,4 +158,20 @@ test('closing the panel stops the tour and the page guide without recording anyt
   assert.ok(t.closes >= 1);
   assert.deepEqual(t.calls.filter(call => (call.payload as any)?.command?.op === 'cancel').length > 0, true, 'the page guide is told to stop');
   assert.equal(t.local.data.has(ONBOARDING_FLAG_KEY), false);
+});
+
+test('settled tells automatic work when the first-run decision is made: at once when the tour is done, after it ends otherwise', async () => {
+  const done = setup({ done: true });
+  await done.mount();
+  assert.equal(done.vm.settled, true);
+  assert.equal(done.vm.active, false);
+  await done.unmount();
+  const first = setup();
+  await first.mount();
+  assert.equal(first.vm.active, true);
+  assert.equal(first.vm.settled, false, 'AI-matched results wait while the welcome is open');
+  await first.act(() => first.holds.shift()!('skip'));
+  assert.equal(first.vm.active, false);
+  assert.equal(first.vm.settled, true);
+  await first.unmount();
 });

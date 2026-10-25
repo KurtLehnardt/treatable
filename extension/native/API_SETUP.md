@@ -51,6 +51,12 @@ The protected `private-match.html` window is non-web-accessible and must match i
 - `scoreLive` makes one `POST https://api.openai.com/v1/decisions` with `gpt-6-luna` and one typed relevance question per loaded record. The index is neither eligibility, enrollment probability, safety nor benefit. Apply requires a full validated score map for the same page; larger/partial pages are not ranked.
 - `agentLive` uses `POST https://api.openai.com/v1/agents/sessions`, `OpenAI-Beta: agents=v1`, `gpt-6-astra`, `environment.type: none` and one read-only `get_public_trial_evidence` function restricted to the selected 1–2 NCT IDs. It must read each study, complete its turn, and return known study/question/caution IDs. Trusted templates render the result. Agents does not consume Decisions scores.
 
+### AI-matched results ranking
+
+- `prepareRank` accepts 1–10 visible NCT IDs and a minimized profile: 1–6 condition terms (at most 80 characters; digits only inside a name such as `COVID-19` or after words such as Type or Stage; no standalone numbers, dates, three-digit runs or age phrases), an optional age band and an optional sex (`female` or `male`). Nothing else is accepted. The helper fetches the public records itself, builds the provider request, and pins it to a digest and a one-use five-minute token. No provider call occurs.
+- `executeRank` accepts only that token and digest. With the OpenAI provider it makes one `POST https://api.openai.com/v1/decisions` with `gpt-6-luna` and one score question per study (four levels). The reply must hold exactly one score per study with level probabilities that add up to 1; the result is `{nctId, score 0-100, reasonId, probabilities}` per study. `revokeRank` drops the pinned request.
+- The extension shows the first OpenAI ranking of a browser session in a separate confirmation window before `executeRank`. A local provider reports `provider: "local"`, omits probabilities, and needs no confirmation because nothing leaves the device.
+
 There is no Responses-API substitution or fabricated live mode. Stub transports return `mode: test`; production results require validated provider responses. Public text is untrusted data and model authority is bounded; this is not an absolute guarantee against influence on allowed choices.
 
 ## Local model (Ollama on this device)

@@ -6,7 +6,7 @@ import { COPY, PANEL_TARGET, type IntroStepId, type StepCopy } from './guide-ste
 export const GUIDE_TARGET_ATTRIBUTE = 'data-treatable-guide';
 
 const PANEL_COPY: Partial<Record<IntroStepId, StepCopy>> = {
-  welcome: COPY.welcome, appearance: COPY.appearance, 'search-first': COPY.searchFirst, understand: COPY.understand,
+  welcome: COPY.welcome, appearance: COPY.appearance, 'ai-ranking': COPY.aiRanking, 'search-first': COPY.searchFirst, understand: COPY.understand,
   brief: COPY.brief, personalize: COPY.personalize, draft: COPY.draft, send: COPY.send, done: COPY.done,
 };
 

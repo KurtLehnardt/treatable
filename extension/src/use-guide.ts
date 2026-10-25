@@ -20,6 +20,8 @@ export interface GuideHost {
 export interface GuideViewModel {
   /** True while the intro tour or the search help is running. */
   active: boolean;
+  /** True once the first-run check has decided whether the intro runs, so other automatic work can wait for it. */
+  settled?: boolean;
   /** The search help needs the filters, so it is offered on search pages only. */
   canSearchHelp: boolean;
   startSearchHelp(): void;
@@ -35,6 +37,7 @@ export interface GuideDeps {
 
 export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel {
   const [active, setActive] = useState(false);
+  const [settled, setSettled] = useState(false);
   const hostRef = useRef(host);
   hostRef.current = host;
   const booted = useRef(false);
@@ -67,10 +70,12 @@ export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel 
     if (!host.connected || !host.snapshot || booted.current) return;
     booted.current = true;
     void (async () => {
-      const saved = await parts.store.savedStep();
-      if (saved !== undefined) { await parts.intro.resume(saved); return; }
-      if (await parts.store.isDone()) return;
-      await parts.intro.start();
+      try {
+        const saved = await parts.store.savedStep();
+        if (saved !== undefined) { await parts.intro.resume(saved); return; }
+        if (await parts.store.isDone()) return;
+        await parts.intro.start();
+      } finally { setSettled(true); }
     })();
   }, [host.connected, !!host.snapshot]);
 
@@ -94,6 +99,7 @@ export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel 
 
   return {
     active,
+    settled,
     canSearchHelp,
     startSearchHelp() {
       if (!canSearchHelp) return;

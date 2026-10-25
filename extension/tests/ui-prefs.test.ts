@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import TestRenderer, {act, type ReactTestRenderer} from 'react-test-renderer';
-import {DEFAULT_UI_PREFS, DISPLAY_MODES, THEMES, MODEL_PROVIDERS, UI_PREFS_KEY, loadUiPrefs, parseUiPrefs, saveUiPrefs, subscribeUiPrefs, uiPrefsArea, type UiPrefs} from '../src/ui-prefs';
+import {AI_RANKING, DEFAULT_UI_PREFS, DISPLAY_MODES, THEMES, MODEL_PROVIDERS, UI_PREFS_KEY, loadUiPrefs, parseUiPrefs, saveUiPrefs, subscribeUiPrefs, uiPrefsArea, type UiPrefs} from '../src/ui-prefs';
 import {LEGACY_STORAGE_KEYS, STORAGE_KEY, clearLegacyPatientData} from '../src/storage';
 import {useSiteController} from '../src/use-site-controller';
 import {OverlayView} from '../src/overlay-view';
@@ -13,11 +13,11 @@ import {captureSiteActivations} from '../src/overlay-port';
 import {SITE_FILTERS} from '../src/site-filter-catalog';
 
 const flush = async () => {await new Promise<void>(r => setImmediate(r)); await new Promise<void>(r => setImmediate(r))};
-const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null};
-const SAVED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'local', localModel: 'qwen3.5:9b'};
+const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null, aiRanking: 'on'};
+const SAVED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'};
 /** A record saved before the model provider setting existed, and how it loads. */
 const LEGACY = {displayMode: 'popup', theme: 'dark'};
-const LEGACY_LOADED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'openai', localModel: null};
+const LEGACY_LOADED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'openai', localModel: null, aiRanking: 'on'};
 /** Only the display fields, for checks of what the overlay rendered. */
 const SHOWN_DEFAULTS = {displayMode: 'popup', theme: 'system'}, SHOWN_SAVED = {displayMode: 'popup', theme: 'dark'};
 
@@ -35,8 +35,9 @@ function fakeArea(initial: Record<string, unknown> = {}) {
 const rootOf = (area: unknown) => ({storage: {local: area}});
 
 test('schema accepts exactly the allowed display modes, themes, providers and model names and rejects everything else', () => {
- for (const displayMode of DISPLAY_MODES) for (const theme of THEMES) assert.deepEqual(parseUiPrefs({displayMode, theme}), {displayMode, theme, provider: 'openai', localModel: null}, 'a two-key record from before the provider setting still loads');
- for (const provider of MODEL_PROVIDERS) for (const localModel of [null, 'qwen3.5:9b', 'qwen2.5:14b', 'gemma4', 'batiai/gemma4-26b:q4', 'llama3.2:3b-instruct-q4_K_M']) assert.deepEqual(parseUiPrefs({displayMode: 'sidebar', theme: 'light', provider, localModel}), {displayMode: 'sidebar', theme: 'light', provider, localModel});
+ for (const displayMode of DISPLAY_MODES) for (const theme of THEMES) assert.deepEqual(parseUiPrefs({displayMode, theme}), {displayMode, theme, provider: 'openai', localModel: null, aiRanking: 'on'}, 'a two-key record from before the provider setting still loads');
+ for (const provider of MODEL_PROVIDERS) for (const localModel of [null, 'qwen3.5:9b', 'qwen2.5:14b', 'gemma4', 'batiai/gemma4-26b:q4', 'llama3.2:3b-instruct-q4_K_M']) assert.deepEqual(parseUiPrefs({displayMode: 'sidebar', theme: 'light', provider, localModel}), {displayMode: 'sidebar', theme: 'light', provider, localModel, aiRanking: 'on'}, 'a four-key record from before AI-matched results still loads, with it on');
+ for (const aiRanking of AI_RANKING) assert.deepEqual(parseUiPrefs({...SAVED, aiRanking}), {...SAVED, aiRanking});
  const four = (patch: Record<string, unknown>) => ({...SAVED, ...patch});
  for (const bad of [
   four({provider: 'anthropic'}), four({provider: 'Local'}), four({provider: ''}), four({provider: null}), four({provider: undefined}),
@@ -44,6 +45,8 @@ test('schema accepts exactly the allowed display modes, themes, providers and mo
   four({localModel: 'gpt-oss:120b-cloud'}), four({localModel: 'gemma4:cloud'}), four({localModel: 'a'.repeat(65)}), four({localModel: 'qwen3.5:9b PRIVATE_CANARY'}), four({localModel: 'qwen3.5:9b\n'}),
   four({localModel: 'https://evil.example/model'}), four({localModel: 'qwen3.5@sha256:abc'}), four({localModel: 9}), four({localModel: ['qwen3.5:9b']}), four({localModel: undefined}),
   {displayMode: 'popup', theme: 'dark', provider: 'openai'}, {displayMode: 'popup', theme: 'dark', localModel: null}, {...SAVED, zip: '83702'}, {...SAVED, condition: 'fibromyalgia'},
+  four({aiRanking: 'maybe'}), four({aiRanking: 'On'}), four({aiRanking: true}), four({aiRanking: null}), four({aiRanking: undefined}),
+  {displayMode: 'popup', theme: 'dark', aiRanking: 'off'}, {displayMode: 'popup', theme: 'dark', provider: 'openai', aiRanking: 'off'},
  ]) assert.equal(parseUiPrefs(bad), undefined, JSON.stringify(bad));
  class Look { displayMode = 'popup'; theme = 'dark'; }
  const rejected: unknown[] = [
@@ -129,7 +132,8 @@ test('subscription delivers only valid local preference changes', () => {
  emit({other: {newValue: {displayMode: 'popup', theme: 'dark'}}});
  emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}}});
  emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: '../x'}}});
- assert.deepEqual(seen, [{displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}]);
+ emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'off'}}});
+ assert.deepEqual(seen, [{displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'on'}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'off'}]);
  stop();
  assert.equal(listeners.length, 0);
  assert.doesNotThrow(() => subscribeUiPrefs(() => {}, {})());
@@ -223,9 +227,13 @@ test('changing one setting keeps the other and every save is the full validated 
  act(() => latest.setDisplayMode('sidebar'));
  assert.deepEqual(area.store.get(UI_PREFS_KEY), {...SAVED, displayMode: 'sidebar', theme: 'light'});
  act(() => latest.setProvider('openai'));
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: 'qwen3.5:9b'}, 'switching back to OpenAI keeps the last local choice');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: 'qwen3.5:9b', aiRanking: 'on'}, 'switching back to OpenAI keeps the last local choice');
  act(() => latest.setLocalModel(null));
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null});
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'on'});
+ act(() => latest.setAiRanking('off'));
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'off'});
+ for (const bad of ['maybe', '', undefined, 3]) act(() => latest.setAiRanking(bad));
+ assert.equal(latest.aiRanking, 'off', 'invalid AI-matched results values are ignored');
  act(() => session.renderer.unmount());
 });
 
@@ -236,7 +244,7 @@ test('invalid values and missing storage never break the overlay or write anythi
  for (const bad of ['neon', '', undefined, null, 3, {x: 1}, 'Dark']) act(() => latest.setTheme(bad));
  for (const bad of ['anthropic', '', undefined, null, 3, {x: 1}, 'Local']) act(() => latest.setProvider(bad));
  for (const bad of ['', undefined, 3, {x: 1}, '../x', 'PRIVATE_CANARY', 'qwen3.5:9b fibromyalgia', 'gemma4:cloud']) act(() => latest.setLocalModel(bad));
- assert.deepEqual({displayMode: latest.displayMode, theme: latest.theme, provider: latest.provider, localModel: latest.localModel}, DEFAULTS);
+ assert.deepEqual({displayMode: latest.displayMode, theme: latest.theme, provider: latest.provider, localModel: latest.localModel, aiRanking: latest.aiRanking}, DEFAULTS);
  assert.deepEqual(area.calls.filter(c => !c.startsWith('get:')), []);
  assert.equal(area.store.size, 0);
  act(() => session.renderer.unmount());
