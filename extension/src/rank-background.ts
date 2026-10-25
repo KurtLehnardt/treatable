@@ -7,7 +7,7 @@
 import{parseRankReply,parsePreparedRank,parseRankResult,rankTerm,RANK_MAX_STUDIES,RANK_MAX_TERMS,RANK_SEXES,type RankProfile,type RankScore,type RankSex}from'../shared/rank-contract.mjs';
 import{isLocalModelName}from'../shared/local-model.mjs';
 import{AGE_BANDS,type AgeBand}from'../shared/real-contract.mjs';
-import{traceBody}from'../shared/apply-contract.mjs';
+import{redactedTraceBody}from'../shared/apply-contract.mjs';
 import{NOT_SENT_CODES,NativeOperationError,failureCodeOf,nativeDisconnectCode}from'./failures';
 import{mergeRanking,rankConditions,recordChecks,type RankedStudy,type StudyFacts}from'./rank-merge';
 import type{RankingNote,RankingState}from'./rank-state';
@@ -112,7 +112,7 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
     phase('preparing',total);
     const prepared=parsePreparedRank(await session.request('prepareRank',{nctIds:s.nctIds,profile,...(local?{provider:'local',model}:{})},PREPARE_TIMEOUT_MS));if(!alive())return;
     if(prepared.provider!==(local?'local':'openai')||JSON.stringify(prepared.nctIds)!==JSON.stringify(s.nctIds)||JSON.stringify(prepared.preview.profile)!==JSON.stringify(profile))throw new NativeOperationError('RESULT_MISMATCH');
-    provider=prepared.provider;request=traceBody(prepared.preview.request,TRACE_ROOM);sent=prepared.preview.profile;
+    provider=prepared.provider;/* Display copy only: key-shaped text from public records is redacted, as in the study brief trace. */request=redactedTraceBody(prepared.preview.request,TRACE_ROOM);sent=prepared.preview.profile;
     // A local model keeps everything on this device, so only the OpenAI provider needs the browser-session confirmation.
     if(prepared.provider==='openai'&&!await host.consent.has()){
      if(!alive())return;phase('confirming',total);

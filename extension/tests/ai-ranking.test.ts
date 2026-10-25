@@ -184,3 +184,10 @@ test('with the local model provider the ranking runs on this device: no confirma
  const allFailed=hostFake({reply:m=>m.type==='prepareRank'?prepared(m,'local'):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'local',digest:DIGEST,scores:ids.map(nctId=>({nctId,failure:'LOCAL_NOT_INSTALLED'}))}}});allFailed.host.prefs=h.host.prefs;
  createRankService(allFailed.host).start(1,details);await until(()=>!!done(allFailed.posts));assert.equal(done(allFailed.posts)!.failure,'LOCAL_NOT_INSTALLED');
 });
+
+test('the ranking trace redacts key-shaped text from public records in its display copy',async()=>{
+ const KEY='sk-'+'A'.repeat(30);
+ const h=hostFake({reply:m=>{if(m.type!=='prepareRank')return ranked(m);const r:any=prepared(m);r.result.preview.request.input[0].content[0].data.note=`Sponsor ref ${KEY}`;return r}});h.setConsent(true);
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ const state=done(h.posts)!;assert.ok(state.request);assert.doesNotMatch(state.request!.text,new RegExp(KEY));assert.match(state.request!.text,/redacted key-like text/);
+});
