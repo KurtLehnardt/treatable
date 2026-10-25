@@ -163,6 +163,12 @@ test('when the page drops an applied ranking on its own, a cached ranking goes s
  const failing=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED')});failing.setConsent(true);const other=createRankService(failing.host);
  other.start(1,details);await until(()=>!!done(failing.posts));other.lapsed(1,page);const last=failing.posts.at(-1)!;assert.equal(last.applied,false,'without a cached ranking the overlay offers to apply again');
  const count=failing.posts.length;other.lapsed(1,page);assert.equal(failing.posts.length,count,'only once');other.stopAll();other.lapsed(1,page);assert.equal(failing.posts.length,count);
+ /* An older cached ranking never comes back over a newer run that failed, and a hidden tab is not re-ranked behind the person's back. */
+ let mode:'ok'|'fail'='ok';const both=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):mode==='ok'?ranked(m):fail(m,'RATE_LIMITED')});both.setConsent(true);const svc=createRankService(both.host);
+ svc.start(1,details);await until(()=>!!done(both.posts));mode='fail';both.posts.length=0;svc.start(1,{...details,ageBand:'45_59'});await until(()=>!!done(both.posts));
+ const applied=both.applied.length;svc.lapsed(1,page);await new Promise(r=>setTimeout(r,10));assert.equal(both.applied.length,applied,'the failed newer run is not replaced by the older ranking');assert.equal(both.posts.at(-1)!.applied,false);
+ const hidden=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});hidden.setConsent(true);const hsvc=createRankService(hidden.host);hsvc.start(1,details);await until(()=>!!done(hidden.posts));
+ hsvc.lapsed(1,page,false);await new Promise(r=>setTimeout(r,10));assert.equal(hidden.applied.length,1,'no re-apply on a hidden tab');assert.equal(hidden.posts.at(-1)!.applied,false);
 });
 
 test('with the local model provider the ranking runs on this device: no confirmation, a model name, unscored studies stay unscored',async()=>{

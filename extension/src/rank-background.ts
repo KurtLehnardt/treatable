@@ -18,7 +18,8 @@ import type{UiPrefs}from'./ui-prefs';
 export const RANK_NATIVE_HOST='com.treatable.local';
 /** Ranked results stay in extension memory for the length of a Treatable session, so the page order can be put back without asking a model again. */
 export const RANK_CACHE_TTL_MS=30*60*1000;
-const PREPARE_TIMEOUT_MS=60000,EXECUTE_TIMEOUT_MS=150000,TRACE_ROOM=90_000;
+// A local model gets the longer budget the helper allows it (local-rank.mjs stops by itself after 240 seconds).
+const PREPARE_TIMEOUT_MS=60000,EXECUTE_TIMEOUT_MS=150000,LOCAL_EXECUTE_TIMEOUT_MS=270000,TRACE_ROOM=90_000;
 /** What the overlay may add from "Your details": a coarse age band, sex and short condition terms. Nothing else is accepted. */
 export interface RankDetails{ageBand?:AgeBand;sex?:RankSex;terms?:string[]}
 export function parseRankDetails(v:unknown):RankDetails{
@@ -67,7 +68,7 @@ class NativeRankSession{
 }
 type Run={token:number;phase:RankingState['phase'];session?:NativeRankSession;queued?:{details:RankDetails;force:boolean}};
 export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>number}={}){
- const runs=new Map<number,Run>(),cache=new Map<number,{key:string;state:RankingState;ranked:RankedStudy[];expires:number}>(),declined=new Set<number>(),last=new Map<number,{state:RankingState;url:string;ids:string}>();let sequence=0;
+ const runs=new Map<number,Run>(),cache=new Map<number,{key:string;state:RankingState;ranked:RankedStudy[];expires:number}>(),declined=new Set<number>(),last=new Map<number,{state:RankingState;url:string;ids:string;key:string}>();let sequence=0;
  /** Starts ranking the current page. While a confirmation window is open the newest request waits for it instead. */
  function start(tabId:number,details:RankDetails,force=false){
   const current=runs.get(tabId);if(current?.phase==='confirming'){current.queued={details,force};return{started:false,queued:true}}
@@ -79,9 +80,9 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
  /** Turning AI-matched results off, closing Treatable or leaving the tab: stop, forget cached results and any "Not now". */
  function stop(tabId:number){cancel(tabId);cache.delete(tabId);declined.delete(tabId);last.delete(tabId)}
  /** The page dropped an applied ranking on its own (its five-minute lease ended): tell the overlay so it offers to apply it again. */
- function lapsed(tabId:number,current?:SiteSnapshot){const entry=last.get(tabId);if(!entry?.state.applied||runs.has(tabId)||current&&(current.url!==entry.url||current.nctIds.join()!==entry.ids))return;
+ function lapsed(tabId:number,current?:SiteSnapshot,reapply=true){const entry=last.get(tabId);if(!entry?.state.applied||runs.has(tabId)||current&&(current.url!==entry.url||current.nctIds.join()!==entry.ids))return;
   // Put a still-valid ranking straight back (no model call); otherwise let the overlay offer to apply it again.
-  const cached=cache.get(tabId);if(current&&cached&&cached.expires>now()&&cached.ranked.map(r=>r.nctId).sort().join()===[...current.nctIds].sort().join()){void host.apply(tabId,current,cached.ranked).then(ok=>{if(ok||last.get(tabId)!==entry)return;const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}).catch(()=>{});return}
+  const cached=cache.get(tabId);if(reapply&&current&&cached&&cached.key===entry.key&&cached.expires>now()&&cached.ranked.map(r=>r.nctId).sort().join()===[...current.nctIds].sort().join()){void host.apply(tabId,current,cached.ranked).then(ok=>{if(ok||last.get(tabId)!==entry)return;const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}).catch(()=>{});return}
   const next={...entry.state,applied:false};last.set(tabId,{...entry,state:next});host.post(tabId,next)}
  async function run(tabId:number,entry:Run,details:RankDetails,force:boolean){
   const alive=()=>runs.get(tabId)===entry,post=(state:RankingState)=>{if(alive())host.post(tabId,state)},phase=(p:RankingState['phase'],total:number)=>{entry.phase=p;post({phase:p,total})};
@@ -92,8 +93,10 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   let cond:unknown;try{cond=readSiteSearchUrl(s.url).cond}catch{}
   // Relevance needs only the condition terms. The age band and sex stay on this device and feed the record checks alone.
   const conditions=rankConditions(cond,details.terms??[]),profile:RankProfile|undefined=conditions.length?{conditions}:undefined;
-  const key=JSON.stringify({url:s.url,ids:s.nctIds,conditions,ageBand:details.ageBand??null,sex:details.sex??null}),cached=cache.get(tabId);
-  if(!force&&cached&&cached.key===key&&cached.expires>now()){const applied=await host.apply(tabId,s,cached.ranked);if(alive())last.set(tabId,{state:{...cached.state,applied},url:s.url,ids:s.nctIds.join()});post({...cached.state,applied});return}
+  const key=JSON.stringify({url:s.url,ids:s.nctIds,conditions,ageBand:details.ageBand??null,sex:details.sex??null,provider:prefs.provider,model:prefs.provider==='local'?prefs.localModel:null}),cached=cache.get(tabId);
+  if(!force&&cached&&cached.key===key&&cached.expires>now()){const applied=await host.apply(tabId,s,cached.ranked);if(alive())last.set(tabId,{state:{...cached.state,applied},url:s.url,ids:s.nctIds.join(),key});post({...cached.state,applied});return}
+  // A run that does not reuse the cached ranking replaces it, so an older ranking can never come back over this one.
+  cache.delete(tabId);
   const total=s.nctIds.length;phase('checking',total);
   const facts=await Promise.all(s.nctIds.map(id=>host.facts(id).catch(()=>undefined)));if(!alive())return;
   const checks=Object.fromEntries(s.nctIds.map((id,i)=>[id,recordChecks(facts[i],details)]));
@@ -117,7 +120,7 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
      if(!alive())return;if(outcome==='accepted')await host.consent.grant();else{if(outcome==='declined')declined.add(tabId);note='declined';failure='CONFIRMATION_CANCELLED'}
     }
     if(!failure){
-     phase('scoring',total);attempted=true;const result=parseRankResult(await session.request('executeRank',{token:prepared.token,digest:prepared.digest},EXECUTE_TIMEOUT_MS));if(!alive())return;
+     phase('scoring',total);attempted=true;const result=parseRankResult(await session.request('executeRank',{token:prepared.token,digest:prepared.digest},local?LOCAL_EXECUTE_TIMEOUT_MS:EXECUTE_TIMEOUT_MS));if(!alive())return;
      if(result.digest!==prepared.digest||result.provider!==prepared.provider||result.scores.length!==s.nctIds.length||result.scores.some(x=>!s.nctIds.includes(x.nctId)))throw new NativeOperationError('RESULT_MISMATCH');
      // A local model can fail for single studies; those stay unscored. If none was scored, the first failure explains why.
      const scored=result.scores.filter((x):x is RankScore=>'score' in x),failed=result.scores.find(x=>'failure' in x) as {failure:string}|undefined;
@@ -133,7 +136,7 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   const state:RankingState={phase:'done',total,studies:ranked.map(r=>({...r,title:(titles.get(r.nctId)??'').slice(0,1000)})),provider:went?provider:'none',...(mode&&scores?{mode}:{}),...(failure?{failure}:{}),...(note?{note}:{}),...(went&&request?{request}:{}),...(went&&sent?{profile:{...sent,conditions:[...sent.conditions]}}:{})};
   entry.phase='done';const applied=await host.apply(tabId,s,ranked);if(!alive())return;
   if(applied&&scores)cache.set(tabId,{key,state,ranked,expires:now()+RANK_CACHE_TTL_MS});
-  if(alive())last.set(tabId,{state:{...state,applied},url:s.url,ids:s.nctIds.join()});post({...state,applied});
+  if(alive())last.set(tabId,{state:{...state,applied},url:s.url,ids:s.nctIds.join(),key});post({...state,applied});
  }
  return{start,cancel,stop,lapsed,endTab:stop,stopAll:()=>{for(const tabId of new Set([...runs.keys(),...cache.keys(),...last.keys(),...declined]))stop(tabId)},isRunning:(tabId:number)=>runs.has(tabId)};
 }

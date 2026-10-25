@@ -14,7 +14,7 @@ const BADGE_SIZE=44,BADGE_OPEN={width:252,height:150};
 export function installSiteContent(win:Window,doc:Document,api:any){
  const extensionOrigin=api.runtime.getURL('').replace(/\/$/,'');
  const frames=new Set<Frame>();const inert=new Map<HTMLElement,boolean>();let overlay:Frame|undefined,collapsed=false,displayMode:'overlay'|'popup'|'sidebar'='popup',theme:'system'|'light'|'dark'='system',disposed=false,scheduled:ReturnType<typeof setTimeout>|undefined;
- const lease=new PageMatchingLease(async generation=>{const r=await api.runtime.sendMessage({kind:'treatable.site.content',type:'matchingLease',generation});return r?.active===true},()=>{try{manager.restoreDerived()}catch{}clearBadges();void api.runtime.sendMessage({kind:'treatable.site.content',type:'matchingEnded'}).catch(()=>{})});
+ const lease=new PageMatchingLease(async generation=>{const r=await api.runtime.sendMessage({kind:'treatable.site.content',type:'matchingLease',generation});return r?.active===true},()=>{try{manager.restoreDerived()}catch{}clearBadges();void api.runtime.sendMessage({kind:'treatable.site.content',type:'matchingEnded',hidden:doc.visibilityState==='hidden'}).catch(()=>{})});
  const manager=new SiteCardManager(doc,()=>win.location.href,crypto.randomUUID()+'-');
  /* The page guide points at ClinicalTrials.gov controls from this isolated world. It reports only fixed step results to the Treatable panel, through the extension background. */
  const guide=createPageGuide({doc,win,emit:event=>{void api.runtime.sendMessage({kind:'treatable.site.content',type:'guide',event}).catch(()=>{})},avoid:()=>overlay?.element.isConnected?[(()=>{const r=overlay.element.getBoundingClientRect();return{left:r.left,top:r.top,right:r.right,bottom:r.bottom}})()]:[]});
