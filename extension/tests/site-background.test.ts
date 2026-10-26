@@ -39,6 +39,7 @@ test('overlay activation carries only the validated saved display preferences, w
  const cases:Array<[string,any,{displayMode:string;theme:string}]>=[
   ['saved popup and dark',{'treatable.uiPrefs':{displayMode:'popup',theme:'dark'}},{displayMode:'popup',theme:'dark'}],
   ['saved sidebar and light',{'treatable.uiPrefs':{displayMode:'sidebar',theme:'light'}},{displayMode:'sidebar',theme:'light'}],
+  ['saved corner card from an older version',{'treatable.uiPrefs':{displayMode:'overlay',theme:'dark'}},{displayMode:'popup',theme:'dark'}],
   ['nothing saved',{},defaults],
   ['unknown value',{'treatable.uiPrefs':{displayMode:'fullscreen',theme:'dark'}},defaults],
   ['extra health field',{'treatable.uiPrefs':{displayMode:'popup',theme:'dark',zip:'83702'}},defaults],
@@ -67,3 +68,42 @@ test('guide reports from the page reach the panel only when they are well formed
 test('unsupported toolbar click opens ClinicalTrials.gov through the injected tabs API and injects nothing; supported click still injects',async()=>{const h=harness();const created:any[]=[];h.api.tabs.create=async(v:any)=>{created.push(v)};const unsupported=['https://example.com/','http://clinicaltrials.gov/',undefined];for(const url of unsupported)h.api.action.onClicked.emit({id:1,url});await flush();assert.deepEqual(created,unsupported.map(()=>({url:'https://clinicaltrials.gov/'})));assert.equal(h.scripts.length,0);assert.equal(h.commands.length,0);h.api.action.onClicked.emit({id:1,url:h.snapshot().url});await flush();assert.equal(created.length,unsupported.length);assert.deepEqual(h.scripts[0].files,['site-content.js'])});
 test('a failing tab creation is swallowed, and only a toolbar click ever opens a tab',async()=>{const h=harness();let calls=0;h.api.tabs.create=async()=>{calls++;throw Error('blocked')};h.api.action.onClicked.emit({id:1,url:'https://example.com/'});await flush();assert.equal(calls,1);h.api.tabs.create=()=>{calls++;throw Error('sync failure')};h.api.action.onClicked.emit({id:1,url:'https://example.com/'});await flush();assert.equal(calls,2);const port=await authenticated();port.api.tabs.create=()=>{calls++};await port.service.handle(1,{id:'search',type:'site.search',payload:{filters:{cond:'pain'}}});port.updates.emit(1,{status:'complete'},{id:1,url:'https://example.com/'});await flush();assert.equal(calls,2);port.p.disconnect()});
 test('only deliberate ZIP messages reach the overlay; every other failure keeps the generic reply',async()=>{const h=await authenticated();const original=globalThis.fetch,generic='The site action could not be safely completed. Use the website controls for unsupported filters.';const ask=async(id:string,filters:unknown)=>{h.p.onMessage.emit({id,type:'site.search',payload:{filters}});await flush();return h.p.sent.find((v:any)=>v.id===id)};try{await assert.rejects(h.service.handle(1,{id:'fmt',type:'site.search',payload:{filters:{loc:{text:'Boise, ID'}}}}),(e:any)=>e instanceof UserFacingSiteError&&e.message===SITE_ZIP_FORMAT_MESSAGE);assert.deepEqual(await ask('format',{loc:{text:'Boise, ID'}}),{id:'format',ok:false,error:SITE_ZIP_FORMAT_MESSAGE});assert.equal(SITE_ZIP_FORMAT_MESSAGE,"Enter a 5-digit US ZIP code. For other places, use the website's Location box.");globalThis.fetch=(async()=>new Response(JSON.stringify({zips:{}}),{status:200}))as any;assert.deepEqual(await ask('unknown',{loc:{text:'99999'}}),{id:'unknown',ok:false,error:SITE_ZIP_UNKNOWN_MESSAGE});globalThis.fetch=(async()=>new Response('{}',{status:500}))as any;assert.deepEqual(await ask('offline',{loc:{text:'80218'}}),{id:'offline',ok:false,error:generic});globalThis.fetch=(async()=>{throw Error('INTERNAL_CANARY /secret/path')})as any;assert.deepEqual(await ask('network',{loc:{text:'80218'}}),{id:'network',ok:false,error:generic});assert.deepEqual(await ask('shape',{loc:{text:'80218',bogus:1}}),{id:'shape',ok:false,error:generic});assert.doesNotMatch(JSON.stringify(h.p.sent),/INTERNAL_CANARY|Invalid location|Offline postal/)}finally{globalThis.fetch=original;h.p.disconnect()}});
+
+const contentSender=(h:{snapshot:()=>{url:string}})=>({id:'test',frameId:0,tab:{id:1},url:h.snapshot().url});
+const relayed=(p:{sent:any[]})=>p.sent.filter((v:any)=>v.type==='site.outsideClick');
+function outside(h:any,message:any={kind:'treatable.site.content',type:'outsideClick'},sender:any=contentSender(h)){let reply:any;h.messages.emit(message,sender,(v:any)=>reply=v);return reply}
+test('a press outside the popup reaches only this tab\'s authenticated overlay, from this extension\'s top-frame content script, and carries no data',async()=>{const h=await authenticated();
+ assert.deepEqual(outside(h),{ok:true});assert.deepEqual(relayed(h.p),[{type:'site.outsideClick'}]);
+ const sender=contentSender(h);
+ for(const from of [{...sender,id:'other'},{...sender,frameId:2},{...sender,url:'https://example.org/'},{...sender,url:h.origin+'/overlay.html'},{...sender,tab:undefined}])assert.notEqual(outside(h,undefined,from)?.ok,true,JSON.stringify(from));
+ assert.equal(outside(h,{kind:'treatable.site.content',type:'outsideClick',x:10}).ok,false,'extra fields are refused');
+ assert.equal(outside(h,undefined,{...sender,tab:{id:2}}).ok,false,'a tab without an overlay gets nothing');
+ assert.equal(relayed(h.p).length,1,'forged and wrong-sender presses never reach the overlay');h.p.disconnect();
+ assert.equal(outside(h).ok,false,'nothing is relayed once the overlay port is gone')});
+test('layout requests from the overlay accept only the popup and sidebar displays and can never unhide the frame',async()=>{const h=await authenticated();
+ await h.service.handle(1,{id:'l1',type:'site.layout',payload:{displayMode:'sidebar'}});assert.deepEqual(h.commands.at(-1).payload,{displayMode:'sidebar'});
+ const before=h.commands.length;for(const payload of [{displayMode:'overlay'},{displayMode:'corner'},{hidden:false},{collapsed:false,hidden:false}])await assert.rejects(h.service.handle(1,{id:'l2',type:'site.layout',payload:payload as any}),JSON.stringify(payload));
+ assert.equal(h.commands.length,before);h.p.disconnect()});
+test('hide keeps the overlay and its port; the toolbar shows that same frame again and mints nothing new',async()=>{const h=await authenticated();const scripts=h.scripts.length,ranker=h.service.ranker,stop=ranker.stop.bind(ranker);let stops=0;ranker.stop=(tabId:number)=>{stops++;return stop(tabId)};
+ const reply=await h.service.handle(1,{id:'h1',type:'site.hide',payload:{expiresAt:Date.now()+60000}});assert.equal(reply.ok,true);assert.deepEqual(h.commands.at(-1),{kind:'treatable.site.command',type:'hide',payload:{}});
+ assert.equal(outside(h).ok,false,'a second press while hidden does nothing');assert.equal(relayed(h.p).length,0);
+ await h.service.launch({id:1,url:h.snapshot().url});
+ assert.deepEqual(h.commands.at(-1),{kind:'treatable.site.command',type:'layout',payload:{collapsed:false,hidden:false}},'shown again in place');
+ assert.equal(h.scripts.length,scripts,'no script injected and no capability minted');assert.equal(h.p.closed,false,'the same port stays');assert.equal(stops,0,'ranking is not stopped');
+ assert.deepEqual(outside(h),{ok:true},'once shown, presses reach it again');
+ await h.service.launch({id:1,url:h.snapshot().url});assert.deepEqual(h.commands.at(-1).payload,{collapsed:false,hidden:false});assert.equal(h.scripts.length,scripts,'a visible overlay is only brought forward, as before');
+ ranker.stop=stop;h.p.disconnect()});
+test('hide accepts only a live session deadline from the registered overlay',async()=>{const h=await authenticated();const now=Date.now();
+ for(const payload of [{},{expiresAt:now-1},{expiresAt:now+31*60*1000},{expiresAt:now+1000.5},{expiresAt:String(now+1000)},{expiresAt:null},{expiresAt:now+1000,extra:1}])await assert.rejects(h.service.handle(1,{id:'bad',type:'site.hide',payload:payload as any}),JSON.stringify(payload));
+ await assert.rejects(h.service.handle(2,{id:'other',type:'site.hide',payload:{expiresAt:now+1000}}),'a tab without an overlay port');
+ assert.equal(h.commands.filter((c:any)=>c.type==='hide').length,0,'nothing invalid reaches the page');h.p.disconnect()});
+test('a hidden overlay whose session deadline passed is closed on the toolbar press and a fresh overlay opens instead',async t=>{t.mock.timers.enable({apis:['Date']});const h=await authenticated();const scripts=h.scripts.length;
+ await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+1000}});t.mock.timers.tick(1001);const before=h.commands.length;
+ await h.service.launch({id:1,url:h.snapshot().url});
+ assert.deepEqual(h.commands.slice(before,before+2).map((c:any)=>c.type),['restore','close'],'the stale overlay is closed like any ended session');assert.ok(h.p.closed,'its port is ended');
+ assert.deepEqual(h.scripts.slice(scripts).map((s:any)=>s.files?.[0]??s.args[0].purpose),['site-content.js','overlay'],'a fresh overlay is injected');
+ const fresh=h.port();fresh.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();assert.ok(fresh.sent.some((v:any)=>v.type==='site.ready'),'and connects');
+ assert.deepEqual(outside(h),{ok:true});assert.deepEqual(relayed(fresh),[{type:'site.outsideClick'}],'the new overlay is not treated as hidden');fresh.disconnect()});
+test('a hidden overlay that ended on its own leaves nothing behind: the toolbar opens a fresh one',async()=>{const h=await authenticated();const scripts=h.scripts.length;
+ await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});h.p.disconnect();
+ await h.service.launch({id:1,url:h.snapshot().url});assert.deepEqual(h.scripts.slice(scripts).map((s:any)=>s.files?.[0]??s.args[0].purpose),['site-content.js','overlay'])});

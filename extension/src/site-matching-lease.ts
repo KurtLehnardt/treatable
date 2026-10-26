@@ -7,5 +7,7 @@ export class PageMatchingLease{
  /** Slides the deadline forward. It never shortens the deadline, never extends past maxMs from now, and cannot revive a lease that has ended or run out. */
  extend(expires:number){if(!this.generation||!Number.isSafeInteger(expires)||expires<=this.expires||this.now()>=this.expires||expires>this.now()+this.maxMs+1000)return false;this.expires=expires;clearTimeout(this.expiry);this.expiry=setTimeout(()=>this.stop(),Math.max(0,expires-this.now()));(this.expiry as any).unref?.();return true}
  async tick(){const generation=this.generation;if(!generation||this.busy)return;if(this.now()>=this.expires){this.stop();return}this.busy=true;try{if(!await this.check(generation)&&this.generation===generation)this.stop()}catch{if(this.generation===generation)this.stop()}finally{this.busy=false}}
+ /** The current deadline, or 0 when the lease is not running. */
+ deadline(){return this.generation?this.expires:0}
  stop(clear=true){const active=!!this.generation;this.generation=undefined;clearInterval(this.heartbeat);clearTimeout(this.expiry);this.heartbeat=undefined;this.expiry=undefined;if(active&&clear)this.clear()}
 }

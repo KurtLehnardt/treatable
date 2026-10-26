@@ -77,7 +77,7 @@ export const COPY = {
     title: 'Make Treatable look the way you like',
     body: [
       'Open Settings (the gear) to change how Treatable looks.',
-      'Popup is a window in the middle of the page. This is the default. Overlay is a small card at the side, and the website stays easy to use. Sidebar docks Treatable along the right edge.',
+      'Popup is a window in the middle of the page. This is the default. Sidebar docks Treatable along the right edge, and the website moves over to make room.',
       'Theme can follow your computer (System), or you can pick Light or Dark.',
     ],
     next: 'Next',

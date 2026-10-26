@@ -219,6 +219,24 @@ test('display mode and theme persist across a simulated reload and are applied o
  act(() => second.renderer.unmount());
 });
 
+test('a corner-card display saved by an older version reads as the default popup, keeps every other choice, and is never offered or written again', async () => {
+ assert.deepEqual([...DISPLAY_MODES], ['popup', 'sidebar']);
+ assert.deepEqual(parseUiPrefs({displayMode: 'overlay', theme: 'dark'}), LEGACY_LOADED, 'two-key record');
+ assert.deepEqual(parseUiPrefs({displayMode: 'overlay', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}), {displayMode: 'popup', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'}, 'four-key record');
+ assert.deepEqual(parseUiPrefs({...SAVED, displayMode: 'overlay', aiRanking: 'off'}), {...SAVED, aiRanking: 'off'}, 'five-key record');
+ for (const bad of [{displayMode: 'Overlay', theme: 'dark'}, {displayMode: 'overlay ', theme: 'dark'}, {displayMode: 'overlay', theme: 'neon'}, {displayMode: 'overlay', theme: 'dark', zip: '83702'}]) assert.equal(parseUiPrefs(bad), undefined, JSON.stringify(bad));
+ const area = fakeArea({[UI_PREFS_KEY]: {...SAVED, displayMode: 'overlay', theme: 'light'}});
+ const loaded = await loadUiPrefs(area);
+ assert.deepEqual(loaded, {...SAVED, theme: 'light'}, 'loads without error, as the popup');
+ const session = await mount(area, loaded);
+ assert.deepEqual(rendered[0], {displayMode: 'popup', theme: 'light'});
+ act(() => latest.setDisplayMode('overlay'));
+ assert.equal(latest.displayMode, 'popup', 'the retired mode cannot be chosen');
+ act(() => latest.setTheme('dark'));
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), SAVED, 'the next save writes the popup');
+ act(() => session.renderer.unmount());
+});
+
 test('changing one setting keeps the other and every save is the full validated record', async () => {
  const area = fakeArea({[UI_PREFS_KEY]: SAVED});
  const session = await mount(area, await loadUiPrefs(area));
@@ -310,12 +328,12 @@ test('score badge renders the saved theme first and follows later theme changes'
 /* Content script: the host frame is laid out from the saved preferences as it is created. */
 class Fake extends EventTarget {
  parentElement: Fake | null = null; children: Fake[] = []; isConnected = true; kind = 'node'; id = ''; hrefs: string[] = []; inert = false; title = ''; src = '';
- styles: Record<string, string> = {}; style: any = {setProperty: (key: string, value: string) => {this.styles[key] = value}}; contentWindow = {postMessage() {}};
+ styles: Record<string, string> = {}; style: any = {setProperty: (key: string, value: string) => {this.styles[key] = value}, getPropertyValue: (key: string) => this.styles[key] ?? '', getPropertyPriority: () => '', removeProperty: (key: string) => {delete this.styles[key]}}; contentWindow = {postMessage() {}};
  insertBefore(n: Fake, b: Fake | null) {if (n.parentElement) n.parentElement.children.splice(n.parentElement.children.indexOf(n), 1); const i = b ? this.children.indexOf(b) : this.children.length; this.children.splice(i < 0 ? this.children.length : i, 0, n); n.parentElement = this; return n}
  appendChild(n: Fake) {return this.insertBefore(n, null)}
  remove() {if (this.parentElement) this.parentElement.children.splice(this.parentElement.children.indexOf(this), 1); this.parentElement = null; this.isConnected = false}
  closest() {return null} querySelectorAll() {return this.hrefs.map(href => ({getAttribute: () => href}))} contains(n: Fake): boolean {return n === this || this.children.some(c => c.contains(n))}
- focus() {} setAttribute() {} getBoundingClientRect() {return {top: 10, bottom: 100, right: 500}} matches() {return this.kind === 'card'} querySelector() {return null}
+ focus() {} blur() {} setAttribute() {} hasAttribute() {return false} getAttribute() {return null} removeAttribute() {} getBoundingClientRect() {return {top: 10, bottom: 100, right: 500}} matches() {return this.kind === 'card'} querySelector() {return null}
 }
 function patchDom(t: any) {
  const saved = {Element: globalThis.Element, HTMLElement: globalThis.HTMLElement, MutationObserver: globalThis.MutationObserver};
@@ -324,7 +342,7 @@ function patchDom(t: any) {
 }
 function contentHarness(t: any) {
  const root = new Fake(), doc: any = new EventTarget(), win: any = new EventTarget();
- Object.assign(doc, {body: root, visibilityState: 'visible', defaultView: {getComputedStyle: () => ({display: 'block'})}, querySelector: () => root, querySelectorAll: () => [], createComment: () => new Fake(), createElement: () => new Fake(), activeElement: null});
+ Object.assign(doc, {body: root, documentElement: new Fake(), visibilityState: 'visible', defaultView: {getComputedStyle: () => ({display: 'block'})}, querySelector: () => root, querySelectorAll: () => [], createComment: () => new Fake(), createElement: () => new Fake(), activeElement: null});
  Object.assign(win, {location: {href: 'https://clinicaltrials.gov/search'}, innerWidth: 1000, innerHeight: 800});
  const controller = installSiteContent(win, doc, {runtime: {id: 'test', getURL: (p: string) => 'chrome-extension://test/' + p, onMessage: {addListener() {}, removeListener() {}}, sendMessage: async () => ({})}});
  t.after(() => controller.dispose());
@@ -336,7 +354,7 @@ test('overlay frame is created already laid out for the saved display mode and t
  for (const [prefs, check] of [
   [{displayMode: 'popup', theme: 'dark'}, (f: Fake) => {assert.equal(f.styles.top, '50%'); assert.match(f.styles.transform, /translate\(-50%/); assert.equal(f.style.colorScheme, 'dark')}],
   [{displayMode: 'sidebar', theme: 'light'}, (f: Fake) => {assert.equal(f.styles.top, '0'); assert.equal(f.styles.right, '0'); assert.equal(f.styles.height, '800px'); assert.equal(f.style.colorScheme, 'light')}],
-  [{displayMode: 'overlay', theme: 'dark'}, (f: Fake) => {assert.equal(f.styles.top, '16px'); assert.equal(f.style.colorScheme, 'dark')}],
+  [{displayMode: 'overlay', theme: 'dark'}, (f: Fake) => {assert.equal(f.styles.top, '50%', 'the retired corner card opens as the default popup'); assert.equal(f.style.colorScheme, 'dark')}],
   [{displayMode: 'fullscreen', theme: 'neon'}, (f: Fake) => {assert.equal(f.styles.top, '50%', 'invalid layout falls back to the default popup'); assert.equal(f.style.colorScheme, 'light', 'invalid theme falls back to the system theme')}],
   [{}, (f: Fake) => assert.equal(f.styles.top, '50%', 'no saved choice gives the default popup')],
  ] as Array<[any, (f: Fake) => void]>) {
