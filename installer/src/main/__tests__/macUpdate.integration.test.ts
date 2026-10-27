@@ -112,7 +112,7 @@ test(
     assert.ok(stop > 0, "Granted is stopped");
     assert.ok(marker < stop && dirty < stop, "both refusals are decided before anything is stopped");
     assert.ok(stop < install, "and Granted is stopped before the install step runs");
-    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/granted-installer"/);
+    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/treatable-installer"/);
 
     // Stopping and starting Granted are granted-tray.sh's business, never
     // reimplemented here (no launchctl of its own).
@@ -123,21 +123,21 @@ test(
     // "put back" once the restore's own npm ci succeeded.
     assert.match(code, /PREV_HEAD="\$\(git -C "\$INSTALL_DIR" rev-parse HEAD/);
     assert.match(code, /checkout --quiet "\$PREV_HEAD"/);
-    assert.match(code, /RESTORED=" Granted v\$FROM was put back\."/);
+    assert.match(code, /RESTORED=" Treatable v\$FROM was put back\."/);
     const restore = code.indexOf('"$NPM_BIN" ci --no-audit --no-fund');
-    assert.ok(restore > 0 && restore < code.indexOf('RESTORED=" Granted'), "npm ci runs before it claims the version is back");
+    assert.ok(restore > 0 && restore < code.indexOf('RESTORED=" Treatable'), "npm ci runs before it claims the version is back");
 
     // The status file is the one the app already reads, in the folder the
     // settings file is in — not a new protocol and not a new location.
     assert.match(code, /STATUS_FILE="\$SUPPORT_DIR\/update-status\.json"/);
-    assert.match(code, /GRANTED_SETTINGS_PATH:-\$HOME\/Library\/Application Support\/Granted\/settings\.json/);
+    assert.match(code, /TREATABLE_SETTINGS_PATH:-\$HOME\/Library\/Application Support\/Treatable\/settings\.json/);
     assert.match(code, /"state":"%s","from":%s,"to":%s,"message":%s,"at":"%s"/);
 
     // It runs from a copy of itself, outside the folder it is about to switch
     // over (see the header), and that copy is removed again.
     assert.match(code, /exec \/bin\/bash "\$SELF_COPY" "\$@"/);
-    assert.match(code, /GRANTED_UPDATE_REEXEC/);
-    assert.match(code, /rm -f -- "\$GRANTED_UPDATE_SELF_COPY"/);
+    assert.match(code, /TREATABLE_UPDATE_REEXEC/);
+    assert.match(code, /rm -f -- "\$TREATABLE_UPDATE_SELF_COPY"/);
 
     // The release tag is matched with bash's own `=~`, never a `printf | grep
     // -q` pipeline: `grep -q` exits on its first match, which can SIGPIPE the

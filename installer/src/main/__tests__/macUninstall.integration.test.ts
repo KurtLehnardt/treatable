@@ -291,12 +291,12 @@ test(
 
     // The marker this whole macOS arc uses for "our installer made this" —
     // the one check that keeps a developer's own checkout out of this.
-    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/granted-installer"/);
+    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/treatable-installer"/);
     assert.match(code, /not-made-by-installer/);
     // And the other refusals, each with its own reason. ("already-gone" is not
     // one of them: a folder deleted by hand is removed:true and exit 0, as in
     // uninstall.ps1 — see the tests further down.)
-    for (const reason of ["is-a-link", "not-a-granted-install", "unsaved-work", "files-in-use", "access-denied", "cancelled"]) {
+    for (const reason of ["is-a-link", "not-a-treatable-install", "unsaved-work", "files-in-use", "access-denied", "cancelled"]) {
       assert.ok(code.includes(reason), `refuses with reason "${reason}"`);
     }
     // Moved aside FIRST, deleted after — the ordering that keeps a failure
@@ -350,13 +350,13 @@ test(
     assert.match(code, /\[ "\$KEEP_KEYS_GIVEN" = "0" \]/);
     // Every `rm -rf` of a path a caller can choose is guarded.
     assert.match(code, /PROTECTED_DIRS=\(/);
-    assert.match(code, /basename -- "\$SUPPORT_DIR"\)" = "Granted"/);
-    assert.match(code, /basename -- "\$LOG_DIR"\)" = "Granted"/);
+    assert.match(code, /basename -- "\$SUPPORT_DIR"\)" = "Treatable"/);
+    assert.match(code, /basename -- "\$LOG_DIR"\)" = "Treatable"/);
     // --quiet refuses unsaved work on its own; only --force goes ahead.
     assert.match(code, /if \[ "\$QUIET" = "1" \]; then\r?\n\s*if \[ "\$FORCE" != "1" \]; then/);
     // And the asking is overridable, so no test can ever be left waiting on a
     // dialog.
-    assert.match(code, /GRANTED_UNINSTALL_ASK_CMD/);
+    assert.match(code, /TREATABLE_UNINSTALL_ASK_CMD/);
     // A failure anywhere has to reach the ERR trap and be reported as JSON:
     // bash does not run that trap inside a shell function without errtrace.
     assert.match(code, /^set -o errtrace$/m);
