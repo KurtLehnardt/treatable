@@ -141,7 +141,7 @@ The Agents API keeps session state until the session is deleted, and Agents sess
 
 ### Older paths kept in the repository
 
-The earlier profile-based matching form (**Find my matches**, with its own age band, state and condition-label form, agent questions and distance filter) is not shown in the toolbar overlay; AI-matched results replaced it on results pages. Its code, helper operations and tests remain in the repository. The retained legacy panel (`panel.html`, built in every folder below) holds local screening against a bundled snapshot of 2,000 ClinicalTrials.gov studies, fictional API examples (a built-in fictional profile and two fixed public studies) and an optional analysis of up to two snapshot studies. The toolbar button does not open it, and native Chrome side panels stay disabled. Its entry address is `chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/panel.html`; actual Chrome access to it has not been verified. The legacy panel's own notice describes what its optional analysis sends.
+The earlier profile-based matching form (**Find my matches**, with its own age band, state and condition-label form, agent questions and distance filter) is not shown in the toolbar overlay; AI-matched results replaced it on results pages. Its code, helper operations and tests remain in the repository. The legacy side-panel page (`panel.html`) and the A/B build variants were retired: nothing in the extension opened that page, so it, its bundle, `build:a`/`build:b` and the `dist-a`/`dist-b` folders were removed. The helper operations behind it (`scoreDemo`, `agentDemo`, `prepareReal`, `executeReal`) remain in `extension/native/` but no extension page calls them.
 
 ## Local model option (Ollama on this device)
 
@@ -162,21 +162,13 @@ Requires Chrome **142+**, a working Node **20+** runtime, macOS and Xcode comman
 ```sh
 cd extension
 npm ci
-npm run build:all
+npm run build
 npm run typecheck
 node --import tsx --test tests/*.test.ts
 node --test native/test/*.test.mjs
 ```
 
-The build folders are:
-
-| Folder | Interface |
-|---|---|
-| `extension/dist` | Current Version B; default build |
-| `extension/dist-b` | Identical Version B compatibility build |
-| `extension/dist-a` | Preserved Version A reference |
-
-All three share the same toolbar overlay and differ only in the retained legacy panel and the manifest name. Chrome → Extensions → Developer mode → Load unpacked → choose **`extension/dist`**. After an update, Reload the extension and refresh the ClinicalTrials.gov tab. All variants share a pinned extension ID; use only one in a Chrome profile at a time. The current B archive is `extension/artifacts/treatable-version-b-current.zip`, with the manifest at its root. Extract into a dedicated folder before loading unpacked. Earlier A archives marked **PRE-PRIVACY BASELINE — NOT CURRENT** are historical artifacts.
+`npm run build` writes the single build to `extension/dist`. The earlier A/B variants (`dist-a`, `dist-b`, `npm run build:a`/`build:b`/`build:all`) were retired together with the legacy panel; the manifest name stays "Treatable · Version B". Chrome → Extensions → Developer mode → Load unpacked → choose **`extension/dist`**. After an update, Reload the extension and refresh the ClinicalTrials.gov tab. The extension ID is pinned by the manifest key. The current archive is `extension/artifacts/treatable-version-b-current.zip`, with the manifest at its root. Extract into a dedicated folder before loading unpacked. Earlier A archives marked **PRE-PRIVACY BASELINE — NOT CURRENT** are historical artifacts.
 
 From the repository root, install the native helper before configuring its credential:
 
@@ -190,7 +182,7 @@ The installer pins the Node executable used to run it. Use a functioning runtime
 
 ## Search the website
 
-1. Open `https://clinicaltrials.gov` or `https://www.clinicaltrials.gov` and click Treatable in Chrome's toolbar. Other hosts and HTTP pages are unsupported; there is no globally enabled Treatable side panel.
+1. Open `https://clinicaltrials.gov` or `https://www.clinicaltrials.gov` and click Treatable in Chrome's toolbar. Other hosts and HTTP pages are unsupported; Treatable uses no Chrome side panel.
 2. Enter condition/disease, other terms, intervention/treatment or location. More filters starts collapsed and contains all 28 logical fields: status, eligibility and age ranges, phase/type, results/documents, funder, six date ranges and additional search fields.
 3. Search navigates to the registry's own results URL. Search terms and website filters go to ClinicalTrials.gov and may appear in browser history. The search itself makes **no OpenAI request**; on the results page, AI-matched results may then rank the cards as described under [Decisions ranking](#decisions-ranking-ai-matched-results).
 4. The overlay reopens compact after the search. Expand it to choose up to two studies from the results, or open a study page, and use Understand this study. Treatable opens in the **Popup** display by default: a centered window, with the page behind it inert until the window is collapsed. The top-right settings gear offers Popup, Overlay (a bounded card that leaves the rest of the page interactive, with no dimming or opacity control) or in-page Sidebar, plus System, Light or Dark themes. A saved choice always wins over the default; native Chrome side panels stay disabled.
@@ -232,4 +224,4 @@ These still need manual verification on your machine: how the overlay mounts and
 
 Recruitment-query encoding: the current official [filter definitions](https://clinicaltrials.gov/chunk-N3WLMKWZ.js) map `rec` to Recruiting and `ava` to Available in the expanded-access group; their native `not rec` preset uses space-separated statuses. The official [query serializer](https://clinicaltrials.gov/chunk-N5W3TRDQ.js) writes sorted `key:value` entries into `aggFilters`. This verifies encoding, while actual browser filter-chip behavior remains a separate check.
 
-[Native setup](native/API_SETUP.md) · [Security review](SECURITY_REVIEW.md) · [Version B design evidence](VERSION_B_REVIEW.md) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html)
+[Native setup](native/API_SETUP.md) · [Security review](SECURITY_REVIEW.md) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html)

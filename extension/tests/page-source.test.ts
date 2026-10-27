@@ -1,8 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {parsePageSource} from '../src/core';
 import {boundedText,sanitizePageText,cutCodePoints} from '../src/validation';
-import {readPage} from '../src/pageReader';
-import {TRIAL_ORIGINS} from '../src/sites';
 // L5 (poc-pagesource.out): harmless page quirks used to make a real study page "could not be safely read".
 const url='https://clinicaltrials.gov/study/NCT06567886';
 const LONE=/[\uD800-\uDFFF]/u;
@@ -41,10 +39,4 @@ test('getters are read exactly once, so a field cannot pass the type check and t
  let reads=0;const value={url,title:'Study',get text(){reads++;return reads===1?'Study text':{length:1,slice:()=>'SyntheticPrivateName'}}};
  assert.equal(parsePageSource(value).text,'Study text');assert.equal(reads,1);
  let titleReads=0;const flip={url,get title(){titleReads++;return titleReads===1?{}:'ok'},text:'Study text'};assert.throws(()=>parsePageSource(flip));
-});
-function runReader(text:string,selection=''){const keys=['window','document','location','NodeFilter','getComputedStyle'];const previous=keys.map(key=>Object.getOwnPropertyDescriptor(globalThis,key));const article={nodeType:1,closest:()=>null};let index=0;const nodes=[{parentElement:article,textContent:text}];const values:any={window:{getSelection:()=>selection?{rangeCount:1,toString:()=>selection,anchorNode:{nodeType:3,parentElement:article},focusNode:{nodeType:3,parentElement:article},getRangeAt:()=>({intersectsNode:()=>false})}:null},document:{title:'Study',body:{},activeElement:article,querySelectorAll:()=>[],createTreeWalker:()=>({nextNode:()=>nodes[index++]})},location:{origin:TRIAL_ORIGINS[0],href:TRIAL_ORIGINS[0]+'/study/NCT06567886'},NodeFilter:{SHOW_TEXT:4},getComputedStyle:()=>({display:'block',visibility:'visible'})};try{for(const key of keys)Object.defineProperty(globalThis,key,{configurable:true,writable:true,value:values[key]});return readPage([...TRIAL_ORIGINS])}finally{keys.forEach((key,i)=>{const old=previous[i];if(old)Object.defineProperty(globalThis,key,old);else Reflect.deleteProperty(globalThis,key)})}}
-test('the injected page reader cuts DOM and selection text on a code-point boundary',()=>{
- const dom=runReader('a'.repeat(23999)+'\u{1F600}tail');assert.equal(dom.text,'a'.repeat(23999));assert.doesNotMatch(dom.text,LONE);assert.equal(parsePageSource(dom).text,'a'.repeat(23999));
- const picked=runReader('unused','s'.repeat(23999)+'\u{1F600}tail');assert.equal(picked.text,'s'.repeat(23999));
- assert.equal(runReader('Visible \u{1F600} study').text,'Visible \u{1F600} study\n');
 });

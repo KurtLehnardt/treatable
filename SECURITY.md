@@ -8,7 +8,7 @@ Treatable is not a HIPAA-covered product. No Business Associate Agreement exists
 
 | Component | Version | Supported |
 |---|---|---|
-| Chrome extension, variants A (`dist/`) and B (`dist-b/`) | 0.1.0, latest commit of the release branch | Yes |
+| Chrome extension (`dist/`) | 0.1.0, latest commit of the release branch | Yes |
 | Native host and Keychain helper (`extension/native/`) | Same commit as the extension build | Yes, only with a matching extension build (public catalog hash must match) |
 | Archived "PRE-PRIVACY BASELINE — NOT CURRENT" A ZIP | Any | No |
 | Legacy web app `scaffold/`, `installer/`, root `install-*` scripts | Any | No (not part of the demo; reports handled best effort) |
@@ -21,7 +21,7 @@ Email **privacy.6vpc5@mailer.me** with the subject `Treatable security: <short t
 
 Please include:
 
-- the component and commit SHA, or extension version and variant (A or B);
+- the component and commit SHA, or extension version;
 - macOS, Chrome and Node versions;
 - steps to reproduce, a proof of concept, and expected versus actual behavior;
 - the impact: which data or capability an attacker gains;
@@ -54,7 +54,7 @@ If you are unsure whether something is in bounds, email first.
 
 In scope:
 
-- panel, background service worker, page reader, manifest and CSP (`extension/src/`, `extension/manifest.json`);
+- toolbar overlay, background service worker, manifest and CSP (`extension/src/`, `extension/manifest.json`);
 - shared request/response contracts (`extension/shared/`);
 - native host, transport, provider client, consent store, installer and Keychain helper (`extension/native/`);
 - build script and CI gate (`extension/scripts/`, `.github/workflows/extension-security.yml`).

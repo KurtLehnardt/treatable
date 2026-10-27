@@ -11,7 +11,7 @@ const guideSources = sources.filter(source => /^(guide-|use-guide)/.test(source.
 
 test('only the guide state module touches extension storage beyond the existing deletion-only legacy cleanup', () => {
   const touching = sources.filter(({ text }) => /\bstorage\??\.(local|session)\b|\.storage\b/.test(text)).map(source => source.name).sort();
-  assert.deepEqual(touching, ['guide-state.ts', 'ranking-consent.ts', 'ui-prefs.ts', 'use-panel-controller.ts', 'use-private-matching.ts'] /* ui-prefs.ts is the display preferences module; ranking-consent.ts holds one fixed session-only marker (strict test in hardening.test.ts); the last two only call the deletion-only legacy cleanup */);
+  assert.deepEqual(touching, ['guide-state.ts', 'ranking-consent.ts', 'ui-prefs.ts', 'use-private-matching.ts'] /* ui-prefs.ts is the display preferences module; ranking-consent.ts holds one fixed session-only marker (strict test in hardening.test.ts); the last two only call the deletion-only legacy cleanup */);
   const state = sources.find(source => source.name === 'guide-state.ts')!.text;
   assert.deepEqual(state.match(/\.(set|get|remove|clear|getKeys|getBytesInUse|setAccessLevel|onChanged)\(/g)?.map(call => call.slice(1, -1)).sort().filter((v, i, all) => all.indexOf(v) === i), ['get', 'remove', 'set']);
   assert.doesNotMatch(state, /\.(clear|getKeys|getBytesInUse|setAccessLevel|onChanged)\b/);
@@ -62,20 +62,20 @@ test('sweetalert2 is pinned to one exact version and the installed copy has no l
 
 test('the manifest asks for no new permission and no new host for the guide', () => {
   const manifest = JSON.parse(read('../manifest.json'));
-  assert.deepEqual(manifest.permissions.slice().sort(), ['nativeMessaging', 'scripting', 'sidePanel', 'storage']);
+  assert.deepEqual(manifest.permissions.slice().sort(), ['nativeMessaging', 'scripting', 'storage']);
   assert.equal(manifest.host_permissions, undefined, 'hosts come from sites.json at build time, unchanged');
   assert.equal(manifest.optional_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined, 'there is still no always-on content script');
-  for (const dir of ['dist', 'dist-b']) {
+  for (const dir of ['dist']) {
     if (!existsSync(new URL(`../${dir}/manifest.json`, import.meta.url))) continue;
     const built = JSON.parse(read(`../${dir}/manifest.json`));
     assert.deepEqual(built.host_permissions, ['https://clinicaltrials.gov/*', 'https://www.clinicaltrials.gov/*']);
-    assert.deepEqual(built.permissions.slice().sort(), ['nativeMessaging', 'scripting', 'sidePanel', 'storage']);
+    assert.deepEqual(built.permissions.slice().sort(), ['nativeMessaging', 'scripting', 'storage']);
   }
 });
 
-test('the built content script and panel bundle sweetalert2 and its stylesheet with no remote loading', () => {
-  for (const dir of ['dist', 'dist-b']) {
+test('the built content script and overlay bundle sweetalert2 and its stylesheet with no remote loading', () => {
+  for (const dir of ['dist']) {
     const content = read(`../${dir}/site-content.js`);
     assert.match(content, /swal2-popup/, `${dir}: stylesheet text is bundled`);
     assert.match(content, /data-treatable-guide-host/, `${dir}: the guide host is in the content script`);
