@@ -301,7 +301,10 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
   });
   await act(async () => {await settle(6)});
   const closes = () => sent.filter(v => v.type === 'site.close').length;
-  return {sent, closes};
+  /* The background relaying a press on the page outside the popup over the authenticated port. */
+  const outside = () => act(async () => {messages.emit({type: 'site.outsideClick'}); await settle(2)});
+  const hides = () => sent.filter(v => v.type === 'site.hide');
+  return {sent, closes, outside, hides};
 }
 async function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = element instanceof window.HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -410,4 +413,112 @@ test('production overlay: a running intro tour is stopped before asking, and foc
   assert.equal(page.closes(), 0);
   assert.equal(personalizeName().value, 'Morgan Example');
   assert.ok(document.activeElement === personalizeName(), 'focus returns to the field, not to an element the tour remembered');
+});
+
+/* A press on the page outside the popup, relayed by the background. Nothing typed closes at once; something typed hides the popup, with no question and nothing cleared. */
+function outsideHost() {
+  const listeners = new Set<() => void>();
+  return {onOutsideClick: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener)}}, press: () => act(async () => {for (const listener of [...listeners]) listener(); await settle(2)}), size: () => listeners.size};
+}
+
+test('outside press with nothing typed closes at once, through the usual close and with no dialog', async () => {
+  const outside = outsideHost();
+  let hides = 0;
+  await mountView(view({...outside, hasUnsavedWork: () => false, hide: async () => {hides++; return true}}));
+  await outside.press();
+  assert.equal(counts.closed, 1);
+  assert.equal(hides, 0);
+  assert.equal(dialogs(), 0);
+});
+
+test('outside press with something typed hides instead: no dialog, nothing closed, and a press while hiding is on its way does nothing', async () => {
+  const outside = outsideHost();
+  let hides = 0, finish!: (value: boolean) => void;
+  await mountView(view({...outside, hasUnsavedWork: () => true, hide: () => {hides++; return new Promise<boolean>(resolve => {finish = resolve})}}));
+  await outside.press();
+  await outside.press();
+  assert.equal(hides, 1, 'one hide request at a time');
+  assert.equal(counts.closed, 0);
+  assert.equal(dialogs(), 0, 'no confirmation for an outside press');
+  await act(async () => {finish(true); await settle(2)});
+  await outside.press();
+  assert.equal(hides, 2, 'after the first settles, a later press may hide again');
+});
+
+test('outside press while the discard question is showing does nothing harmful', async () => {
+  const outside = outsideHost();
+  let hides = 0;
+  await mountView(view({...outside, hasUnsavedWork: () => true, hide: async () => {hides++; return true}}));
+  await act(async () => {button(CLOSE).click()});
+  await settle();
+  assert.ok(popup(), 'the Close control asks');
+  await outside.press();
+  await outside.press();
+  assert.equal(dialogs(), 1, 'still exactly one dialog');
+  assert.equal(hides, 0);
+  assert.equal(counts.closed, 0);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(counts.closed, 0);
+});
+
+test('outside press does nothing in the sidebar or after the session ended', async () => {
+  for (const overrides of [{displayMode: 'sidebar' as const}, {ended: true}]) {
+    const outside = outsideHost();
+    let hides = 0;
+    await mountView(view({...outside, hasUnsavedWork: () => true, hide: async () => {hides++; return true}, ...overrides}));
+    await outside.press();
+    assert.deepEqual({hides, closed: counts.closed, dialogs: dialogs()}, {hides: 0, closed: 0, dialogs: 0}, JSON.stringify(Object.keys(overrides)));
+    for (const unmount of mounted.splice(0).reverse()) await unmount();
+    assert.equal(outside.size(), 0, 'the view stops listening when it goes away');
+  }
+});
+
+test('outside press is not held back by the view’s own collapsed flag: the page sends none while the frame is collapsed, so one that arrives counts', async () => {
+  const outside = outsideHost();
+  let hides = 0;
+  await mountView(view({...outside, collapsed: true, hasUnsavedWork: () => true, hide: async () => {hides++; return true}}));
+  await outside.press();
+  assert.equal(hides, 1);
+  assert.equal(dialogs(), 0);
+});
+
+test('outside press with something typed whose hide is refused runs the usual close instead, which asks first', async () => {
+  for (const hide of [async () => false, async (): Promise<boolean> => {throw Error('refused')}]) {
+    const outside = outsideHost();
+    await mountView(view({...outside, hasUnsavedWork: () => true, hide}));
+    await outside.press();
+    await settle();
+    assert.ok(popup(), 'the discard question shows instead of the press being lost');
+    assert.equal(counts.closed, 0);
+    await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+    await later();
+    assert.equal(counts.closed, 0, 'keeping the work closes nothing');
+    for (const unmount of mounted.splice(0).reverse()) await unmount();
+  }
+});
+
+test('production overlay: outside press with a typed name hides it with everything kept, and asks the background with only the session deadline', async () => {
+  const page = await mountAssistant();
+  await typeInto(personalizeName(), 'Morgan Example');
+  const before = Date.now();
+  await page.outside();
+  assert.equal(dialogs(), 0, 'no question is asked');
+  assert.equal(page.closes(), 0);
+  const [hide] = page.hides();
+  assert.ok(hide, 'a hide request was sent');
+  assert.deepEqual(Object.keys(hide.payload), ['expiresAt']);
+  assert.ok(Number.isSafeInteger(hide.payload.expiresAt) && hide.payload.expiresAt > before && hide.payload.expiresAt <= Date.now() + 30 * 60 * 1000, 'the live session deadline');
+  assert.equal(personalizeName().value, 'Morgan Example', 'what was typed is still there');
+  assert.equal(sessionEnded(), false);
+});
+
+test('production overlay: outside press with nothing typed ends the session at once, even while the intro tour shows', async () => {
+  const page = await mountAssistant({tour: true});
+  assert.equal(([...document.querySelectorAll('button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled, true, 'the intro tour is running');
+  await page.outside();
+  assert.equal(page.closes(), 1);
+  assert.equal(page.hides().length, 0);
+  assert.equal(dialogs(), 0);
+  assert.ok(sessionEnded());
 });

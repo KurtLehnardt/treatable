@@ -34,9 +34,14 @@ test('overlay preserves website search, defaults to the popup display and expose
  assert.equal(mode,'sidebar');assert.equal(theme,'dark');assert.equal(renderer.root.findAllByProps({'aria-label':'Overlay background opacity'}).length,0);
  renderer.unmount();const css=readFileSync(new URL('../src/overlay.css',import.meta.url),'utf8');assert.match(css,/prefers-reduced-motion/);assert.doesNotMatch(css,/transition:\s*all|https?:\/\//);assert.match(css,/min-height:44px/);assert.doesNotMatch(css,/opacity-control|data-background-opacity|backdrop/);
 });
-test('choosing the Overlay display keeps the website usable: no dialog role and no modal flag',()=>{
- const renderer=TestRenderer.create(React.createElement(OverlayView,{vm:view({displayMode:'overlay'})}));
- const main=renderer.root.findByType('main');assert.equal(main.props['data-display-mode'],'overlay');assert.equal(main.props['aria-modal'],undefined);assert.equal(main.props.role,undefined);renderer.unmount();
+test('the display choices are Popup and Sidebar only, and the sidebar is no modal dialog',()=>{
+ const renderer=TestRenderer.create(React.createElement(OverlayView,{vm:view()}));
+ act(()=>renderer.root.findByProps({'aria-label':'Treatable settings'}).props.onClick());
+ const display=renderer.root.findByProps({'aria-label':'Treatable display settings'}).findAllByType('select')[0];
+ assert.deepEqual(display.findAllByType('option').map(option=>option.props.value),['popup','sidebar'],'the retired corner card is not offered');
+ assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/Overlay keeps|>Overlay</);renderer.unmount();
+ const sidebar=TestRenderer.create(React.createElement(OverlayView,{vm:view({displayMode:'sidebar'})}));
+ const main=sidebar.root.findByType('main');assert.equal(main.props['data-display-mode'],'sidebar');assert.equal(main.props['aria-modal'],undefined);assert.equal(main.props.role,undefined);sidebar.unmount();
 });
 test('opaque iframe activation rejects page commands, wrong origin/source and extra medical fields',()=>{const parent={}as Window;assert.ok(readActivation(eventFor(parent),parent,'overlay'));assert.equal(readActivation(eventFor({},'https://clinicaltrials.gov'),parent,'overlay'),undefined);assert.equal(readActivation(eventFor(parent,'https://clinicaltrials.gov.evil.example'),parent,'overlay'),undefined);assert.equal(readActivation(eventFor(parent,'http://clinicaltrials.gov'),parent,'overlay'),undefined);assert.equal(readActivation(eventFor(parent,'https://clinicaltrials.gov',{type:'treatable.site.activate',purpose:'overlay',capability:cap,profile:'PRIVATE'}),parent,'overlay'),undefined)});
 test('module-level activation capture preserves parent load handshake before React effect subscription',async()=>{const target=new EventTarget()as any;target.parent={};captureSiteActivations(target);target.dispatchEvent(eventFor(target.parent));let received=0;const off=subscribeSiteActivation(target,'overlay',()=>received++);await new Promise<void>(resolve=>queueMicrotask(()=>resolve()));assert.equal(received,1);off();target.dispatchEvent(eventFor(target.parent,'https://evil.example'));let forged=0;const stop=subscribeSiteActivation(target,'overlay',()=>forged++);await new Promise<void>(resolve=>queueMicrotask(()=>resolve()));assert.equal(forged,0);stop()});
