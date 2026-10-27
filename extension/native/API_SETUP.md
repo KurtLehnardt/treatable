@@ -43,7 +43,7 @@ Replace the path with your checkout’s location. Do not copy a key into this co
 
 ## Current-page analysis
 
-The protected `private-match.html` window is non-web-accessible and must match its registered top-level window/document/source context. The website overlay and badge frames cannot invoke native model operations.
+Native model operations are available only to the `overlay.html` subframe that the service worker registered for the current tab (`privateSender` in `src/site-background.ts` checks the extension ID, a non-zero frame ID, the exact `overlay.html` URL, and the registered document and source context). The website overlay and badge frames cannot invoke native model operations.
 
 - `liveCatalog` fetches fresh official ClinicalTrials.gov records for **all loaded current-page NCT IDs, maximum 10**. It checks TLS, strict record/response IDs, byte/time bounds and bounded concurrency. Immutable public evidence snapshots expire after five minutes. Condition labels come from these records, not the older bundled corpus. Missing facts stay unknown; truncation is visible.
 - `prepareLive` requires the current policy receipt and a strict minimized packet: age band, optional US state/sex, 1–6 explicitly selected public condition IDs, every loaded NCT ID for Decisions, and 1–2 selected NCT IDs for Agents. No provider call occurs. The helper pins both exact API bodies and public tool outputs to a digest and opaque five-minute token bound to the source snapshot/query/profile.

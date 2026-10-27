@@ -8,7 +8,7 @@
 | Operator | Kurt Lehnardt - Developer of Treatable · privacy/security contact privacy.6vpc5@mailer.me |
 | Method | STRIDE per trust boundary, OWASP Top 10 for LLM Applications 2025, HIPAA Safe Harbor identifier walkthrough, AI-assisted adversarial review plus SAST, dependency audit and secret scanning (see [SECURITY.md](../../SECURITY.md#release-gate)) |
 
-> Note: this model describes the baseline above. The legacy side-panel page (`panel.html`), its `treatable-panel-v2` runtime port and the A/B build variants were removed afterwards because nothing in the extension opened them; references to the panel below are historical.
+> Warning: this model is out of date. It describes the baseline above, which predates the toolbar overlay, the private live-matching port, the apply port, AI ranking and the trusted confirm-send window; none of those trust boundaries is modeled here. The legacy side-panel page (`panel.html`), its `treatable-panel-v2` runtime port and the A/B build variants it analyses were removed afterwards because nothing in the extension opened them. Treat every panel reference below as historical, and do not rely on this document as a current statement of the extension's boundaries until it is rewritten.
 
 This is an engineering threat model for a minimum viable product. It is not a certification, a legal opinion or proof that no vulnerability exists. **Treatable is not a HIPAA-covered product, no Business Associate Agreement (BAA) exists with OpenAI, no HIPAA compliance is claimed, and minimized health information is not anonymous.**
 

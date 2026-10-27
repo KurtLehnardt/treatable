@@ -1,11 +1,11 @@
-# Treatable current A/B build checkpoint
+# Treatable build checkpoint
 
-The current extension supports local panel-memory screening, a default fictional OpenAI demo, and optional explicitly consented minimized real-data analysis. See README.md and native/API_SETUP.md for current behavior. The standalone web prototype is separate.
+The current extension is a toolbar overlay on ClinicalTrials.gov with optional, explicitly consented AI-matched results and study briefs through the local native helper. The earlier side-panel page and the A/B build variants were retired. See README.md and native/API_SETUP.md for current behavior. The standalone web prototype is separate.
 
-- Verification: 49 extension tests, 21 native tests, TypeScript and A/B builds pass. Native network tests intercept the real HTTPS serializer with fake credentials; no live OpenAI request, user credential access, Chrome installation or rendered browser verification occurred.
+- Verification (historical checkpoint, taken before the side panel was retired): 49 extension tests, 21 native tests, TypeScript and A/B builds passed. Native network tests intercept the real HTTPS serializer with fake credentials; no live OpenAI request, user credential access, Chrome installation or rendered browser verification occurred.
 - Both current builds remove Save/Remember and gate entry on deletion-only legacy cleanup. Profiles, notices/receipts, tokens, exact previews, results and traces live in active session memory only.
 - Real analysis requires scroll-bottom acknowledgment, explicit acceptance, minimized public selections, native local preparation, and a separate exact-payload confirmation for each operation. Execution uses the pinned expiring token/digest only.
-- Current packages are treatable-version-a-current.zip and treatable-version-b-current.zip. Original A packages are historical PRE-PRIVACY BASELINE — NOT CURRENT, never current secure downloads.
+- Earlier A and B packages are historical and are not current downloads; build the single `dist/` folder from source.
 - Fresh independent source and automated-boundary security review passed for 29f126b; see SECURITY_REVIEW.md. Earlier UI-only approval is separate. Canonical integration is complete; live credential setup and API execution remain unverified.
 
 ## Historical local/Ollama prototype report — not current behavior

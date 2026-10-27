@@ -1,8 +1,11 @@
 import './zod-jitless';
-import{installLiveBroker}from'./live-background';
-import{installApplyBroker}from'./apply-background';
-import {installSiteAssistant} from './site-background';
+import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
+import{installApplyBroker,APPLY_PORT}from'./apply-background';
+import {installSiteAssistant,isSitePort} from './site-background';
 import {isSupportedSite} from './sites';
+import {clearLegacyPatientData} from './storage';
+// Every port belongs to exactly one broker below (site overlay/badge, private live matching, apply). Any other name, including the retired side-panel port, is disconnected unanswered.
+chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==PRIVATE_LIVE_PORT&&port.name!==APPLY_PORT)try{port.disconnect()}catch{}});
 let liveBroker:ReturnType<typeof installLiveBroker>|undefined;
 const siteAssistant=installSiteAssistant(chrome,{onProtectedEnd:tabId=>{liveBroker?.endTab(tabId)}});
 liveBroker=installLiveBroker(chrome,siteAssistant);
@@ -21,7 +24,7 @@ async function initializeTitles(){
  }catch{}
 }
 void initializeTitles();
-chrome.runtime.onInstalled.addListener(()=>{void initializeTitles()});
+chrome.runtime.onInstalled.addListener(()=>{void initializeTitles();/* Deletion-only cleanup of the key an earlier version stored patient text under. */void clearLegacyPatientData(chrome.storage?.session,chrome.storage?.local).catch(()=>{})});
 chrome.runtime.onStartup.addListener(()=>{void initializeTitles()});
 chrome.tabs.onUpdated.addListener((tabId:number,change:any,tab:any)=>{updateTitle({...tab,id:tabId,url:change.url??tab.url})});
 chrome.tabs.onActivated.addListener(({tabId}:{tabId:number})=>{
