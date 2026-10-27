@@ -64,6 +64,8 @@ async function initializePanels(){
  try{const tabs=await chrome.tabs.query({});
  // Close only this extension's legacy global panels; tab panels use separate options.
  for(const windowId of new Set(tabs.map((tab:any)=>tab.windowId).filter((id:any)=>Number.isInteger(id)&&id>=0)))void chrome.sidePanel.close({windowId}).catch(()=>{});
+ /* A fresh worker holds no hidden overlay, but a per-tab badge outlives the worker, so a dot left by a hidden overlay would otherwise stay while the title resets. */
+ for(const tab of tabs)if(Number.isInteger(tab?.id)&&tab.id>=0)try{void Promise.resolve(chrome.action.setBadgeText({tabId:tab.id,text:''})).catch(()=>{})}catch{}
  await Promise.all(tabs.filter((tab:any)=>(panelRevisions.get(tab.id)??0)<=revision).map(updatePanel));
  }catch{}
 }

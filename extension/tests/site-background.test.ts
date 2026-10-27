@@ -138,3 +138,11 @@ test('a restarted worker that lost its hidden entries still clears a stale toolb
  for(const end of ['port auth','close','tab removed'] as const){const h=harness();await h.service.launch({id:1,url:h.snapshot().url});const p=h.port();p.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();assert.equal(h.service.isHidden(1),false,'nothing is held as hidden');
   if(end!=='port auth'){assert.deepEqual(h.cues.splice(0),CUE_OFF,'port auth');if(end==='close')await h.service.handle(1,{id:'c',type:'site.close',payload:{}});else h.api.tabs.onRemoved.emit(1);await flush()}
   assert.deepEqual(h.cues.splice(0),CUE_OFF,`${end} clears the badge and the title`);p.disconnect()}});
+test('a slow tab lookup from a reopen never overwrites the title cue of a hide that came after it',async()=>{const h=await authenticated();await flush();h.cues.length=0;
+ await h.service.handle(1,{id:'h1',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();
+ let release!:()=>void;const get=h.api.tabs.get;h.api.tabs.get=async(id:number)=>{await new Promise<void>(r=>release=r);return get(id)};
+ await h.service.launch({id:1,url:h.snapshot().url});await flush();
+ h.api.tabs.get=get;await h.service.handle(1,{id:'h2',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();
+ release();await flush();
+ const titles=h.cues.filter((c:any)=>c.title).map((c:any)=>c.title.title),badges=h.cues.filter((c:any)=>c.badge).map((c:any)=>c.badge.text);
+ assert.equal(h.service.isHidden(1),true);assert.equal(badges.at(-1),'•');assert.equal(titles.at(-1),'Treatable is hidden — click to reopen',JSON.stringify(titles));h.p.disconnect()});

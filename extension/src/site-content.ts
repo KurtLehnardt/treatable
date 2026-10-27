@@ -35,8 +35,9 @@ export function installSiteContent(win:Window,doc:Document,api:any,options:{trus
   * sidebar over the page instead, as before. Sticky headers sit inside the page and follow. Fixed page elements ignore that margin, so the
   * ones reaching under the sidebar are fitted as well: small ones on the right edge (on ClinicalTrials.gov the Back to top and feedback
   * tabs) move left just far enough to clear it, on top of any translate the site gave them, and wide fixed layers (a modal backdrop, a
-  * loading mask) end at its edge. Every inline value replaced here is saved first and put back exactly, unless the site has since written its own, when the sidebar collapses, hides,
-  * switches mode or closes, the window gets too narrow, or the page goes away. */
+  * loading mask) end at its edge. Every inline value replaced here is saved first and put back exactly when the sidebar collapses, hides, switches mode or closes,
+  * the window gets too narrow, or the page goes away. Fitted page elements are left alone if the site has since written its own value; the root
+  * margin is always put back, as the sidebar rewrites it on every resize. */
  const MIN_PAGE_WIDTH=480;let reserved:{width:number;margin:Inline}|undefined,fitTimer:ReturnType<typeof setTimeout>|undefined;const fitted=new Map<HTMLElement,Map<string,{saved:Inline;wrote:string}>>();
  /* Page changes, scrolling and resizes refit at most every 150 ms, and at the latest 150 ms after the first change, so neither a busy page
   * nor a window being dragged is measured on every frame, and a page that never stops changing cannot put the fit off. Inline style changes
