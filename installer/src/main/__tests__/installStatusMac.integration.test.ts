@@ -30,7 +30,7 @@ const execFileAsync = promisify(execFile);
 
 // `npm test` runs from installer/; the script lives at the repo root.
 const INSTALL_SCRIPT = resolve(process.cwd(), "..", "install-macos.sh");
-const BOUNDARY = 'log "Granted — macOS install"';
+const BOUNDARY = 'log "Treatable — macOS install"';
 
 /** Everything in install-macos.sh before its first action: STATUS_PATH, write_status, die, the traps. */
 function realHeaderBlock(): string {

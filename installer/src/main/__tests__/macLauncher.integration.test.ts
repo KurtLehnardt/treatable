@@ -42,7 +42,7 @@ const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyo
 // Not 3000, and not macTray.integration.test.ts's 3977: a real Granted (or
 // that test) must never be mistaken for this one's fake server.
 const PORT = 3975;
-const BUNDLE_ID = "io.github.kurtlehnardt.granted.launcher";
+const BUNDLE_ID = "io.github.kurtlehnardt.treatable.launcher";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -213,7 +213,7 @@ test(
       .filter((line) => !/^\s*#/.test(line))
       .join("\n");
     // Per-user, no admin rights: ~/Applications, never /Applications.
-    assert.match(script, /GRANTED_APPLICATIONS_DIR:-\$HOME\/Applications/);
+    assert.match(script, /TREATABLE_APPLICATIONS_DIR:-\$HOME\/Applications/);
     assert.ok(!/APPLICATIONS_DIR="\/Applications"/.test(script), "never the system-wide /Applications");
     // Every destructive path is guarded by the bundle's own identifier.
     assert.match(script, /is_our_bundle/);
@@ -226,7 +226,7 @@ test(
     assert.ok(!code.includes("System Events"), "no AppleScript UI scripting");
     // And the Dock restart is overridable, so a test can never restart the
     // machine's real Dock.
-    assert.match(code, /GRANTED_DOCK_RELOAD_CMD-killall Dock/);
+    assert.match(code, /TREATABLE_DOCK_RELOAD_CMD-killall Dock/);
     // REGRESSION (real hardware): the restart has to be waited for. A Dock
     // that is still starting up has not read the change yet, and writes its
     // startup copy of persistent-apps back the next time it is asked to quit

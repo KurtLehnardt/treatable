@@ -21,7 +21,7 @@ describe("the settings are the app's", { skip: !existsSync(RULES_JSON) && "run f
     assert.deepEqual(SANITIZE_SETTINGS, shared);
   });
   test("same as the tray's copy in report-problem.ps1", () => {
-    const m = /\$GrantedSanitizeRulesJson = @'\r?\n([\s\S]*?)\r?\n'@/.exec(readFileSync(TRAY_SCRIPT, "utf8"));
+    const m = /\$TreatableSanitizeRulesJson = @'\r?\n([\s\S]*?)\r?\n'@/.exec(readFileSync(TRAY_SCRIPT, "utf8"));
     assert.ok(m);
     assert.deepEqual(JSON.parse(m[1]), SANITIZE_SETTINGS);
   });
