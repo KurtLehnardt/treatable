@@ -1,6 +1,6 @@
 import {TRIAL_ORIGINS} from './sites';
 import {SITE_FILTERS} from './site-filter-catalog';
-import {SITE_MAX_MESSAGE_BYTES,UserFacingSiteError,isSiteUserMessage,siteBytes} from './site-contract';
+import {SITE_MAX_MESSAGE_BYTES,UserFacingSiteError,exactSiteKeys,isSiteUserMessage,siteBytes} from './site-contract';
 import type {OverlayReady,OverlaySnapshot,OverlayStudy} from './overlay-types';
 /** Study page binding chosen by the background from the validated tab URL; only a strict public NCT ID is accepted. */
 export function parseStudy(v:unknown):OverlayStudy|undefined{return object(v)&&Object.keys(v).length===1&&typeof v.nctId==='string'&&/^NCT[0-9]{8}$/.test(v.nctId)?{nctId:v.nctId}:undefined}
@@ -41,7 +41,7 @@ export class SiteClient {
   if(v.type==='site.ready'){try{const snapshot=parseSnapshot(v.snapshot);if(!Array.isArray(v.filters)||v.filters.length>100)throw Error();this.ready=true;clearTimeout(authTimer);this.cancelAuth=undefined;const study=parseStudy(v.study);resolve({snapshot,filters:SITE_FILTERS.map(f=>({...f,options:f.options?.map(o=>({...o}))})),search:object(v.search)?v.search:undefined,compact:v.compact===true,...(study?{study}:{})});this.emit(v)}catch{this.disconnect();reject(Error('The site connection was rejected.'))}return}
   if(v.type==='site.snapshot'){try{this.emit({...v,snapshot:parseSnapshot(v.snapshot)})}catch{}return}
   if(v.type==='site.study'){if(this.ready)this.emit({type:'site.study',study:parseStudy(v.study)});return}
-  if(v.type==='site.guide'){if(this.ready)this.emit(v);return}if(v.type==='site.ranking'){if(this.ready&&this.purpose==='overlay')this.emit(v);return}/* A press on the page outside the popup carries no data; only the fixed type is passed on. */if(v.type==='site.outsideClick'){if(this.ready&&this.purpose==='overlay')this.emit({type:'site.outsideClick'});return}if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
+  if(v.type==='site.guide'){if(this.ready)this.emit(v);return}if(v.type==='site.ranking'){if(this.ready&&this.purpose==='overlay')this.emit(v);return}/* A press on the page outside the popup carries no data; only the fixed type is passed on. */if(v.type==='site.outsideClick'){if(this.ready&&this.purpose==='overlay')this.emit({type:'site.outsideClick'});return}/* Whether the frame is shown and expanded, as the background left it after a hide or a toolbar press: two booleans and nothing else. */if(v.type==='site.view'){if(this.ready&&this.purpose==='overlay'&&exactSiteKeys(v,['type','hidden','collapsed'])&&typeof v.hidden==='boolean'&&typeof v.collapsed==='boolean')this.emit({type:'site.view',hidden:v.hidden,collapsed:v.collapsed});return}if(v.type==='site.availability'){this.emit(v);return}if(v.type==='site.badge'){this.emit(v);return}
   if(typeof v.id!=='string')return;const item=this.pending.get(v.id);if(!item)return;clearTimeout(item.timer);this.pending.delete(v.id);v.ok===true?item.resolve(v.result):item.reject(isSiteUserMessage(v.error)?new UserFacingSiteError(v.error):Error('The site action did not complete. Your local inputs were not sent.'));
  });
  port.onDisconnect.addListener(()=>{clearTimeout(authTimer);this.cancelAuth=undefined;this.port=undefined;this.ready=false;this.rejectPending();if(!this.ended)this.emit({type:'site.ended'});reject(Error('The site session closed.'))});

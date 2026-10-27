@@ -462,8 +462,8 @@ test('outside press while the discard question is showing does nothing harmful',
   assert.equal(counts.closed, 0);
 });
 
-test('outside press does nothing in the sidebar, while collapsed or after the session ended', async () => {
-  for (const overrides of [{displayMode: 'sidebar' as const}, {collapsed: true}, {ended: true}]) {
+test('outside press does nothing in the sidebar or after the session ended', async () => {
+  for (const overrides of [{displayMode: 'sidebar' as const}, {ended: true}]) {
     const outside = outsideHost();
     let hides = 0;
     await mountView(view({...outside, hasUnsavedWork: () => true, hide: async () => {hides++; return true}, ...overrides}));
@@ -471,6 +471,30 @@ test('outside press does nothing in the sidebar, while collapsed or after the se
     assert.deepEqual({hides, closed: counts.closed, dialogs: dialogs()}, {hides: 0, closed: 0, dialogs: 0}, JSON.stringify(Object.keys(overrides)));
     for (const unmount of mounted.splice(0).reverse()) await unmount();
     assert.equal(outside.size(), 0, 'the view stops listening when it goes away');
+  }
+});
+
+test('outside press is not held back by the view’s own collapsed flag: the page sends none while the frame is collapsed, so one that arrives counts', async () => {
+  const outside = outsideHost();
+  let hides = 0;
+  await mountView(view({...outside, collapsed: true, hasUnsavedWork: () => true, hide: async () => {hides++; return true}}));
+  await outside.press();
+  assert.equal(hides, 1);
+  assert.equal(dialogs(), 0);
+});
+
+test('outside press with something typed whose hide is refused runs the usual close instead, which asks first', async () => {
+  for (const hide of [async () => false, async (): Promise<boolean> => {throw Error('refused')}]) {
+    const outside = outsideHost();
+    await mountView(view({...outside, hasUnsavedWork: () => true, hide}));
+    await outside.press();
+    await settle();
+    assert.ok(popup(), 'the discard question shows instead of the press being lost');
+    assert.equal(counts.closed, 0);
+    await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+    await later();
+    assert.equal(counts.closed, 0, 'keeping the work closes nothing');
+    for (const unmount of mounted.splice(0).reverse()) await unmount();
   }
 });
 
