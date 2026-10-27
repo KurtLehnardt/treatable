@@ -337,7 +337,7 @@ class Fake extends EventTarget {
 }
 function patchDom(t: any) {
  const saved = {Element: globalThis.Element, HTMLElement: globalThis.HTMLElement, MutationObserver: globalThis.MutationObserver};
- Object.assign(globalThis, {Element: Fake, HTMLElement: Fake, MutationObserver: class {observe() {} disconnect() {}}});
+ Object.assign(globalThis, {Element: Fake, HTMLElement: Fake, MutationObserver: class {observe() {} disconnect() {} takeRecords() {return []}}});
  t.after(() => Object.assign(globalThis, saved));
 }
 function contentHarness(t: any) {

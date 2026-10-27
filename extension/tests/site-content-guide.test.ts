@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { installDom, settle, type TestDom } from './dom-harness';
 import { searchPage } from './guide-fixtures';
 
-/** Drives the real content script controller against the live-capture search page, as the background would. */
-async function rig() {
+/** Drives the real content script controller against the live-capture search page, as the background would. jsdom cannot make trusted
+ * input, so the controller is told to accept the test's synthetic presses unless `trustedOnly` keeps the browser's own isTrusted check. */
+async function rig({ trustedOnly = false }: { trustedOnly?: boolean } = {}) {
   const env: TestDom = installDom(searchPage());
   // jsdom does no layout, so every element reports an empty box. Give each one a size so controls count as on screen.
   env.window.Element.prototype.getClientRects = function () { return [{ width: 10, height: 10 }] as any; };
@@ -19,7 +20,7 @@ async function rig() {
       onMessage: { addListener: (f: any) => handlers.push(f), removeListener: (f: any) => handlers.splice(handlers.indexOf(f), 1) },
     },
   };
-  const controller = installSiteContent(env.window, env.document, api);
+  const controller = installSiteContent(env.window, env.document, api, trustedOnly ? {} : { trusted: () => true });
   const command = (type: string, payload: unknown = {}, sender: any = { id: 'test' }) => {
     let reply: any;
     handlers[0]({ kind: 'treatable.site.command', type, payload }, sender, v => { reply = v; });
@@ -259,11 +260,16 @@ test('the sidebar reserves its width on the right of the page, follows resizes a
     reserved();
     assert.equal(overlayFrame(t).style.getPropertyValue('width'), width(), 'the reserve is exactly the sidebar width');
     assert.equal(pageInert(t), false, 'the page beside the sidebar stays usable');
-    Object.defineProperty(t.env.window, 'innerWidth', { configurable: true, value: 400 });
-    t.env.window.dispatchEvent(new t.env.window.Event('resize'));
-    assert.equal(width(), '384px');
+    // The reserve follows the window. With less than 480px of page beside the sidebar, the sidebar lies over the page as before.
+    const resize = async (value: number) => { Object.defineProperty(t.env.window, 'innerWidth', { configurable: true, value }); t.env.window.dispatchEvent(new t.env.window.Event('resize')); await settle(8); };
+    await resize(919);
+    restored('a window that would leave the page 479px');
+    assert.equal(overlayFrame(t).style.getPropertyValue('width'), '440px', 'the sidebar keeps its width over the page');
+    await resize(920);
     reserved();
-    assert.equal(overlayFrame(t).style.getPropertyValue('width'), '384px', 'frame and reserve stay in step');
+    assert.equal(overlayFrame(t).style.getPropertyValue('width'), '440px', 'frame and reserve stay in step');
+    await resize(1024);
+    reserved();
     t.controller.layout({ collapsed: true }); restored('collapse');
     t.controller.layout({ collapsed: false }); reserved();
     t.controller.layout({ displayMode: 'popup' }); restored('switch to popup');
@@ -305,8 +311,11 @@ test('fixed page elements under the sidebar are fitted: right-edge tabs move lef
   try {
     // jsdom has no layout: the viewport is innerWidth (1024) wide, so a 440px sidebar starts at 584px.
     const toTop = fixed('to-top', 'position: fixed; right: -1px; bottom: 170px;', { left: 972, right: 1024 });
+    const tabChild = fixed('tab-child', 'position: fixed; right: 0;', { left: 980, right: 1024 }, toTop);
     const nudged = fixed('nudged', 'position: fixed; right: 20px; translate: 5px 0;', { left: 900, right: 1004 });
+    const partial = fixed('partial', 'position: fixed; left: 500px; width: 200px;', { left: 500, right: 700 });
     const mask = fixed('mask', 'position: fixed; top: 0; left: 0; width: 100%; height: 100%;', { left: 0, right: 1024, height: 768 });
+    // USWDS: .usa-modal-wrapper is fixed and full width, and its .usa-modal-overlay is fixed too.
     const inner = fixed('inner', 'position: fixed; right: 0;', { left: 900, right: 1024 }, mask);
     const leftNav = fixed('left-nav', 'position: fixed; left: 0;', { left: 0, right: 200 });
     const staticRight = fixed('static-right', 'position: relative;', { left: 900, right: 1024 });
@@ -314,10 +323,12 @@ test('fixed page elements under the sidebar are fitted: right-edge tabs move lef
     open(t, { displayMode: 'sidebar' });
     const frame = overlayFrame(t);
     assert.deepEqual(css(toTop, 'translate'), ['-440px 0', 'important'], 'Back to top moves left of the sidebar');
-    assert.deepEqual(css(nudged, 'translate'), ['-440px 0', 'important']);
+    assert.deepEqual(css(nudged, 'translate'), ['calc(5px - 420px) 0', 'important'], 'moved just clear of the sidebar, on top of the translate the site gave it');
+    assert.deepEqual(css(partial, 'translate'), ['-116px 0', 'important'], 'an element reaching only partly under the sidebar moves only as far as it must');
     assert.deepEqual(css(mask, 'max-width'), ['584px', 'important'], 'a full-width layer ends at the sidebar');
     assert.deepEqual(css(mask, 'translate'), ['', '']);
-    assert.deepEqual([css(inner, 'translate'), css(inner, 'max-width')], [['', ''], ['', '']], 'a fixed element inside a fitted one moves with it');
+    assert.deepEqual(css(inner, 'translate'), ['-440px 0', 'important'], 'a narrowed layer is no containing block, so a fixed element inside it is fitted on its own');
+    assert.deepEqual([css(tabChild, 'translate'), css(tabChild, 'max-width')], [['', ''], ['', '']], 'a fixed element inside a moved one moves with it');
     assert.deepEqual([css(leftNav, 'translate'), css(staticRight, 'translate'), css(drawer, 'translate')], [['', ''], ['', ''], ['', '']], 'elements clear of the sidebar, not fixed, or parked off screen are left alone');
     assert.deepEqual(css(frame, 'translate'), ['', ''], 'Treatable’s own frame is not moved');
     // A tab the site adds later is fitted too.
@@ -325,16 +336,160 @@ test('fixed page elements under the sidebar are fitted: right-edge tabs move lef
     await settle(50);
     assert.deepEqual(css(late, 'translate'), ['-440px 0', 'important']);
     // A narrower window keeps the 440px sidebar but moves its edge; wide layers are refitted once the resize settles.
-    Object.defineProperty(t.env.window, 'innerWidth', { configurable: true, value: 900 });
+    Object.defineProperty(t.env.window, 'innerWidth', { configurable: true, value: 960 });
     t.env.window.dispatchEvent(new t.env.window.Event('resize'));
     await settle(50);
-    assert.deepEqual(css(mask, 'max-width'), ['460px', 'important']);
+    assert.deepEqual(css(mask, 'max-width'), ['520px', 'important']);
     t.controller.layout({ collapsed: true });
-    assert.deepEqual([css(toTop, 'translate'), css(late, 'translate'), css(mask, 'max-width')], [['', ''], ['', ''], ['', '']], 'everything is put back on collapse');
+    assert.deepEqual([css(toTop, 'translate'), css(late, 'translate'), css(mask, 'max-width'), css(inner, 'translate'), css(partial, 'translate')], [['', ''], ['', ''], ['', ''], ['', ''], ['', '']], 'everything is put back on collapse');
     assert.deepEqual(css(nudged, 'translate'), ['5px 0', ''], 'a value the site set itself comes back exactly');
     assert.equal(toTop.getAttribute('style'), 'position: fixed; right: -1px; bottom: 170px;');
     const lateAgain = fixed('late-again', 'position: fixed; right: 0;', { left: 990, right: 1024 });
     await settle(50);
     assert.deepEqual(css(lateAgain, 'translate'), ['', ''], 'nothing is watched or fitted once the sidebar is collapsed');
   } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('the sidebar refits when the page changes an inline style or scrolls, never for its own writes, and a page that never stops changing is still fitted', async () => {
+  const t = await rig();
+  const doc = t.env.document, win = t.env.window;
+  const box = (left: number, right: number) => () => ({ left, right, width: right - left, top: 0, bottom: 40, height: 40, x: left, y: 0, toJSON() {} }) as DOMRect;
+  try {
+    const tab = doc.createElement('div'); tab.getBoundingClientRect = box(990, 1024); doc.body.appendChild(tab);
+    const drift = doc.createElement('div'); drift.setAttribute('style', 'position: fixed; left: 0;'); drift.getBoundingClientRect = box(0, 100); doc.body.appendChild(drift);
+    open(t, { displayMode: 'sidebar' });
+    assert.deepEqual([css(tab, 'translate'), css(drift, 'translate')], [['', ''], ['', '']], 'neither is fixed under the sidebar yet');
+    let measured = 0;
+    const computed = win.getComputedStyle.bind(win);
+    win.getComputedStyle = (element: Element) => { measured++; return computed(element); };
+    await settle(60);
+    assert.equal(measured, 0, 'Treatable’s own writes do not start another fit');
+    tab.style.position = 'fixed';
+    await settle(40);
+    assert.deepEqual(css(tab, 'translate'), ['-440px 0', 'important'], 'an inline style change by the site is a page change');
+    measured = 0;
+    await settle(60);
+    assert.equal(measured, 0, 'writing the fit is not a page change either');
+    // Nothing in the page changed, but scrolling moved this one under the sidebar.
+    drift.getBoundingClientRect = box(990, 1024);
+    win.dispatchEvent(new win.Event('scroll'));
+    await settle(40);
+    assert.deepEqual(css(drift, 'translate'), ['-440px 0', 'important'], 'a scroll refits');
+    // A page changing every 20 ms is still fitted, at the latest 150 ms after the first change.
+    const ticker = doc.createElement('span'); doc.body.appendChild(ticker);
+    const busy = setInterval(() => ticker.classList.toggle('on'), 20);
+    try {
+      const late = doc.createElement('div'); late.setAttribute('style', 'position: fixed; right: 0;'); late.getBoundingClientRect = box(990, 1024); doc.body.appendChild(late);
+      await new Promise(resolve => setTimeout(resolve, 400));
+      assert.deepEqual(css(late, 'translate'), ['-440px 0', 'important'], 'constant changes cannot put the fit off');
+    } finally { clearInterval(busy); }
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('resizes lay the popup out once per animation frame and leave the inert page alone', async () => {
+  const t = await rig();
+  try {
+    open(t);
+    const main = t.env.document.getElementById('app') as any;
+    assert.ok(main.inert);
+    let inertWrites = 0, value = main.inert;
+    Object.defineProperty(main, 'inert', { configurable: true, get: () => value, set: (next: boolean) => { inertWrites++; value = next; } });
+    const frame = overlayFrame(t), set = frame.style.setProperty.bind(frame.style);
+    let writes = 0;
+    frame.style.setProperty = (...args: Parameters<CSSStyleDeclaration['setProperty']>) => { writes++; return set(...args); };
+    const resize = () => t.env.window.dispatchEvent(new t.env.window.Event('resize'));
+    resize();
+    assert.equal(writes, 0, 'nothing is laid out inside the resize event itself');
+    await settle(8);
+    const once = writes;
+    assert.ok(once > 0, 'the next frame lays the popup out');
+    writes = 0;
+    for (let i = 0; i < 5; i++) resize();
+    await settle(8);
+    assert.equal(writes, once, 'five resizes before the next frame lay it out once');
+    assert.equal(inertWrites, 0, 'the page behind stays inert without being restored and set again');
+    const added = t.env.document.createElement('div');
+    t.env.document.body.appendChild(added);
+    resize();
+    await settle(8);
+    assert.equal((added as any).inert, true, 'an element the site added since is made inert');
+    assert.equal(inertWrites, 0, 'and only that one');
+    t.controller.layout({ collapsed: true });
+    assert.ok(!value, 'collapsing still frees the page');
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('the reserve needs 480px of page beside the sidebar, and a narrow window never gets a negative margin', async () => {
+  const t = await rig();
+  const root = t.env.document.documentElement;
+  const resize = async (value: number) => { Object.defineProperty(t.env.window, 'innerWidth', { configurable: true, value }); t.env.window.dispatchEvent(new t.env.window.Event('resize')); await settle(8); };
+  try {
+    await resize(919);
+    open(t, { displayMode: 'sidebar' });
+    assert.equal(root.hasAttribute('style'), false, '919px: the sidebar lies over the page');
+    assert.equal(overlayFrame(t).style.getPropertyValue('width'), '440px');
+    await resize(920);
+    assert.deepEqual(css(root, 'margin-right'), ['440px', 'important'], '920px: the page keeps 480px beside it');
+    for (const width of [600, 300, 10]) {
+      await resize(width);
+      assert.equal(root.hasAttribute('style'), false, `${width}px`);
+    }
+    await resize(1024);
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('a finger acts when it lifts where it went down; a pan, a drag or another finger sends nothing', async () => {
+  const t = await rig();
+  try {
+    open(t);
+    const touch = (type: string, init: Record<string, unknown> = {}) => t.env.document.body.dispatchEvent(new t.env.window.PointerEvent(type, { bubbles: true, cancelable: true, button: 0, isPrimary: true, pointerType: 'touch', pointerId: 7, clientX: 100, clientY: 100, ...init }));
+    touch('pointerdown');
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'nothing is sent when the finger goes down');
+    touch('pointercancel', { button: -1 }); touch('pointerup');
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'the browser took the touch for a pan');
+    touch('pointerdown'); touch('pointerup', { clientX: 140 });
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'a drag is not a tap');
+    touch('pointerdown'); touch('pointerup', { pointerId: 8 });
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'another finger lifting is not this tap');
+    touch('pointerdown'); touch('pointerup', { clientX: 104, clientY: 97 });
+    await settle(2);
+    assert.deepEqual(outsideRequests(t), [{ kind: 'treatable.site.content', type: 'outsideClick' }], 'a tap on the page asks once');
+    press(t, t.env.document.body, { pointerType: 'mouse' });
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 2, 'a mouse press still acts when it goes down');
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('a press the browser did not mark as trusted, such as one a page script made, sends nothing', async () => {
+  const t = await rig({ trustedOnly: true });
+  try {
+    open(t);
+    press(t);
+    press(t, t.env.document.documentElement);
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0);
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('after the extension is reloaded or updated, the script left behind puts the page back on its own', async () => {
+  for (const displayMode of ['popup', 'sidebar']) {
+    const t = await rig();
+    try {
+      const root = t.env.document.documentElement;
+      open(t, { displayMode });
+      assert.ok(displayMode === 'popup' ? pageInert(t) : root.hasAttribute('style'), displayMode);
+      // An orphaned content script has no runtime id, and sending throws at once.
+      t.api.runtime.id = undefined;
+      t.api.runtime.sendMessage = () => { throw Error('Extension context invalidated.'); };
+      await new Promise(resolve => setTimeout(resolve, 600));
+      assert.equal(t.controller.isDisposed(), true, displayMode);
+      assert.equal(t.env.document.querySelectorAll('iframe').length, 0, displayMode);
+      assert.equal(pageInert(t), false, displayMode);
+      assert.equal(root.hasAttribute('style'), false, `${displayMode}: no reserve is left behind`);
+    } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+  }
 });
