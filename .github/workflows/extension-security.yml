@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   build-test-audit:
-    name: Typecheck, build A/B, tests, npm audit
+    name: Typecheck, build, tests, npm audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -56,13 +56,10 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build variant A (dist/)
+      - name: Build (dist/)
         run: npm run build
 
-      - name: Build variant B (dist-b/)
-        run: npm run build:b
-
-      # Called directly rather than via `npm test`, whose pretest would rebuild both variants.
+      # Called directly rather than via `npm test`, whose pretest would rebuild.
       - name: Extension tests
         run: npx tsx --test tests/*.test.ts
 
@@ -191,6 +188,6 @@ jobs:
           done
           semgrep scan --metrics=off --disable-version-check --error \
             --config p/javascript --config p/typescript --config p/secrets \
-            --exclude node_modules --exclude dist --exclude dist-b --exclude artifacts \
+            --exclude node_modules --exclude dist --exclude artifacts \
             "${excludes[@]}" \
             extension

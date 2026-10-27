@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import {parseFormInput,parsePageReply,withinMessageBudget} from '../src/validation';
 import {profileFromForm,parsePageSource,resolveZip} from '../src/core';
 import {parseDemoRequest,parseDemoReply} from '../shared/demo-contract.mjs';
-import {DemoClient} from '../src/native';
-import {FakeRuntime} from './fake-panel-runtime';
 const form={condition:"Sjo\u0308gren’s syndrome; ألم مزمن",notes:'Symptoms on multiple days.',age:'0.5',sex:'prefer_not_to_say',zip:'01001-1234',radius:'100'};
 const zips={zips:{'01001':{city:'Agawam',state:'MA',lat:42.06,lon:-72.61}}};
 const statusRequest={id:'request_1',type:'status',payload:{}};
@@ -62,5 +60,3 @@ test('page source is revalidated and canonicalized without private query/hash da
  assert.equal(parsePageSource({...source,text:'Study\u0000 criteria'}).text,'Study criteria');
  assert.throws(()=>parsePageSource({...source,text:'\u0000\u200b\u202e'}),error=>error instanceof Error&&!/\u0000/.test(error.message));
 });
-
-test('current demo client validates correlated status through the per-panel message boundary',async()=>{const runtime=new FakeRuntime(),client=new DemoClient(runtime);await client.open(()=>{});assert.equal((await client.status()).configured,true);const task=client.run('scoreDemo','fibromyalgia',true,()=>{},new AbortController().signal);const operation=runtime.operations[0];operation.port.reply({id:operation.request.id,type:'result',ok:true,result:{kind:'scoreDemo',fixtureId:'pancreatic',mode:'test',scores:[{nctId:'NCT12345678',index:50,confidence:.5}]}});await assert.rejects(task,/Mismatched/);client.disconnect()});

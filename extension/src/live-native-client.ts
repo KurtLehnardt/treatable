@@ -2,7 +2,8 @@ import {parseLiveRequest,parseLiveReply,parseLiveCatalog,parsePreparedLive,parse
 import {parseDemoReply,type DemoTrace} from '../shared/demo-contract.mjs';
 import {LIVE_POLICY_VERSION} from '../shared/live-analysis-contract.mjs';
 import {NativeOperationError} from './failures';
-import type {PanelPort,PanelRuntime} from './native';
+export interface PanelPort {postMessage:(message:unknown)=>void;disconnect:()=>void;onMessage:{addListener:(fn:(message:any)=>void)=>void};onDisconnect:{addListener:(fn:()=>void)=>void}}
+export interface PanelRuntime {connect:(options:{name:string})=>PanelPort}
 export const LIVE_PORT='treatable-private-live-v1';
 export class LiveClient {
  private revokePromise:Promise<unknown>=Promise.resolve();private port?:PanelPort;private pending=new Map<string,{resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;trace?:(v:DemoTrace)=>void}>();
