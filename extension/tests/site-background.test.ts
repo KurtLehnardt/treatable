@@ -109,7 +109,7 @@ test('a hidden overlay that ended on its own leaves nothing behind: the toolbar 
  await h.service.launch({id:1,url:h.snapshot().url});assert.deepEqual(h.scripts.slice(scripts).map((s:any)=>s.files?.[0]??s.args[0].purpose),['site-content.js','overlay'])});
 
 const CUE_ON=[{badge:{tabId:1,text:'•'}},{title:{tabId:1,title:'Treatable is hidden — click to reopen'}}],CUE_OFF=[{badge:{tabId:1,text:''}},{title:{tabId:1,title:'Open Treatable'}}];
-test('a hidden popup pauses AI-matched results on its tab and the toolbar says it is hidden; showing it again resumes and clears that',async()=>{const h=await authenticated();const ranker=h.service.ranker,cancel=ranker.cancel.bind(ranker),cancelled:number[]=[];ranker.cancel=(tabId:number)=>{cancelled.push(tabId);return cancel(tabId)};
+test('a hidden popup pauses AI-matched results on its tab and the toolbar says it is hidden; showing it again resumes and clears that',async()=>{const h=await authenticated();await flush();h.cues.length=0;const ranker=h.service.ranker,cancel=ranker.cancel.bind(ranker),cancelled:number[]=[];ranker.cancel=(tabId:number)=>{cancelled.push(tabId);return cancel(tabId)};
  await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();
  assert.deepEqual(cancelled,[1],'the running ranking of this tab stops');
  await assert.rejects(h.service.handle(1,{id:'r',type:'site.aiRank',payload:{details:{}}}),'no ranking starts while hidden');assert.equal(ranker.isRunning(1),false);
@@ -120,17 +120,21 @@ test('a hidden popup pauses AI-matched results on its tab and the toolbar says i
  assert.deepEqual((await h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}})).result,{started:true,queued:false},'ranking may start again');
  ranker.cancel=cancel;h.p.disconnect()});
 test('the hidden cue is cleared when Treatable closes, the tab closes, the page goes away or leaves the site',async()=>{
- for(const end of ['close','tab removed','port ended','unsupported page'] as const){const h=await authenticated();await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();assert.deepEqual(h.cues.splice(0),CUE_ON,end);
+ for(const end of ['close','tab removed','port ended','unsupported page'] as const){const h=await authenticated();await flush();h.cues.length=0;await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();assert.deepEqual(h.cues.splice(0),CUE_ON,end);
   if(end==='close')await h.service.handle(1,{id:'c',type:'site.close',payload:{}});else if(end==='tab removed')h.api.tabs.onRemoved.emit(1);else if(end==='port ended')h.p.disconnect();else h.updates.emit(1,{url:'https://example.com/'},{id:1,url:'https://example.com/'});
   await flush();assert.deepEqual(h.cues.splice(0),CUE_OFF,end);h.p.disconnect();await flush();assert.deepEqual(h.cues,[],`${end}: cleared once`)}});
-test('a toolbar press on a compact popup expands the frame and tells the overlay the same, so both agree it is expanded',async()=>{const h=await authenticated();
+test('a toolbar press on a compact popup expands the frame and tells the overlay the same, so both agree it is expanded',async()=>{const h=await authenticated();await flush();h.cues.length=0;
  await h.service.handle(1,{id:'c',type:'site.layout',payload:{collapsed:true}});
  await h.service.launch({id:1,url:h.snapshot().url});
  const layout=h.commands.at(-1),views=h.p.sent.filter((v:any)=>v.type==='site.view');
  assert.deepEqual(layout,{kind:'treatable.site.command',type:'layout',payload:{collapsed:false,hidden:false}},'the page expands the frame');
  assert.deepEqual(views,[{type:'site.view',...layout.payload}],'the overlay is told exactly the state the page was given');
  assert.deepEqual(h.cues,[],'a popup that was never hidden gets no cue');h.p.disconnect()});
-test('a hide that finishes after its overlay went away records nothing',async()=>{const h=await authenticated();let release!:()=>void;const send=h.api.tabs.sendMessage;h.api.tabs.sendMessage=async(id:number,m:any)=>{if(m.type==='hide')await new Promise<void>(resolve=>release=resolve);return send(id,m)};
+test('a hide that finishes after its overlay went away records nothing',async()=>{const h=await authenticated();await flush();h.cues.length=0;let release!:()=>void;const send=h.api.tabs.sendMessage;h.api.tabs.sendMessage=async(id:number,m:any)=>{if(m.type==='hide')await new Promise<void>(resolve=>release=resolve);return send(id,m)};
  const hiding=h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();h.p.disconnect();release();await assert.rejects(hiding);await flush();
  assert.deepEqual(h.cues,[],'no hidden cue');assert.equal(h.p.sent.some((v:any)=>v.type==='site.view'),false);
  const scripts=h.scripts.length;await h.service.launch({id:1,url:h.snapshot().url});assert.deepEqual(h.scripts.slice(scripts).map((s:any)=>s.files?.[0]??s.args[0].purpose),['site-content.js','overlay'],'the toolbar opens a fresh overlay')});
+test('a restarted worker that lost its hidden entries still clears a stale toolbar cue on overlay port auth and when the tab ends',async()=>{
+ for(const end of ['port auth','close','tab removed'] as const){const h=harness();await h.service.launch({id:1,url:h.snapshot().url});const p=h.port();p.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();assert.equal(h.service.isHidden(1),false,'nothing is held as hidden');
+  if(end!=='port auth'){assert.deepEqual(h.cues.splice(0),CUE_OFF,'port auth');if(end==='close')await h.service.handle(1,{id:'c',type:'site.close',payload:{}});else h.api.tabs.onRemoved.emit(1);await flush()}
+  assert.deepEqual(h.cues.splice(0),CUE_OFF,`${end} clears the badge and the title`);p.disconnect()}});

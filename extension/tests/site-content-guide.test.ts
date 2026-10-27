@@ -464,6 +464,55 @@ test('a finger acts when it lifts where it went down; a pan, a drag or another f
   } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
 });
 
+test('a pen acts like a finger: it sends on lift where it went down, not on press', async () => {
+  const t = await rig();
+  try {
+    open(t);
+    const pen = (type: string, init: Record<string, unknown> = {}) => t.env.document.body.dispatchEvent(new t.env.window.PointerEvent(type, { bubbles: true, cancelable: true, button: 0, isPrimary: true, pointerType: 'pen', pointerId: 5, clientX: 100, clientY: 100, ...init }));
+    pen('pointerdown');
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'nothing is sent when the pen goes down');
+    pen('pointerup', { clientX: 150 });
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 0, 'a drag is not a tap');
+    pen('pointerdown'); pen('pointerup');
+    await settle(2);
+    assert.equal(outsideRequests(t).length, 1, 'a pen tap asks once');
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
+test('un-fitting on a collapse or a refit leaves an inline translate or max-width the site wrote after the fit, and still restores the rest', async () => {
+  const t = await rig();
+  const doc = t.env.document;
+  const fixed = (id: string, styleText: string, left: number, right: number) => {
+    const element = doc.createElement('div'); element.id = id; element.setAttribute('style', styleText); doc.body.appendChild(element);
+    element.getBoundingClientRect = () => ({ left, right, width: right - left, top: 0, bottom: 40, height: 40, x: left, y: 0, toJSON() {} }) as DOMRect;
+    return element;
+  };
+  try {
+    const tab = fixed('tab', 'position: fixed; right: 0; translate: 5px 0;', 990, 1024);
+    const wide = fixed('wide', 'position: fixed; top: 0; left: 0; width: 100%; max-width: 900px;', 0, 1024);
+    const plain = fixed('plain', 'position: fixed; right: 0;', 990, 1024);
+    const kept = fixed('kept', 'position: fixed; right: 0; translate: 5px 0;', 990, 1024);
+    open(t, { displayMode: 'sidebar' });
+    assert.deepEqual(css(tab, 'translate'), ['calc(5px - 440px) 0', 'important'], 'the tab is fitted');
+    assert.equal(css(wide, 'max-width')[1], 'important', 'the wide layer is fitted');
+    tab.style.setProperty('translate', '7px 0'); wide.style.setProperty('max-width', '300px'); plain.style.setProperty('translate', '3px 0');
+    t.controller.layout({ collapsed: true });
+    assert.deepEqual(css(tab, 'translate'), ['7px 0', ''], 'the site’s own later translate stays');
+    assert.deepEqual(css(wide, 'max-width'), ['300px', ''], 'the site’s own later max-width stays');
+    assert.deepEqual(css(plain, 'translate'), ['3px 0', ''], 'a value written over a fit that had nothing before stays');
+    assert.deepEqual(css(kept, 'translate'), ['5px 0', ''], 'a fit the site left alone is put back exactly');
+    t.controller.layout({ collapsed: false });
+    assert.deepEqual(css(tab, 'translate'), ['calc(7px - 440px) 0', 'important'], 'fitted again on top of the site’s value');
+    tab.style.setProperty('translate', '9px 0');
+    await settle(40);
+    assert.deepEqual(css(tab, 'translate'), ['calc(9px - 440px) 0', 'important'], 'the refit keeps the site’s new value and builds on it');
+    t.controller.layout({ collapsed: true });
+    assert.deepEqual([css(tab, 'translate'), css(kept, 'translate')], [['9px 0', ''], ['5px 0', '']], 'collapsing after the refit puts back the site’s values');
+  } finally { t.controller.dispose(); await settle(8); t.env.teardown(); }
+});
+
 test('a press the browser did not mark as trusted, such as one a page script made, sends nothing', async () => {
   const t = await rig({ trustedOnly: true });
   try {

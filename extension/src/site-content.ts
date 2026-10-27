@@ -35,9 +35,9 @@ export function installSiteContent(win:Window,doc:Document,api:any,options:{trus
   * sidebar over the page instead, as before. Sticky headers sit inside the page and follow. Fixed page elements ignore that margin, so the
   * ones reaching under the sidebar are fitted as well: small ones on the right edge (on ClinicalTrials.gov the Back to top and feedback
   * tabs) move left just far enough to clear it, on top of any translate the site gave them, and wide fixed layers (a modal backdrop, a
-  * loading mask) end at its edge. Every inline value replaced here is saved first and put back exactly when the sidebar collapses, hides,
+  * loading mask) end at its edge. Every inline value replaced here is saved first and put back exactly, unless the site has since written its own, when the sidebar collapses, hides,
   * switches mode or closes, the window gets too narrow, or the page goes away. */
- const MIN_PAGE_WIDTH=480;let reserved:{width:number;margin:Inline}|undefined,fitTimer:ReturnType<typeof setTimeout>|undefined;const fitted=new Map<HTMLElement,Map<string,Inline>>();
+ const MIN_PAGE_WIDTH=480;let reserved:{width:number;margin:Inline}|undefined,fitTimer:ReturnType<typeof setTimeout>|undefined;const fitted=new Map<HTMLElement,Map<string,{saved:Inline;wrote:string}>>();
  /* Page changes, scrolling and resizes refit at most every 150 ms, and at the latest 150 ms after the first change, so neither a busy page
   * nor a window being dragged is measured on every frame, and a page that never stops changing cannot put the fit off. Inline style changes
   * count, except Treatable's own: writes to its frames and the guide's dialog are skipped here, and the fitting drops the records of its
@@ -47,7 +47,9 @@ export function installSiteContent(win:Window,doc:Document,api:any,options:{trus
  function stopFit(){fixedObserver.disconnect();clearTimeout(fitTimer);fitTimer=undefined}
  function saveInline(element:HTMLElement,name:string):Inline{return{value:element.style.getPropertyValue(name),priority:element.style.getPropertyPriority(name),attribute:element.hasAttribute('style')}}
  function putInline(element:HTMLElement,name:string,saved:Inline){if(saved.value)element.style.setProperty(name,saved.value,saved.priority);else element.style.removeProperty(name);if(!saved.attribute&&element.getAttribute('style')==='')element.removeAttribute('style')}
- function unfitFixed(){for(const[element,saved]of fitted)for(const[name,value]of saved)putInline(element,name,value);fitted.clear()}
+ /* A property goes back only while it still holds what Treatable wrote; a value the site wrote since is the site's own and stays. */
+ function fitInline(element:HTMLElement,name:string,value:string){const saved=saveInline(element,name);element.style.setProperty(name,value,'important');/* Kept as the browser serialized it, so the comparison is like for like. */fitted.set(element,new Map([[name,{saved,wrote:element.style.getPropertyValue(name)}]]))}
+ function unfitFixed(){for(const[element,saved]of fitted)for(const[name,{saved:before,wrote}]of saved)if(element.style.getPropertyValue(name)===wrote&&element.style.getPropertyPriority(name)==='important')putInline(element,name,before);fitted.clear()}
  /** The translate an element already has (computed: none, or up to three lengths), moved left by `by` pixels. Values are split at
   * top-level spaces only, so a calc() stays whole. */
  function shifted(current:string,by:number){const parts:string[]=[];let depth=0,part='';for(const c of current.trim()==='none'?'':current.trim()){if(c==='(')depth++;else if(c===')')depth--;if(/\s/.test(c)&&!depth){if(part)parts.push(part);part=''}else part+=c}if(part)parts.push(part);return parts.length?[`calc(${parts[0]} - ${by}px)`,parts[1]??'0',...parts.slice(2)].join(' '):`-${by}px 0`}
@@ -57,8 +59,8 @@ export function installSiteContent(win:Window,doc:Document,api:any,options:{trus
    * fixed elements inside it, so they move with it and are left alone. A layer that is only narrowed is not: fixed elements inside it are
    * still placed against the window, and are fitted on their own. */
   for(const{element,rect,cssWidth,translate}of found){if(moved.some(other=>other.contains(element)))continue;
-   if(rect.width>width&&rect.left<edge){fitted.set(element,new Map([['max-width',saveInline(element,'max-width')]]));element.style.setProperty('max-width',`${Math.max(0,Math.floor(cssWidth-(rect.right-edge)))}px`,'important')}
-   else{fitted.set(element,new Map([['translate',saveInline(element,'translate')]]));element.style.setProperty('translate',shifted(translate,Math.ceil(rect.right-edge)),'important');moved.push(element)}}}
+   if(rect.width>width&&rect.left<edge)fitInline(element,'max-width',`${Math.max(0,Math.floor(cssWidth-(rect.right-edge)))}px`)
+   else{fitInline(element,'translate',shifted(translate,Math.ceil(rect.right-edge)));moved.push(element)}}}
   /* What was just put back or written here is not a page change. */fixedObserver.takeRecords()}
  function reserve(){const root=doc.documentElement,width=Math.min(440,win.innerWidth-16);if(!overlay||disposed||collapsed||hidden||displayMode!=='sidebar'||win.innerWidth-width<MIN_PAGE_WIDTH){if(reserved){stopFit();unfitFixed();putInline(root,'margin-right',reserved.margin);reserved=undefined}return}
   const changed=reserved?.width!==width;if(!reserved){reserved={width,margin:saveInline(root,'margin-right')};if(doc.body)fixedObserver.observe(doc.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','hidden','style']})}reserved.width=width;root.style.setProperty('margin-right',`${width}px`,'important');if(changed)fitFixed();else queueFit()}
@@ -95,7 +97,7 @@ export function installSiteContent(win:Window,doc:Document,api:any,options:{trus
  function outsidePress(event:PointerEvent){if(!trusted(event))return;
   if(event.type!=='pointerdown'){const start=touch;touch=undefined;if(event.type==='pointerup'&&start?.id===event.pointerId&&Math.abs(event.clientX-start.x)<=10&&Math.abs(event.clientY-start.y)<=10&&relayable(event))relayOutside();return}
   touch=undefined;if(!relayable(event))return;/* A press on the window's own scrollbar scrolls the page; it is not a choice to leave. */const root=doc.documentElement;if(root.clientWidth&&event.clientX>=root.clientWidth||root.clientHeight&&event.clientY>=root.clientHeight)return;
-  if(event.pointerType==='touch')touch={id:event.pointerId,x:event.clientX,y:event.clientY};else relayOutside()}
+  if(event.pointerType==='touch'||event.pointerType==='pen')touch={id:event.pointerId,x:event.clientX,y:event.clientY};else relayOutside()}
  function activate(value:Activation){if(disposed||!isSupportedSite(win.location.href))return;if(value.purpose==='badge'&&(!isNctId(value.nctId)||!manager.snapshot.nctIds.includes(value.nctId)))return;
   if(value.purpose==='overlay'&&overlay)removeFrame(overlay);if(value.purpose==='badge')for(const old of [...frames])if(old.purpose==='badge'&&old.nctId===value.nctId)removeFrame(old);
   const element=doc.createElement('iframe');made.add(element);element.src=api.runtime.getURL(value.purpose==='overlay'?'overlay.html':`score-badge.html?nct=${value.nctId}`);element.title=value.purpose==='overlay'?'Treatable study assistant':'Treatable match information';/* The overlay may write (never read) the clipboard for "Copy email"; badges get no clipboard access. */element.setAttribute('allow',value.purpose==='overlay'?"camera 'none'; microphone 'none'; geolocation 'none'; clipboard-write 'src'":"camera 'none'; microphone 'none'; geolocation 'none'");style(element,{border:'0',margin:'0',padding:'0',zIndex:value.purpose==='overlay'?'2147483647':'2147483646',background:'transparent',pointerEvents:'auto'});

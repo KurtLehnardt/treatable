@@ -1,7 +1,7 @@
 import './zod-jitless';
 import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
-import {installSiteAssistant,isSitePort,isProtectedPanelSender} from './site-background';
+import {installSiteAssistant,isSitePort,isProtectedPanelSender,toolbarTitle} from './site-background';
 import {TRIAL_ORIGINS,isSupportedSite} from './sites';
 import {readPage} from './pageReader';
 import {parsePageSource} from './core';
@@ -54,8 +54,8 @@ function configurePanel(tab:any){
  setActionTitle(tab);
  return chrome.sidePanel.setOptions({tabId:tab.id,enabled:false}).catch(()=>{});
 }
-// The toolbar title says what a click does on this tab. Tab URLs are readable only on the supported sites, so any other tab reads as unsupported. Titles need no permission.
-function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:isSupportedSite(tab.url??'')?'Open Treatable':'Open ClinicalTrials.gov to use Treatable'})).catch(()=>{})}catch{}}
+// The toolbar title says what a click does on this tab, or that Treatable is hidden there. toolbarTitle is its one source, shared with the hidden cue. Titles need no permission.
+function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:toolbarTitle(siteAssistant.isHidden(tab.id),tab.url)})).catch(()=>{})}catch{}}
 let panelSequence=0;
 const panelRevisions=new Map<number,number>();
 function updatePanel(tab:any){if(Number.isInteger(tab?.id)&&tab.id>=0)panelRevisions.set(tab.id,++panelSequence);return configurePanel(tab)}
