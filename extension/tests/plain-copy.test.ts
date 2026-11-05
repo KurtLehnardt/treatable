@@ -11,12 +11,30 @@ function overlay(overrides:Record<string,unknown>={}){
   return renderToStaticMarkup(React.createElement(OverlayView,{vm}));
 }
 
-test('before the toolbar button is used, the status line tells the person what to click',()=>{
+test('before the toolbar button is used, one sentence says what to click instead of a disabled form',()=>{
   const markup=overlay({connected:false});
-  assert.match(markup,/<span role="status">Click the Treatable button in the toolbar to start<\/span>/);
+  assert.match(markup,/<p role="status" class="notice">Click the Treatable button in the toolbar to start\.<\/p>/);
   assert.doesNotMatch(markup,/Waiting for secure toolbar activation/);
-  assert.match(overlay({connected:true}),/<span role="status">Connected to this ClinicalTrials\.gov tab<\/span>/);
-  assert.match(overlay({ended:true}),/<span role="status">Session ended<\/span>/);
+  for(const gone of [/<form/,/Search ClinicalTrials\.gov/,/<input/,/Which studies to show/,/ai-switch/])assert.doesNotMatch(markup,gone,`${gone}: nothing disabled is rendered`);
+  assert.match(overlay({ended:true}),/Session ended\. Anything you typed here was cleared\. Click the Treatable button in the toolbar to start again\./);
+});
+
+test('the header carries no eyebrow or session line, and the footer no developer sentence',()=>{
+  /* A guide stub, so a Replay intro button in the footer would render and fail this test. */
+  const guide={active:false,canSearchHelp:false,replayIntro(){},startSearchHelp(){}};
+  for(const markup of [overlay({connected:true,guide}),overlay({connected:false,guide}),overlay({ended:true,guide})]){
+    assert.doesNotMatch(markup,/Your study companion/i);
+    assert.doesNotMatch(markup,/session-line|Connected to this ClinicalTrials\.gov tab|Current results page|This study page/);
+    assert.doesNotMatch(markup,/Raw profiles stay out of the website/);
+    assert.doesNotMatch(markup,/Replay intro/,'Replay intro lives in settings, not in the footer');
+  }
+});
+
+test('the AI-matched results switch keeps its default and shows a one-line helper',()=>{
+  const on=overlay({setAiRanking(){},aiRanking:'on'}),off=overlay({setAiRanking(){},aiRanking:'off'});
+  assert.match(on,/<input type="checkbox" role="switch" checked=""/);assert.doesNotMatch(off,/role="switch" checked/);
+  assert.match(on,/<small>Best matches first, with a match % on each card\.<\/small>/);
+  assert.match(off,/<small>The website keeps its own order\.<\/small>/);
 });
 
 // Every code in the table before the plain-language rewrite. None may be dropped.
@@ -76,4 +94,50 @@ test('no text in the overlay stylesheet is smaller than 12px',()=>{
   const css=readFileSync(new URL('../src/overlay.css',import.meta.url),'utf8');
   assert.match(css,/font-size:\s*12px/,'the stylesheet was read');
   assert.deepEqual(fontSizesBelow(css,12),[]);
+});
+
+test('failure copy no longer promises a local search the overlay does not have',()=>{
+  for(const [code,text] of [...Object.entries(FAILURE_COPY),['GENERIC_FAILURE_COPY',GENERIC_FAILURE_COPY]]){
+    assert.doesNotMatch(text,/local search|local features/i,`${code}: local search`);
+  }
+  assert.doesNotMatch(FAILURE_COPY.NATIVE_HOST_MISSING,/Your questions/,'the reassurance is added by the study section only, where a draft exists');
+});
+
+test('the match percentage on a card badge is at least 12px',()=>{
+  const css=readFileSync(new URL('../src/score-badge.css',import.meta.url),'utf8');
+  assert.match(css,/\.badge-ring strong\{[^}]*font-size:1[23]px/,'the percentage rule was found');
+  assert.deepEqual(fontSizesBelow(css,12),[]);
+});
+
+test('Your details says what is sent, when it is asked about, and that age band and sex stay on this device',async()=>{
+  const {DetailsContext,sessionDetailsStore}=await import('../src/your-details');
+  const {YourDetailsSettings}=await import('../src/your-details-view');
+  const html=renderToStaticMarkup(React.createElement(DetailsContext.Provider,{value:sessionDetailsStore()},React.createElement(YourDetailsSettings,{})));
+  const text=html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+  /* Consent is asked once per browser session (rank-background.ts consent.has(); ranking-consent.ts keeps one marker in chrome.storage.session), then terms typed later go out on their own. */
+  assert.match(text,/Treatable asks once per browser session, before the first ranking\./);
+  assert.match(text,/Short condition words are sent to OpenAI for AI-matched results\./);
+  assert.match(text,/Age band and sex only sort results on this device\./);
+  assert.match(text,/Nothing is sent when you use the local model\./);
+  assert.match(text,/cleared when the session ends/);
+  assert.doesNotMatch(text,/after you confirm/i,'it must not imply a confirmation for every send');
+  const paragraph=(/<p>(.*?)<\/p>/.exec(html)?.[1]??'').replace(/<[^>]+>/g,'');
+  assert.ok(paragraph.split('.').every(sentence=>sentence.trim().split(/\s+/).length<=20),'short sentences');
+});
+
+test('a connection error replaces the idle sentence, and the ended sentence says typed text was cleared',()=>{
+  assert.match(overlay({connected:false,error:'This page could not be reached.'}),/<p role="alert" class="notice error">This page could not be reached\.<\/p>/);
+  assert.match(overlay({ended:true}),/Anything you typed here was cleared/);
+});
+
+test('the tour and README no longer mention the removed Copy full email button, and Replay intro is placed in Settings',()=>{
+  const steps=readFileSync(new URL('../src/guide-steps.ts',import.meta.url),'utf8'),readme=readFileSync(new URL('../README.md',import.meta.url),'utf8');
+  assert.doesNotMatch(steps,/Copy full email/);assert.doesNotMatch(readme,/Copy full email/);
+  assert.match(steps,/Replay intro in Settings/);
+  assert.match(steps,/Get my study summary/);
+});
+
+test('one name for the output: no patient-facing "brief" label is left on the study page',()=>{
+  const view=readFileSync(new URL('../src/apply-view.tsx',import.meta.url),'utf8');
+  for(const old of ['Generate study brief','Generating your study brief','Generate the brief again','Study review complete','Your study brief'])assert.ok(!view.includes(old),old);
 });
