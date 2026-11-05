@@ -25,8 +25,9 @@ export function aiRankingFor(consent:AiConsent|null|undefined,provider:ModelProv
  * or key press:
  * - the browser has reported the whole switch row (switch and disclosure) in view and fully visible (IntersectionObserver with
  *   trackVisibility: not clipped, covered, faded, filtered or transformed by anything in the page or the frame); and
- * - the pointer has been inside the frame, or the frame has had keyboard focus. A frame moved under the pointer, or a click that comes
- *   straight from the website, starts both clocks again.
+ * - the pointer has been inside the frame, or the frame has had keyboard focus. Both clocks cover the whole frame, not the switch: the
+ *   pointer clock starts when the browser first reports the pointer inside the frame, and the focus clock stops whenever the frame loses
+ *   focus. A frame the page moves while the pointer is already inside it is not detected; see THREAT_MODEL §9 item 12.
  */
 export const AI_SWITCH_MIN_SHOWN_MS=500;
 /** performance.now() times since when each condition above has held, or undefined while it does not. */

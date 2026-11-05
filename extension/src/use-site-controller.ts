@@ -37,9 +37,9 @@ export function useSiteController(initialPrefs:UiPrefs=DEFAULT_UI_PREFS):Overlay
   * on a switch the browser reported fully visible, with the disclosure for the provider chosen here beside it. The background records
   * that disclosure and the switch shows on once it has. */
  setAiRanking:(value,event,shown)=>{const current=client.current;if(!isAiRanking(value)||!current||!connected)return;
-  /* Shown off at once. If the background never got the request, the switch goes back to what the background last said, because nothing
-   * was stopped; if it stopped everything but could not save the change, the person is told. */
-  if(value==='off'){const before=aiConsent;setAiConsent(null);setRanking({phase:'off'});void current.request('site.aiSwitch',{on:false}).then(result=>{if(alive.current&&client.current===current&&result?.saved===false)setError('AI-matched results is off now, but Treatable could not save that. If the switch shows on the next time you open Treatable, turn it off again.')},()=>{if(!alive.current||client.current!==current)return;setAiConsent(before);setError('Treatable could not turn off AI-matched results. Try the switch again.')});return}
+  /* Shown off at once. A turn-off is never held back by other requests (overlay-port.ts), so a reply that does not come back means it
+   * was sent but not confirmed; either way the person is told, and the background's own report (site.aiConsent) still updates the switch. */
+  if(value==='off'){setAiConsent(null);setRanking({phase:'off'});const unsure=()=>{if(alive.current&&client.current===current)setError('Treatable could not confirm that AI-matched results was saved as off. If the switch shows on the next time you open Treatable, turn it off again.')};void current.request('site.aiSwitch',{on:false}).then(result=>{if(result?.saved===false)unsure()},unsure);return}
   if(switching.current)return;
   if(!fromUserGesture(event)){setError('To turn on AI-matched results, click the switch or press Space on it.');return}
   if(shown!==true){setError('AI-matched results was not turned on. Close anything that covers Treatable, keep the pointer or keyboard focus on it for a moment, then try the switch again.');return}

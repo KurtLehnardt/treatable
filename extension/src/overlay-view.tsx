@@ -47,14 +47,19 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
    observer!.observe(row);
   } catch {return}
   return () => {observer?.disconnect(); exposure.current.shown = undefined};
- }, [showSwitch]);
+  /* A new disclosure beside the switch (another page changed the model provider) starts the visibility clock again. */
+ }, [showSwitch, vm.provider]);
  useEffect(() => {
   const win = (globalThis as any).window, doc = (globalThis as any).document, now = () => (globalThis as any).performance?.now?.() as number;
   if (typeof win?.addEventListener !== 'function' || typeof doc?.addEventListener !== 'function') return;
+  /* An event time on the same clock as performance.now(); anything else counts as now, so it can never start a clock early. */
+  const at = (stamp: unknown) => {const t = now(); return typeof stamp === 'number' && stamp > 0 && stamp <= t ? stamp : t};
   if (typeof doc.hasFocus === 'function' && doc.hasFocus()) exposure.current.focus = now();
-  /* Entering or leaving this frame: the related target is outside the document. Moving the frame under a resting pointer counts as entering. */
-  const over = (e: PointerEvent) => {if (!e.relatedTarget && exposure.current.pointer === undefined) exposure.current.pointer = e.timeStamp}, out = (e: PointerEvent) => {if (!e.relatedTarget) exposure.current.pointer = undefined};
-  const focus = (e: Event) => {if (exposure.current.focus === undefined) exposure.current.focus = e.timeStamp}, blur = () => {exposure.current.focus = undefined};
+  /* Entering or leaving this frame: the related target is outside the document. The pointer clock starts when the browser first reports the pointer inside. */
+  const over = (e: PointerEvent) => {if (!e.relatedTarget && exposure.current.pointer === undefined) exposure.current.pointer = at(e.timeStamp)}, out = (e: PointerEvent) => {if (!e.relatedTarget) exposure.current.pointer = undefined};
+  /* When this frame gets focus from outside (a press on the frame, or script on the website focusing it), the switch is never left holding
+   * it, so a key press meant for the website cannot land on the switch. */
+  const focus = (e: Event) => {if (exposure.current.focus === undefined) exposure.current.focus = at(e.timeStamp); const active = doc.activeElement; if (active && switchRow.current?.contains?.(active)) active.blur?.()}, blur = () => {exposure.current.focus = undefined};
   doc.addEventListener('pointerover', over, true); doc.addEventListener('pointerout', out, true); win.addEventListener('focus', focus); win.addEventListener('blur', blur);
   return () => {doc.removeEventListener('pointerover', over, true); doc.removeEventListener('pointerout', out, true); win.removeEventListener('focus', focus); win.removeEventListener('blur', blur)};
  }, []);

@@ -148,11 +148,21 @@ test('when Chrome can neither remove nor overwrite the record, the switch stays 
  p.disconnect();
 });
 
-test('unreadable preferences keep AI-matched results off instead of falling back to the OpenAI default',async()=>{
- const h=rig({local:{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b'}}}),p=await connected(h);await h.turnOn();
- const get=h.area.get;h.area.get=async(key:string)=>{if(key===UI_PREFS_KEY)throw Error('disk');return get(key)};
- await rank(h);await until(()=>ranking(p).at(-1)?.phase==='off');assert.equal(h.nativeSent.length,0,'nothing reaches the helper');
- p.disconnect();
+test('unreadable or invalid preferences stop the ranking, as "could not run", instead of falling back to the OpenAI default',async()=>{
+ for(const broken of ['read fails','invalid record'] as const){
+  const h=rig({local:{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b'}}}),p=await connected(h);await h.turnOn();
+  const get=h.area.get;h.area.get=async(key:string)=>{if(key!==UI_PREFS_KEY)return get(key);if(broken==='read fails')throw Error('disk');return{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b',future:'field'}}};
+  await rank(h);await until(()=>ranking(p).at(-1)?.phase==='unavailable');assert.equal(h.nativeSent.length,0,broken);
+  p.disconnect();
+ }
+});
+
+test('a turn-off gets through even with four other site actions pending on the port',async()=>{
+ const h=rig(),p=await connected(h);await h.turnOn();const send=h.api.tabs.sendMessage;h.api.tabs.sendMessage=async(id:number,m:any)=>m.type==='restore'?new Promise(()=>{}):send(id,m);
+ for(let i=0;i<4;i++)p.onMessage.emit({id:`slow-${i}`,type:'site.restore',payload:{}});
+ p.onMessage.emit({id:'off',type:'site.aiSwitch',payload:{on:false}});await until(()=>p.sent.some((v:any)=>v.id==='off'));
+ assert.equal(p.closed,false,'the port is not dropped');assert.deepEqual(p.sent.find((v:any)=>v.id==='off'),{id:'off',ok:true,result:{consent:null,saved:true}});assert.equal(h.store.has(RANKING_CONSENT_KEY),false);
+ p.onMessage.emit({id:'fifth',type:'site.ping',payload:{generation:'doc-1'}});await flush();assert.equal(p.closed,true,'any other fifth action still closes the port');
 });
 
 test('only the authenticated overlay port changes the switch: malformed changes, runtime messages and unauthenticated ports are refused',async()=>{

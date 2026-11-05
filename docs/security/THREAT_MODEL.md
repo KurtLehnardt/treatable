@@ -267,9 +267,14 @@ Stated plainly, in rough order of importance:
     - The browser's visibility check (IntersectionObserver with `trackVisibility`) has reported the whole switch row, switch and disclosure, in view and fully visible: not clipped, covered, faded, filtered or transformed.
     - The pointer has been inside the overlay frame, or the frame has had keyboard focus. The pointer clock starts only when the browser first reports the pointer inside the frame, and the focus clock stops whenever the frame loses focus, for example to a click on the page.
 
+    When the frame gains focus from outside, including when script on the page focuses it, the switch gives up focus. A key press meant for the page therefore cannot land on it.
+
     What remains, stated plainly:
-    - The visibility check reports changes after a delay of at least 100 milliseconds, and the browser may report later. A page that shows the real switch fully and then covers it just before a click could still get the click. The person would have had the real switch and its disclosure in view for at least half a second first.
-    - The guard has not been tried against a live attacker page in Chrome. Its tests use a simulated visibility report.
+    - Both clocks cover the whole frame, not the switch. Moving the frame with a 2D translation changes nothing the visibility check reports. So while the pointer or focus has been in the overlay for half a second, script on the page can move the frame so that the switch lands under a click meant for another Treatable control. The person would have had the overlay, and in the default popup layout the switch row at its top, in view. A per-control pointer dwell would close this, at the cost of refusing many quick first clicks.
+    - A touch tap straight from the page is refused, because touch has no hover. A tap after the frame has had focus for half a second is accepted, and it is not protected against a frame moved under the finger.
+    - The visibility check reports changes after a delay of at least 100 milliseconds, and the browser may report later. A page that shows the real switch fully and then covers it just before a click could still get the click.
+    - It is not verified that a non-rectangular `clip-path`, a `mask-image` or CSS `zoom` applied to the frame by the page are reported as not fully visible.
+    - The guard has not been tried against a live attacker page in Chrome. Its tests use simulated visibility, pointer and focus reports.
     - Anything that overlaps the overlay frame, such as an open intro-tour dialog, a page banner or another extension's widget, makes the switch refuse to turn on until it is gone. The overlay then asks the person to close what covers it.
 
     Turning the switch off needs none of these checks. **Accepted risk**, reduced. A separate extension window is the only way to fully restore the earlier guarantee, and the owner chose to remove it.

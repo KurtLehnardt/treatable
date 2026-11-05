@@ -85,7 +85,8 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   const alive=()=>runs.get(tabId)===entry,post=(state:RankingState)=>{if(alive())host.post(tabId,state)},phase=(p:RankingState['phase'],total:number)=>{entry.phase=p;post({phase:p,total})};
   // The switch is the person's consent: with it off for the chosen provider, nothing is fetched, prepared, sent or applied.
   const allowed=(provider:'openai'|'local')=>host.consent.allows(provider).catch(()=>false);
-  const prefs=await host.prefs().catch(()=>undefined);if(!alive())return;if(!prefs||!await allowed(prefs.provider)){post({phase:'off'});return}
+  /* Preferences that cannot be read leave the model provider unknown, so nothing runs, and the overlay says ranking could not run. */
+  const prefs=await host.prefs().catch(()=>undefined);if(!alive())return;if(!prefs){post({phase:'unavailable'});return}if(!await allowed(prefs.provider)){post({phase:'off'});return}
   const s=await host.snapshot(tabId);if(!alive())return;
   if(!s.supported||!s.nctIds.length){post({phase:'unavailable',note:'no_cards',total:0});return}
   if(s.nctIds.length>RANK_MAX_STUDIES){post({phase:'unavailable',note:'too_many',total:s.nctIds.length});return}

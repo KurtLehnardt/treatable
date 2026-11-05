@@ -93,7 +93,7 @@ test('a click on a switch the page has covered, faded or only just shown is not 
  const q=mount();try{await q.start();q.past(q.win,'blur',0);q.past(q.win,'focus',100);await q.flip(true,{pointerMs:null});assert.equal(q.requests('site.aiSwitch').length,0,'focus that only just arrived does not count')}finally{q.restore()}
 });
 
-test('a turn-off is never held back by other pending site actions, on either side of the port',async()=>{
+test('a turn-off is never held back by other pending site actions in the overlay (the background side is tested in ai-ranking-background)',async()=>{
  const {SiteClient}=await import('../src/overlay-port');
  const messages=new Events(),sent:any[]=[];const port:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){sent.push(v);if(v.type==='site.authenticate')queueMicrotask(()=>messages.emit({type:'site.ready',snapshot:{generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[],diagnostic:'',supported:false}}))}};
  const client=new SiteClient({connect:()=>port});await client.authenticate('a'.repeat(64));
@@ -102,18 +102,25 @@ test('a turn-off is never held back by other pending site actions, on either sid
  void client.request('site.aiSwitch',{on:false}).catch(()=>{});
  assert.deepEqual(sent.filter(v=>v.type==='site.aiSwitch').map(v=>v.payload),[{on:false}],'the turn-off is sent');
  client.disconnect();
- assert.match(readFileSync(new URL('../src/site-background.ts',import.meta.url),'utf8'),/pending\.size>=\(req\.type==='site\.aiSwitch'&&req\.payload\?\.on===false\?8:4\)/,'the background makes the same room for it');
 });
 
-test('a turn-off the background never confirms shows the switch on again, and one it could not save says so',async()=>{
- const n=mount({consent:'openai'});try{await n.start();const emit=n.messages.emit.bind(n.messages);
-  n.messages.emit=(v:any)=>emit(v?.result&&v.result.consent===null?{id:v.id,ok:false}:v);
-  await act(async()=>n.toggle().props.onChange({target:{checked:false}}));await settle();
-  assert.equal(n.toggle().props.checked,true,'nothing was stopped, so the switch does not claim it is off');assert.match(n.shown(),/Treatable could not turn off AI-matched results\. Try the switch again\./);
-  n.messages.emit=(v:any)=>emit(v?.result&&v.result.consent===null?{...v,result:{consent:null,saved:false}}:v);
-  await act(async()=>n.toggle().props.onChange({target:{checked:false}}));await settle();
-  assert.equal(n.toggle().props.checked,false);assert.match(n.shown(),/AI-matched results is off now, but Treatable could not save that\./);
- }finally{n.restore()}
+test('a turn-off the background does not confirm, or could not save, says so instead of claiming it was saved',async()=>{
+ const unsure=/Treatable could not confirm that AI-matched results was saved as off\. If the switch shows on the next time you open Treatable, turn it off again\./;
+ for(const reply of [(v:any)=>({id:v.id,ok:false}),(v:any)=>({...v,result:{consent:null,saved:false}})]){
+  const n=mount({consent:'openai'});try{await n.start();const emit=n.messages.emit.bind(n.messages);
+   n.messages.emit=(v:any)=>emit(v?.result&&v.result.consent===null?reply(v):v);
+   await act(async()=>n.toggle().props.onChange({target:{checked:false}}));await settle();
+   assert.equal(n.toggle().props.checked,false,'off at once');assert.match(n.shown(),unsure);
+  }finally{n.restore()}
+ }
+ const ok=mount({consent:'openai'});try{await ok.start();await act(async()=>ok.toggle().props.onChange({target:{checked:false}}));await settle();assert.doesNotMatch(ok.shown(),unsure,'a confirmed turn-off shows no warning')}finally{ok.restore()}
+});
+
+test('focus that the website gives this frame never lands on the switch, so a key press meant for the website cannot turn it on',async()=>{
+ const m=mount();try{await m.start();let blurred=0;const input={blur(){blurred++}};
+  const row=m.observers.find((o:any)=>!o.disconnected).target;row.contains=(el:any)=>el===input;Object.defineProperty(m.doc,'activeElement',{configurable:true,get:()=>input});
+  m.past(m.win,'blur',0);m.past(m.win,'focus',0);assert.equal(blurred,1,'the switch gives up focus as the frame receives it');
+ }finally{m.restore()}
 });
 
 test('with the local model chosen, the disclosure says nothing is sent to OpenAI, and turning the switch on records the local model disclosure',async()=>{
