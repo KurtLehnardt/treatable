@@ -130,7 +130,7 @@ test('canary: the in-process test adapter flow keeps details out of every port m
  function Probe(){const vm=useApply(ID,env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
  let renderer!:TestRenderer.ReactTestRenderer;await act(async()=>{renderer=TestRenderer.create(React.createElement(DetailsContext.Provider,{value:store},React.createElement(Probe)))});
  try{await until(()=>ref.vm?.record,'record');await act(async()=>store.set({name:NAME,condition:CONDITION,extra:EXTRA}));await act(async()=>ref.vm!.requestReview());await until(()=>ref.vm!.result,'result');
-  assert.equal(ref.vm!.result!.mode,'test');assert.match(JSON.stringify(renderer.toJSON()),/test adapter, not a live API call/);
+  assert.equal(ref.vm!.result!.mode,'test');assert.match(JSON.stringify(renderer.toJSON()),/Test run\./);assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/test adapter, not a live API call/);
   assert.ok(sent.some(v=>v.request?.type==='executeStudyBrief'));assert.deepEqual(leaks(sent),[]);assert.deepEqual(leaks(ref.vm!.activity),[]);
   assert.deepEqual(leaks(ref.vm!.draft!.body),MARKERS);assert.deepEqual(leaks(ref.vm!.callScript),MARKERS);assert.deepEqual(leaks(ref.vm!.followUpMessage),MARKERS);
   const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Your call script')&&text.includes('Follow-up message'));

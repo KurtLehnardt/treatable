@@ -18,7 +18,7 @@ function mount(h:ReturnType<typeof harness>){const ref:{vm?:ApplyController}={};
 const renderedText=(node:any):string=>typeof node==='string'?node:Array.isArray(node)?node.map(renderedText).join(' '):node?.children?renderedText(node.children):'';
 const html=(vm:ApplyController)=>renderToStaticMarkup(React.createElement(ApplyView,{vm}));
 
-test('source-linked brief renders readable participation, unknowns, three questions and editable email without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const text=html(m.ref.vm!);for(const phrase of ['Understand this study','Two treatments are spaced 4 weeks apart.','Read the supporting record text','Important unknowns','Ask the study team','Your email draft','Open draft in my email app','Copy full email','OpenAI reviews public study information only'])assert.ok(text.includes(phrase),phrase);assert.match(text,/textarea/);assert.match(text,/official record/);assert.doesNotMatch(text,/Confirm what you|Review what you will share|Exact API input/);assert.equal(m.ref.vm!.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
+test('source-linked brief renders readable participation, unknowns, three questions and editable email without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const text=html(m.ref.vm!);for(const phrase of ['Understand this study','Two treatments are spaced 4 weeks apart.','Read the supporting record text','Important unknowns','Ask the study team','Your email draft','Open draft in my email app','Treatable sends this study’s public record to OpenAI','Your name, contact details and answers are not included'])assert.ok(text.includes(phrase),phrase);assert.doesNotMatch(text,/Copy full email/,'the records-only copy button is gone');assert.match(text,/textarea/);assert.match(text,/official record/);assert.doesNotMatch(text,/Confirm what you|Review what you will share|Exact API input/);assert.equal(m.ref.vm!.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
 
 test('manual draft survives late public AI completion and local detail edits; private fields never cross the port',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','LOCAL_NAME_CANARY');m.ref.vm!.edit('email','private@example.org');m.ref.vm!.answer('diagnosis_details','LOCAL_HEALTH_CANARY')});await act(async()=>{m.ref.vm!.editDraft('body','My carefully edited message');m.ref.vm!.requestReview();await flush()});assert.equal(h.held.length,1);await act(async()=>{m.ref.vm!.editDraft('body','The final manual draft');m.ref.vm!.edit('name','SECOND_LOCAL_NAME');h.held[0]();await flush()});assert.equal(m.ref.vm!.draft?.body,'The final manual draft');assert.equal(m.ref.vm!.draftOutdated,true);assert.ok(!JSON.stringify(h.ports[0].sent).match(/LOCAL_NAME|LOCAL_HEALTH|private@example|SECOND_LOCAL/));await act(async()=>m.ref.vm!.updateDraft());assert.match(m.ref.vm!.draft!.body,/SECOND_LOCAL_NAME/);assert.match(m.ref.vm!.draft!.body,/LOCAL_HEALTH_CANARY/);await act(async()=>{m.ref.vm!.copyEmail();await flush()});assert.match(h.copies[0],/LOCAL_HEALTH_CANARY/);}finally{m.unmount()}});
 
@@ -90,7 +90,7 @@ test('production overlay entry presents the public brief before search, never mo
 
 test('real validated activity frames do not settle the result early or expose provider identifiers',async()=>{const h=harness({holdExecute:true,emitTrace:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal(m.ref.vm!.activity.length,1);assert.equal(m.ref.vm!.activity[0].stage,'agent.tool.request');assert.equal(m.ref.vm!.agentBusy,true);assert.equal(m.ref.vm!.result,undefined);assert.doesNotMatch(JSON.stringify(m.ref.vm!.activity),/PROVIDER_ID_CANARY/);await act(async()=>{h.held[0]();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.match(html(m.ref.vm!),/How this was generated/);assert.match(html(m.ref.vm!),/Reading selected public study evidence/);assert.doesNotMatch(html(m.ref.vm!),/PROVIDER_ID_CANARY/);}finally{m.unmount()}});
 
-test('registry milestone estimates remain separate from a participant visit schedule',async()=>{const h=harness(),m=mount(h);try{await act(flush);const registry=m.renderer.root.findByProps({className:'brief-registry'});const shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);for(const fact of m.renderer.root.findAllByProps({className:'brief-fact'}))assert.doesNotMatch(renderedText(fact),/2026-12-31/);}finally{m.unmount()}});
+test('registry milestone estimates remain separate from a participant visit schedule',async()=>{const h=harness(),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});const registry=m.renderer.root.findByProps({className:'brief-registry'});const shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);for(const fact of m.renderer.root.findAllByProps({className:'brief-fact'}))assert.doesNotMatch(renderedText(fact),/2026-12-31/);}finally{m.unmount()}});
 
 test('generating a brief keeps the full locally loaded record instead of the size-capped prepared copy',async()=>{const h=harness({truncatePrepared:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.record?.sites.length,1);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.equal(m.ref.vm!.record?.sites.length,1);assert.equal(m.ref.vm!.record?.sitesTruncated,false);assert.equal(m.ref.vm!.plan?.site?.facility,'Synthetic Clinic');}finally{m.unmount()}});
 
@@ -106,9 +106,10 @@ test('Copy message copies only the body; Copy full email keeps labelled To and S
 
 /** A registry-style purpose of several thousand characters made of distinct sentences, so any dropped or repeated part is detected. */
 const longPurpose=(sentences:number)=>Array.from({length:sentences},(_,i)=>`Sentence ${i+1} of the synthetic purpose describes what participants in group ${i%7} will be asked to do.`).join(' ');
-async function purposeHtml(purpose:string,options:Parameters<typeof harness>[0]={}){PURPOSE=purpose;const h=harness(options),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');return{html:html(m.ref.vm!),vm:m.ref.vm!}}finally{m.unmount();PURPOSE='A synthetic controlled study.'}}
+/** The excerpts are shown once a generation has been attempted; a failed one (no helper) leaves the official excerpts as the fallback. */
+async function purposeHtml(purpose:string,options:Parameters<typeof harness>[0]={}){PURPOSE=purpose;const h=harness({...options,failPrepare:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');await act(async()=>{m.ref.vm!.requestReview();await flush()});return{html:html(m.ref.vm!),vm:m.ref.vm!}}finally{m.unmount();PURPOSE='A synthetic controlled study.'}}
 
-test('a 6,000+ character study purpose is shown in full, with no ellipsis, before the brief is generated',async()=>{const purpose=longPurpose(65);assert.ok(purpose.length>6000);const{html:page,vm}=await purposeHtml(purpose);assert.ok(page.includes(purpose),'every character of the purpose is on the page');assert.ok(!page.includes('\u2026'),'no ellipsis character');assert.ok(!purpose.endsWith('...'));assert.match(page,/class="brief-scroll"[^>]*role="region"[^>]*aria-label="Study purpose, full text"/);assert.match(page,/tabindex="0"/);assert.equal(vm.purpose,purpose);});
+test('a 6,000+ character study purpose is shown in full, with no ellipsis, when the brief could not be generated',async()=>{const purpose=longPurpose(65);assert.ok(purpose.length>6000);const{html:page,vm}=await purposeHtml(purpose);assert.ok(page.includes(purpose),'every character of the purpose is on the page');assert.ok(!page.includes('\u2026'),'no ellipsis character');assert.ok(!purpose.endsWith('...'));assert.match(page,/class="brief-scroll"[^>]*role="region"[^>]*aria-label="Study purpose, full text"/);assert.match(page,/tabindex="0"/);assert.equal(vm.purpose,purpose);});
 
 test('a short study purpose stays a plain paragraph',async()=>{const{html:page}=await purposeHtml('A short purpose.');assert.match(page,/<h4>Study purpose<\/h4><p>A short purpose\.<\/p>/);assert.doesNotMatch(page,/brief-scroll/);});
 
@@ -118,7 +119,7 @@ test('a purpose longer than the model payload allows is still displayed whole fr
 
 test('a malformed local purpose list is refused instead of shown',async()=>{for(const purposes of [['one','two'],[7],'text']){const{vm}=await purposeHtml('A synthetic controlled study.',{purposes});assert.equal(vm.record,undefined);assert.equal(vm.recordCode,'INVALID_NATIVE_REPLY');}});
 
-test('a long study description is not shortened either',async()=>{const description=`Participants complete clinic visits every 4 weeks, ${'with assessments of symptoms and function '.repeat(30)}until week 52.`;assert.ok(description.length>1000&&description.length<1400);DETAIL=description;try{const h=harness(),m=mount(h);try{await act(flush);const page=html(m.ref.vm!);assert.ok(page.includes(description));assert.ok(!page.includes('\u2026'));}finally{m.unmount()}}finally{DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.'}});
+test('a long study description is not shortened either',async()=>{const description=`Participants complete clinic visits every 4 weeks, ${'with assessments of symptoms and function '.repeat(30)}until week 52.`;assert.ok(description.length>1000&&description.length<1400);DETAIL=description;try{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});const page=html(m.ref.vm!);assert.ok(page.includes(description));assert.ok(!page.includes('\u2026'));}finally{m.unmount()}}finally{DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.'}});
 
 // --- API trace under "How this was generated" ---
 const hostText=(m:ReturnType<typeof mount>)=>renderedText(m.renderer.root);
@@ -178,7 +179,7 @@ test('an oversized body is shown cut with a clear note, and the other body stays
 
 test('test runs say nothing was sent to OpenAI; live runs say the bodies were sent',async()=>{
  const test1=harness(),a=mount(test1);
- try{await generate(a);const text=hostText(a);assert.match(text,/Test run\./);assert.match(text,/nothing below was sent to OpenAI/);assert.match(text,/test adapter, not a live API call/);assert.match(text,/the request bodies the helper built for a mocked adapter/)}finally{a.unmount()}
+ try{await generate(a);const text=hostText(a);assert.match(text,/Test run\./);assert.match(text,/nothing below was sent to OpenAI/);assert.doesNotMatch(text,/test adapter, not a live API call/,'the status line no longer carries the adapter jargon');assert.match(text,/the request bodies the helper built for a mocked adapter/)}finally{a.unmount()}
  const live=harness({live:true}),b=mount(live);
  try{await generate(b);const text=hostText(b);assert.doesNotMatch(text,/Test run\.|test adapter/);assert.match(text,/the request bodies the helper sent to OpenAI/);assert.match(text,/Request headers and credentials are not included/)}finally{b.unmount()}
 });
@@ -272,21 +273,20 @@ test('with a blank name no bracketed placeholder is copied, linked or scripted, 
  await act(async()=>vm().edit('phone','12'));assert.match(renderedText(m.renderer.root.findByProps({className:'notice apply-missing'})),/Check the phone number\. Use 7 to 15 digits\./,'a problem with what was typed is listed too');
 }finally{m.unmount()}});
 
-test('"Personalize your email" opens by itself while no name is set and stays open while the name is typed',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,details=()=>m.renderer.root.findByProps({className:'apply-step apply-local-details'});
- assert.equal(details().props.open,true);assert.match(html(vm()),/<details class="apply-step apply-local-details" open="">/);
- await act(async()=>vm().edit('name','M'));assert.equal(details().props.open,true,'typing the first letter must not collapse the section the person is typing in');
- await act(async()=>vm().edit('name','Morgan'));assert.equal(details().props.open,true);
- await act(async()=>vm().edit('name',''));assert.equal(details().props.open,true);
+test('"Personalize your email" is collapsed by default, also while no name is set, and typing does not open it',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,details=()=>m.renderer.root.findByProps({className:'apply-step apply-local-details'});
+ assert.equal(details().props.open,undefined);assert.doesNotMatch(html(vm()),/<details class="apply-step apply-local-details" open/);
+ assert.ok(vm().plan!.missing.some(item=>/name/.test(item)),'the missing list still asks for a name, so the email is not sent unsigned');
+ await act(async()=>vm().edit('name','M'));assert.equal(details().props.open,undefined,'typing does not pop it open');
 }finally{m.unmount()}});
-test('"Personalize your email" stays closed when Your details already has a name, and the missing list does not ask for one',async()=>{
+test('"Personalize your email" stays collapsed when Your details already has a name, and the missing list does not ask for one',async()=>{
  const named=sessionDetailsStore();named.set({name:'Pat Doe'});const h=harness();let ref:{vm?:ApplyController}={},renderer!:TestRenderer.ReactTestRenderer;
  function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
  act(()=>{renderer=TestRenderer.create(React.createElement(DetailsContext.Provider,{value:named},React.createElement(Probe)))});
- try{await act(flush);assert.equal(ref.vm!.phase,'ready');const details=renderer.root.findByProps({className:'apply-step apply-local-details'});assert.equal(details.props.open,undefined,'closed when Your details already has a name');
+ try{await act(flush);assert.equal(ref.vm!.phase,'ready');const details=renderer.root.findByProps({className:'apply-step apply-local-details'});assert.equal(details.props.open,undefined,'collapsed when Your details already has a name');
   assert.deepEqual(ref.vm!.plan!.missing.filter(item=>/name/.test(item)),[],'and the missing list does not ask for it');assert.doesNotMatch(renderedText(renderer.root),/Add your name to sign the email/);
   assert.match(ref.vm!.draft!.body,/My name is Pat Doe\./);
  }finally{act(()=>renderer.unmount())}
- const h2=harness(),m=mount(h2);try{await act(flush);assert.equal(m.renderer.root.findByProps({className:'apply-step apply-local-details'}).props.open,true,'a fresh session with no name opens it');}finally{m.unmount()}
+ const h2=harness(),m=mount(h2);try{await act(flush);assert.equal(m.renderer.root.findByProps({className:'apply-step apply-local-details'}).props.open,undefined,'a fresh session with no name keeps it collapsed');}finally{m.unmount()}
 });
 
 test('dirty is true only while something typed or edited would be lost: fields, drafts, call scripts and follow-up messages',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;assert.equal(vm().dirty,false,'a fresh session has nothing to lose');
@@ -300,3 +300,27 @@ test('dirty is true only while something typed or edited would be lost: fields, 
  await act(async()=>{vm().selectStudies(IDS);await flush()});await act(async()=>vm().viewStudy(IDS[1]));await act(async()=>vm().edit('name','Second study'));await act(async()=>vm().viewStudy(IDS[0]));assert.equal(vm().dirty,true,'work on another selected study counts');
  await act(async()=>vm().end());assert.equal(vm().dirty,false,'ending the session clears it');
 }finally{m.unmount()}});
+
+test('before a brief is generated only the Generate button and the standard questions show; passages and unknowns appear after',async()=>{
+ const h=harness(),m=mount(h);try{await act(flush);
+  const before=html(m.ref.vm!);
+  assert.doesNotMatch(before,/What participation could involve|Important unknowns|Two treatments are spaced 4 weeks apart/,'no raw passages or unknowns before generation');
+  assert.match(before,/Generate study brief/);assert.match(before,/Three questions to start with/);
+  await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  const after=html(m.ref.vm!);
+  assert.match(after,/What participation could involve/);assert.match(after,/Important unknowns/);
+ }finally{m.unmount()}
+ /* A generation that fails leaves the official excerpts as the fallback the failure copy promises. */
+ const failed=harness({failPrepare:true}),f=mount(failed);try{await act(flush);assert.doesNotMatch(html(f.ref.vm!),/What participation could involve/);await act(async()=>{f.ref.vm!.requestReview();await flush()});const text=html(f.ref.vm!);assert.match(text,/What participation could involve/);assert.match(text,/Important unknowns/);
+  assert.doesNotMatch(text.replace(/<details class="brief-how">[\s\S]*?<\/details>/,''),/NATIVE_HOST_MISSING/,'the raw code is not in the patient-facing status line');
+  assert.match(text,/<details class="brief-how"><summary>How this was generated<\/summary><p class="fine">Failure code: <code>NATIVE_HOST_MISSING<\/code><\/p>/,'the code stays inside the technical details');
+  assert.doesNotMatch(text,/Local search/);
+ }finally{f.unmount()}
+});
+
+test('the overlay moves keyboard focus to the study heading on open, and the heading can take it',async()=>{
+ const h=harness(),focused:string[]=[],ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
+ let renderer!:TestRenderer.ReactTestRenderer;
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(element:any)=>({focus(){focused.push(String(element.props.id))}})})});
+ try{await act(flush);assert.deepEqual(focused,['apply-heading']);assert.match(html(ref.vm!),/<h2 id="apply-heading" tabindex="-1">/,'a heading only takes script focus with tabindex -1')}finally{act(()=>renderer.unmount())}
+});

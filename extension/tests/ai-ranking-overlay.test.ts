@@ -42,7 +42,7 @@ function mount({study,prefs=DEFAULT_UI_PREFS}:{study?:string;prefs?:any}={}){
 
 test('the shipped overlay ranks a results page on its own, with Your details limited to age band, sex and short condition terms',async()=>{
  const m=mount();try{await m.start();
-  assert.match(m.shown(),/AI-matched results/);assert.match(m.shown(),/Studies on this page, best matches first/);assert.match(m.shown(),/Understand this study/,'the study brief stays alongside');
+  assert.match(m.shown(),/AI-matched results/);assert.match(m.shown(),/Studies on this page, best matches first/);assert.doesNotMatch(m.shown(),/Understand this study|Choose up to two studies/,'a results page does not mount the study brief chooser');
   assert.ok(m.root().findAll(n=>n.props['data-treatable-guide']==='ai-ranking').length>=1,'the setting the intro points at is on screen');
   await settle(1000);
   assert.deepEqual(m.requests('site.aiRank').map(v=>v.payload),[{details:{}}],'one automatic ranking request, with no details yet');
@@ -67,7 +67,7 @@ test('the overlay shows labels, reasons, the failure fallback and How this was r
   for(const expected of ['Ranked 2 studies','91%','Strong match for your condition','4%','Not recruiting · Outside the listed age range','How this was ranked','Test run','gpt-6-luna','Relevance score 91 of 100','Strongly related','73.0%','condition terms Asthma','Restore original order'])assert.ok(shown.includes(expected),expected);
   const section=text(m.root().find(n=>n.type==='section'&&n.props['aria-labelledby']==='ai-ranking-heading').children);assert.doesNotMatch(section,/eligib/i,'the ranking section never predicts eligibility');
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'none',failure:'HELPER_VERSION_MISMATCH',studies:[{nctId:A,title:'Study A',percent:null,reasonId:'not_scored',checks:[]},{nctId:B,title:'Study B',percent:0,reasonId:'not_recruiting',checks:['not_recruiting']}]});
-  assert.match(m.shown(),/AI scoring did not run, so record checks set the order/);assert.match(m.shown(),/Reinstall the helper/);assert.match(m.shown(),/HELPER_VERSION_MISMATCH/);assert.match(m.shown(),/No AI scoring ran for this page/);assert.doesNotMatch(m.shown(),/Live OpenAI Decisions result|Sent for scoring/);
+  assert.match(m.shown(),/AI scoring did not run, so record checks set the order/);assert.match(m.shown(),/Reinstall the helper/);assert.match(m.shown(),/HELPER_VERSION_MISMATCH/);assert.match(m.shown(),/No AI scoring ran for this page/);const statusLine=m.root().findAll(n=>n.type==='p'&&n.props.role==='status'&&/AI scoring did not run/.test(text(n.children)))[0];assert.ok(statusLine,'the status line is there');assert.doesNotMatch(text(statusLine.children),/HELPER_VERSION_MISMATCH/,'the raw code is not in the patient-facing status line, only in How this was ranked');assert.doesNotMatch(m.shown(),/Live OpenAI Decisions result|Sent for scoring/);
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',failure:'RATE_LIMITED',request:{text:'{}',bytes:2,truncated:false},profile:{conditions:['Asthma']},studies:[]});assert.match(m.shown(),/The request below was sent or may have been sent, but no valid scores came back/);
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'none',note:'declined',failure:'CONFIRMATION_CANCELLED',studies:[]});assert.match(m.shown(),/paused until you allow it/);
   await m.emitRanking({phase:'confirming',total:2});assert.match(m.shown(),/Waiting for your answer in the Treatable confirmation window/);

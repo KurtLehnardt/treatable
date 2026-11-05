@@ -398,8 +398,14 @@ test('production overlay: "Your details" from Settings are typed work even when 
 
 test('production overlay: a running intro tour is stopped before asking, and focus still returns to the field', async () => {
   const page = await mountAssistant({tour: true});
-  const replay = () => [...document.querySelectorAll('button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement;
-  assert.equal(replay().disabled, true, 'the intro tour is showing its first step');
+  /* Replay intro lives in Settings: open them to read the button, and close them again so Escape still reaches the close question. */
+  const replayDisabled = async () => {
+    await act(async () => {button('Treatable settings').click()});
+    const disabled = ([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled;
+    await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
+    return disabled;
+  };
+  assert.equal(await replayDisabled(), true, 'the intro tour is showing its first step');
   const field = personalizeName();
   await typeInto(field, 'Morgan Example');
   field.focus();
@@ -407,7 +413,7 @@ test('production overlay: a running intro tour is stopped before asking, and foc
   await settle();
   assert.ok(popup(), 'asks before closing');
   assert.equal(document.querySelectorAll('.swal2-popup').length, 1, 'only the confirmation is open: the tour dialog is gone');
-  assert.equal(replay().disabled, false, 'the tour was stopped, so it can be replayed');
+  assert.equal(await replayDisabled(), false, 'the tour was stopped, so it can be replayed');
   await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
   await later();
   assert.equal(page.closes(), 0);
@@ -515,7 +521,9 @@ test('production overlay: outside press with a typed name hides it with everythi
 
 test('production overlay: outside press with nothing typed ends the session at once, even while the intro tour shows', async () => {
   const page = await mountAssistant({tour: true});
-  assert.equal(([...document.querySelectorAll('button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled, true, 'the intro tour is running');
+  await act(async () => {button('Treatable settings').click()});
+  assert.equal(([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled, true, 'the intro tour is running');
+  await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
   await page.outside();
   assert.equal(page.closes(), 1);
   assert.equal(page.hides().length, 0);
