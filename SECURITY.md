@@ -9,7 +9,7 @@ Treatable is not a HIPAA-covered product. No Business Associate Agreement exists
 | Component | Version | Supported |
 |---|---|---|
 | Chrome extension (`dist/`) | 0.1.0, latest commit of the release branch | Yes |
-| Native host and Keychain helper (`extension/native/`) | Same commit as the extension build | Yes, only with a matching extension build (public catalog hash must match) |
+| Native host and Keychain helper (`extension/native/`) | Same commit as the extension build | Yes, only with a matching extension build |
 | Archived "PRE-PRIVACY BASELINE — NOT CURRENT" A ZIP | Any | No |
 | Legacy web app `scaffold/`, `installer/`, root `install-*` scripts | Any | No (not part of the demo; reports handled best effort) |
 
@@ -27,7 +27,7 @@ Please include:
 - the impact: which data or capability an attacker gains;
 - whether a real API key or real health information was involved.
 
-Please **do not** send real health information, real API keys or other people's data; use the fictional fixtures and redact keys. Do not open a public GitHub issue for an unfixed vulnerability.
+Please **do not** send real health information, real API keys or other people's data; use made-up example values and redact keys. Do not open a public GitHub issue for an unfixed vulnerability.
 
 What to expect (best effort from a single maintainer):
 

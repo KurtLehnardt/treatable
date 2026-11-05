@@ -4,7 +4,7 @@ The current extension is a toolbar overlay on ClinicalTrials.gov with optional, 
 
 - Verification (historical checkpoint, taken before the side panel was retired): 49 extension tests, 21 native tests, TypeScript and A/B builds passed. Native network tests intercept the real HTTPS serializer with fake credentials; no live OpenAI request, user credential access, Chrome installation or rendered browser verification occurred.
 - The build removes Save/Remember and gate entry on deletion-only legacy cleanup. Profiles, notices/receipts, tokens, exact previews, results and traces live in active session memory only.
-- Real analysis requires scroll-bottom acknowledgment, explicit acceptance, minimized public selections, native local preparation, and a separate exact-payload confirmation for each operation. Execution uses the pinned expiring token/digest only.
+- At that checkpoint, real analysis required scroll-bottom acknowledgment, explicit acceptance, minimized public selections, native local preparation, and a separate exact-payload confirmation for each operation. That path and the fictional demo were later removed. AI-matched results now asks for confirmation in a separate window before the first OpenAI ranking of a browser session, and every execution still uses only the pinned, expiring token and digest.
 - Earlier A and B packages are historical and are not current downloads; build the single `dist/` folder from source.
 - Fresh independent source and automated-boundary security review passed for 29f126b; see SECURITY_REVIEW.md. Earlier UI-only approval is separate. Canonical integration is complete; live credential setup and API execution remain unverified.
 
