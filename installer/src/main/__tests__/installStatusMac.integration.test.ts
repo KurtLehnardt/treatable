@@ -72,7 +72,7 @@ describe(
 
     test("each write records the window's own pid", async () => {
       const { script, status } = await writeCase("done", 'write_status "running" ""\nwrite_status "done" ""');
-      await execFileAsync("bash", [script], { env: { ...process.env, GRANTED_STATUS_FILE: status } });
+      await execFileAsync("bash", [script], { env: { ...process.env, TREATABLE_STATUS_FILE: status } });
       const parsed = await readStatusFile(status);
       assert.equal(parsed?.state, "done");
       assert.ok(Number.isInteger(parsed?.pid) && parsed!.pid! > 0 && parsed!.pid !== process.pid);
@@ -81,7 +81,7 @@ describe(
     test("a live window is reported alive (lock directory present, pid alive); closing it with SIGTERM is reported as closed at once", async () => {
       // Stands in for an install sitting mid-step.
       const { script, status } = await writeCase("waiting", 'write_status "running" ""\nsleep 120');
-      const window = spawn("bash", [script], { env: { ...process.env, GRANTED_STATUS_FILE: status }, stdio: "ignore" });
+      const window = spawn("bash", [script], { env: { ...process.env, TREATABLE_STATUS_FILE: status }, stdio: "ignore" });
       try {
         let running = null;
         for (let i = 0; i < 100 && running?.state !== "running"; i++) {
@@ -108,7 +108,7 @@ describe(
 
     test("SIGKILL (which no trap can catch) leaves the lock directory behind — the pid is still what correctly reports it as closed", async () => {
       const { script, status } = await writeCase("killed", 'write_status "running" ""\nsleep 120');
-      const window = spawn("bash", [script], { env: { ...process.env, GRANTED_STATUS_FILE: status }, stdio: "ignore" });
+      const window = spawn("bash", [script], { env: { ...process.env, TREATABLE_STATUS_FILE: status }, stdio: "ignore" });
       try {
         let running = null;
         for (let i = 0; i < 100 && running?.state !== "running"; i++) {

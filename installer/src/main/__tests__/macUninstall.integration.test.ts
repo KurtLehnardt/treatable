@@ -6,7 +6,7 @@
  * The macOS counterpart of uninstall.integration.test.ts.
  *
  * Nothing here touches anything real, by the same means the other macOS
- * integration tests use: a throwaway LaunchAgent label (GRANTED_LAUNCH_LABEL)
+ * integration tests use: a throwaway LaunchAgent label (TREATABLE_LAUNCH_LABEL)
  * whose plist lives in a temp folder, a throwaway Applications folder, a
  * throwaway `defaults` domain for "the Dock" with no Dock restart, temp
  * settings and log folders, and a stand-in for `open`. The user's own Granted
@@ -31,15 +31,17 @@ const execFileAsync = promisify(execFile);
 
 // `npm test` runs from installer/; the scripts live in scaffold/.
 const MACOS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "macos");
-const WINDOWS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "windows");
+const RUNTIME_MJS = resolve(process.cwd(), "..", "scaffold", "lib", "runtime.mjs");
 const UNINSTALL_SCRIPT = join(MACOS_SCRIPTS, "uninstall.sh");
-const TRAY_SCRIPT = join(MACOS_SCRIPTS, "granted-tray.sh");
-const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-granted.sh");
+const TRAY_SCRIPT = join(MACOS_SCRIPTS, "treatable-tray.sh");
+const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-treatable.sh");
 const LAUNCHER_SCRIPT = join(MACOS_SCRIPTS, "applications-launcher.sh");
 const MENUBAR_PKG = join(MACOS_SCRIPTS, "menubar");
-const HELPER_SOURCE = join(MENUBAR_PKG, "Sources", "GrantedMenuBar", "main.swift");
-const ICO = join(WINDOWS_SCRIPTS, "granted.ico");
-const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyone</title>";
+const HELPER_SOURCE = join(MENUBAR_PKG, "Sources", "TreatableMenuBar", "main.swift");
+const ICO = join(MACOS_SCRIPTS, "treatable.ico");
+// The page the fake server serves: what the macOS scripts look for since
+// R-030 (treatable-tray.sh's probe_server wants "Treatable").
+const TREATABLE_HTML = "<title>Treatable — Find a study. Find a next step.</title>";
 // Not 3000, and not macTray's 3977 or macLauncher's 3975: a real Granted (or
 // another test's fake one) must never be mistaken for this one's.
 const PORT = 3973;
@@ -109,7 +111,7 @@ interface BoxOptions {
   name?: string;
   /** The top-level name in scaffold/package.json (anything but "granted" isn't a Granted install). */
   packageName?: string;
-  /** Whether to write the installer's .git/granted-installer marker (default: yes). */
+  /** Whether to write the installer's .git/treatable-installer marker (default: yes). */
   marker?: boolean;
   /** A box that shares this one's settings, logs, Applications folder and Dock. */
   sharedWith?: Box;
@@ -131,24 +133,28 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
   const installDir = join(base, options.name ?? "granted-throwaway");
   const scaffold = join(installDir, "scaffold");
   mkdirSync(join(scaffold, "scripts", "macos"), { recursive: true });
+  // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts read
+  // the app's default port (APP_PORT) from it when no --port is given.
+  mkdirSync(join(scaffold, "lib"), { recursive: true });
+  await writeFile(join(scaffold, "lib", "runtime.mjs"), readFileSync(RUNTIME_MJS, "utf8"), "utf8");
   mkdirSync(join(scaffold, "scripts", "windows"), { recursive: true });
   mkdirSync(join(scaffold, "data", "local"), { recursive: true });
   mkdirSync(join(installDir, ".git"), { recursive: true });
   for (const from of [UNINSTALL_SCRIPT, TRAY_SCRIPT, OPEN_SCRIPT, LAUNCHER_SCRIPT]) {
     await writeFile(join(scaffold, "scripts", "macos", from.split("/").pop() as string), readFileSync(from, "utf8"), "utf8");
   }
-  await writeFile(join(scaffold, "scripts", "windows", "granted.ico"), readFileSync(ICO));
+  await writeFile(join(scaffold, "scripts", "macos", "treatable.ico"), readFileSync(ICO));
   await writeFile(
     join(scaffold, "package.json"),
     // "granted", not "fake-granted": the uninstaller refuses to delete a
     // folder whose scaffold/package.json isn't Granted's, so a test install
     // has to be named the way a real one is.
     JSON.stringify({
-      name: options.packageName ?? "granted",
+      name: options.packageName ?? "treatable",
       private: true,
       version: "9.9.9",
       // build + start, not dev: the tray builds when there is no current
-      // production build and then starts that build (see granted-tray.sh).
+      // production build and then starts that build (see treatable-tray.sh).
       scripts: { dev: "node fake-dev.js", build: "node fake-build.js", start: "node fake-dev.js" },
     }),
     "utf8",
@@ -159,14 +165,14 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
       "const port = Number(process.env.PORT);",
       'if (!port) { console.error("fake dev server: PORT not set"); process.exit(1); }',
       'require("node:http")',
-      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(GRANTED_HTML)}); })`,
+      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(TREATABLE_HTML)}); })`,
       '  .listen(port, "127.0.0.1", () => console.log("fake Granted listening on 127.0.0.1:" + port));',
     ].join("\n"),
     "utf8",
   );
   await writeFile(
     join(scaffold, "fake-build.js"),
-    // Stand-in for `next build`: writes the .next/BUILD_ID that granted-tray.sh's
+    // Stand-in for `next build`: writes the .next/BUILD_ID that treatable-tray.sh's
     // needs_build (and its Windows and installer counterparts) treat as "a
     // production build is present", so the real build-then-start flow is
     // exercised without a real Next.js compile.
@@ -181,11 +187,11 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
   // The two files the uninstaller offers to keep a copy of.
   await writeFile(join(scaffold, ".env.local"), "OPENAI_API_KEY=sk-uninstall-test-0000000000\nLLM_API_KEY=sk-only-here-0000000000\n", "utf8");
   await writeFile(join(scaffold, "data", "local", "llm-config.json"), JSON.stringify({ cloud: { apiKey: "sk-in-settings-0000000000" } }), "utf8");
-  if (options.marker !== false) await writeFile(join(installDir, ".git", "granted-installer"), "test\n", "utf8");
+  if (options.marker !== false) await writeFile(join(installDir, ".git", "treatable-installer"), "test\n", "utf8");
 
   const shared = options.sharedWith;
-  const supportDir = shared?.supportDir ?? join(base, "Application Support", "Granted");
-  const logDir = shared?.logDir ?? join(base, "Logs", "Granted");
+  const supportDir = shared?.supportDir ?? join(base, "Application Support", "Treatable");
+  const logDir = shared?.logDir ?? join(base, "Logs", "Treatable");
   const applicationsDir = shared?.applicationsDir ?? join(base, "Applications");
   const dockDomain = shared?.dockDomain ?? join(base, "testdock");
   mkdirSync(supportDir, { recursive: true });
@@ -193,7 +199,7 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
   mkdirSync(applicationsDir, { recursive: true });
   writeFileSync(join(supportDir, "settings.json"), JSON.stringify({ openIn: "window" }), "utf8");
   writeFileSync(join(logDir, `server-${PORT}.log`), "an old log line\n", "utf8");
-  const launchAgentsDir = shared ? shared.env["GRANTED_LAUNCH_AGENTS_DIR"] : join(base, "LaunchAgents");
+  const launchAgentsDir = shared ? shared.env["TREATABLE_LAUNCH_AGENTS_DIR"] : join(base, "LaunchAgents");
   mkdirSync(launchAgentsDir, { recursive: true });
 
   // A stand-in for `open`, so nothing a test opens reaches a real browser.
@@ -201,25 +207,25 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
   const openCmd = join(base, "fake-open.sh");
   await writeFile(openCmd, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(openedLog)}\n`, { mode: 0o755 });
 
-  const label = `com.granted.test.${randomUUID()}`;
+  const label = `com.treatable.test.${randomUUID()}`;
   const env: Record<string, string> = {
-    GRANTED_LAUNCH_LABEL: label,
-    GRANTED_LAUNCH_AGENTS_DIR: launchAgentsDir,
-    GRANTED_LOG_DIR: logDir,
-    GRANTED_SETTINGS_PATH: join(supportDir, "settings.json"),
-    GRANTED_APPLICATIONS_DIR: applicationsDir,
-    GRANTED_DOCK_DOMAIN: dockDomain,
+    TREATABLE_LAUNCH_LABEL: label,
+    TREATABLE_LAUNCH_AGENTS_DIR: launchAgentsDir,
+    TREATABLE_LOG_DIR: logDir,
+    TREATABLE_SETTINGS_PATH: join(supportDir, "settings.json"),
+    TREATABLE_APPLICATIONS_DIR: applicationsDir,
+    TREATABLE_DOCK_DOMAIN: dockDomain,
     // The user's real Dock must never be restarted by a test.
-    GRANTED_DOCK_RELOAD_CMD: "none",
-    GRANTED_MENUBAR_HELPER: "none",
-    GRANTED_APP_BROWSER: "none",
-    GRANTED_OPEN_CMD: openCmd,
-    GRANTED_LAUNCHER_ALERT: "none",
+    TREATABLE_DOCK_RELOAD_CMD: "none",
+    TREATABLE_MENUBAR_HELPER: "none",
+    TREATABLE_APP_BROWSER: "none",
+    TREATABLE_OPEN_CMD: openCmd,
+    TREATABLE_LAUNCHER_ALERT: "none",
     // An osascript dialog would wait for a click that never comes.
-    GRANTED_UNINSTALL_ASK_CMD: options.ask ?? "no",
+    TREATABLE_UNINSTALL_ASK_CMD: options.ask ?? "no",
     // A kept copy of the keys goes in here, never in the real Documents
     // folder of whoever is running the tests.
-    GRANTED_UNINSTALL_BACKUP_DIR: join(base, "kept-keys"),
+    TREATABLE_UNINSTALL_BACKUP_DIR: join(base, "kept-keys"),
   };
   const domain = `gui/${process.getuid?.() ?? 0}/${label}`;
   return {
@@ -227,14 +233,14 @@ async function makeBox(root: string, options: BoxOptions = {}): Promise<Box> {
     installDir,
     scaffold,
     uninstallScript: join(scaffold, "scripts", "macos", "uninstall.sh"),
-    trayScript: join(scaffold, "scripts", "macos", "granted-tray.sh"),
+    trayScript: join(scaffold, "scripts", "macos", "treatable-tray.sh"),
     launcherScript: join(scaffold, "scripts", "macos", "applications-launcher.sh"),
     label,
     plistPath: join(launchAgentsDir, `${label}.plist`),
     supportDir,
     logDir,
     applicationsDir,
-    appPath: join(applicationsDir, "Granted.app"),
+    appPath: join(applicationsDir, "Treatable.app"),
     dockDomain,
     backupDir: join(base, "kept-keys"),
     openedLog,
@@ -369,7 +375,7 @@ test(
 );
 
 test(
-  "granted-tray.sh's uninstall starts the uninstaller detached, with its log outside the folders the uninstall deletes",
+  "treatable-tray.sh's uninstall starts the uninstaller detached, with its log outside the folders the uninstall deletes",
   { skip: !existsSync(TRAY_SCRIPT) && "run from installer/" },
   () => {
     const script = readFileSync(TRAY_SCRIPT, "utf8");
@@ -378,8 +384,8 @@ test(
       .filter((line) => !/^\s*#/.test(line))
       .join("\n");
     assert.match(code, /nohup \/bin\/bash "\$UNINSTALL_SCRIPT" --confirmed --port "\$PORT"/);
-    assert.match(code, /GRANTED_UNINSTALL_LOG:-\$\{TMPDIR:-\/tmp\}/, "the log is in the temporary folder");
-    assert.ok(!/GRANTED_UNINSTALL_LOG:-\$LOG_DIR/.test(code), "never in the log folder the uninstall removes");
+    assert.match(code, /TREATABLE_UNINSTALL_LOG:-\$\{TMPDIR:-\/tmp\}/, "the log is in the temporary folder");
+    assert.ok(!/TREATABLE_UNINSTALL_LOG:-\$LOG_DIR/.test(code), "never in the log folder the uninstall removes");
     assert.match(code, /no-uninstaller/, "an install too old to have the script says so");
   },
 );
@@ -389,14 +395,14 @@ test(
   { skip: !existsSync(HELPER_SOURCE) && "run from installer/" },
   () => {
     const source = readFileSync(HELPER_SOURCE, "utf8");
-    assert.ok(source.includes('title: "Uninstall Granted…"'), "the menu has an Uninstall item");
+    assert.ok(source.includes('title: "Uninstall Treatable…"'), "the menu has an Uninstall item");
     // A real confirmation, with the safe answer as the default button.
     assert.match(source, /NSAlert\(\)/);
     assert.match(source, /alertStyle = \.critical/);
     assert.match(source, /addButton\(withTitle: "Cancel"\)[\s\S]*addButton\(withTitle: "Uninstall"\)/);
     assert.match(source, /== \.alertSecondButtonReturn/, "only the second button (Uninstall) goes ahead");
     assert.match(source, /guard !quitting, !uninstalling, confirmUninstall\(\) else \{ return \}/);
-    // It starts the script through granted-tray.sh and does no deleting of its
+    // It starts the script through treatable-tray.sh and does no deleting of its
     // own.
     assert.match(source, /tray\(\["uninstall"\]/);
     assert.ok(!source.includes("removeItem(atPath: self.installDir"), "the helper removes nothing itself");
@@ -462,14 +468,14 @@ describe(
       assert.equal(code, 0, JSON.stringify(result));
       assert.equal(result["check"], true);
       assert.equal(result["installDir"], b.installDir);
-      assert.equal(result["grantedInstall"], true);
+      assert.equal(result["treatableInstall"], true);
       assert.equal(result["installerMade"], true);
       assert.deepEqual(result["unsaved"], []);
       assert.deepEqual(result["keyFiles"], [join(b.scaffold, ".env.local"), join(b.scaffold, "data", "local", "llm-config.json")]);
       assert.equal(result["launchAgent"], "none");
       assert.equal(result["launcher"], "none");
       // Where a kept copy would go: the throwaway folder this test points it
-      // at, never the real Documents folder (GRANTED_UNINSTALL_BACKUP_DIR).
+      // at, never the real Documents folder (TREATABLE_UNINSTALL_BACKUP_DIR).
       assert.equal(result["backupDir"], join(b.root, "kept-keys"));
       assert.ok(existsSync(join(b.scaffold, "package.json")), "nothing was deleted");
       assert.ok(existsSync(join(b.supportDir, "settings.json")));
@@ -493,7 +499,7 @@ describe(
       const b = await box({ packageName: "my-own-project" });
       const { code, result } = await uninstall(b, ["--quiet"]);
       assert.equal(code, 2);
-      assert.equal(result["reason"], "not-a-granted-install");
+      assert.equal(result["reason"], "not-a-treatable-install");
       assert.ok(existsSync(join(b.scaffold, "package.json")));
     });
 
@@ -580,7 +586,7 @@ describe(
       git(b.installDir, "init", "-q");
       git(b.installDir, "add", "-A");
       git(b.installDir, "commit", "-q", "-m", "clean");
-      await writeFile(join(b.installDir, ".git", "granted-installer"), "test\n", "utf8");
+      await writeFile(join(b.installDir, ".git", "treatable-installer"), "test\n", "utf8");
       await writeFile(join(b.scaffold, "fake-dev.js"), "// my local change\n", "utf8");
 
       const { code, result } = await uninstall(b, ["--quiet"]);
@@ -607,7 +613,7 @@ describe(
       git(b.installDir, "commit", "-q", "-m", "clean");
       await writeFile(join(b.scaffold, "fake-dev.js"), "// stashed\n", "utf8");
       git(b.installDir, "stash", "-q");
-      await writeFile(join(b.installDir, ".git", "granted-installer"), "test\n", "utf8");
+      await writeFile(join(b.installDir, ".git", "treatable-installer"), "test\n", "utf8");
       const { code, result } = await uninstall(b, ["--quiet"]);
       assert.equal(code, 4, JSON.stringify(result));
       assert.match(JSON.stringify(result["unsaved"]), /stashed changes \(1\)/);
@@ -625,20 +631,20 @@ describe(
       assert.equal(no.code, 1);
       assert.equal(no.result["reason"], "cancelled");
       assert.ok(existsSync(join(cancelled.scaffold, "package.json")), "nothing was deleted");
-      assert.match(readFileSync(asked, "utf8"), /Uninstall Granted\?/);
+      assert.match(readFileSync(asked, "utf8"), /Uninstall Treatable\?/);
 
       // A dirty folder, answered yes twice: the question about unsaved work is
       // asked as well, not only the first one.
       const dirty = await box({ ask: askYes });
       await rm(join(dirty.installDir, ".git"), { recursive: true, force: true });
       git(dirty.installDir, "init", "-q");
-      await writeFile(join(dirty.installDir, ".git", "granted-installer"), "test\n", "utf8");
+      await writeFile(join(dirty.installDir, ".git", "treatable-installer"), "test\n", "utf8");
       const yes = await uninstall(dirty, ["--backup-dir", dirty.backupDir]);
       assert.equal(yes.code, 0, JSON.stringify(yes.result));
       assert.equal(existsSync(dirty.installDir), false);
       const questions = readFileSync(asked, "utf8");
-      assert.match(questions, /Uninstall Granted anyway\?/, "asked again about the unsaved work");
-      assert.match(questions, /Delete your API keys with Granted\?/, "and about the keys");
+      assert.match(questions, /Uninstall Treatable anyway\?/, "asked again about the unsaved work");
+      assert.match(questions, /Delete your API keys with Treatable\?/, "and about the keys");
       // Answering "yes" to the keys question is answering "delete them".
       assert.equal(yes.result["keptKeys"], null);
       assert.equal(existsSync(dirty.backupDir), false);
@@ -812,8 +818,8 @@ describe(
     // log file — it has no stderr to read — so an exit 64 with no JSON line
     // left the Uninstall panel sitting on "an uninstall was started" until the
     // staleness window elapsed, instead of saying what was wrong. Two of these
-    // need no typed argument at all: GRANTED_UNINSTALL_BACKUP_DIR pointed
-    // inside the install folder, and a GRANTED_PORT that isn't a number.
+    // need no typed argument at all: TREATABLE_UNINSTALL_BACKUP_DIR pointed
+    // inside the install folder, and a TREATABLE_PORT that isn't a number.
     test("every bad-input refusal prints a JSON line as well, so the app can read an answer", async () => {
       const b = await box();
       const cases: Array<{ args: string[]; env?: Record<string, string>; detail: RegExp }> = [
@@ -823,7 +829,7 @@ describe(
         { args: ["--quiet", "--force", "--backup-dir", join(b.installDir, "kept-inside")], detail: /outside the folder being deleted/ },
         // Through the environment, which is how the app reaches this at all:
         // it passes neither --backup-dir nor --port.
-        { args: ["--quiet", "--force"], env: { GRANTED_UNINSTALL_BACKUP_DIR: join(b.scaffold, "kept") }, detail: /outside the folder being deleted/ },
+        { args: ["--quiet", "--force"], env: { TREATABLE_UNINSTALL_BACKUP_DIR: join(b.scaffold, "kept") }, detail: /outside the folder being deleted/ },
       ];
       for (const c of cases) {
         const { code, result } = await uninstall(b, c.args, c.env ?? {});
@@ -1029,7 +1035,7 @@ describe(
       chmodSync(b.root, 0o555);
       try {
         const { stdout } = await execFileAsync("/bin/bash", [b.trayScript, "uninstall", "--port", String(PORT)], {
-          env: { ...process.env, ...b.env, GRANTED_UNINSTALL_LOG: log },
+          env: { ...process.env, ...b.env, TREATABLE_UNINSTALL_LOG: log },
           timeout: 60_000,
         });
         const answer = JSON.parse(stdout.trim().split("\n").pop() as string) as { started?: boolean; log?: string };
@@ -1117,11 +1123,11 @@ describe(
       assert.match(readFileSync(join(b.root, "kept for Jo's keys", ".env.local"), "utf8"), /sk-uninstall-test/);
     });
 
-    test("granted-tray.sh uninstall really starts it, detached, and it finishes the job", async () => {
+    test("treatable-tray.sh uninstall really starts it, detached, and it finishes the job", async () => {
       const b = await box({ ask: "yes" });
       const log = join(b.root, "uninstall.log");
       const { stdout } = await execFileAsync("/bin/bash", [b.trayScript, "uninstall", "--port", String(PORT)], {
-        env: { ...process.env, ...b.env, GRANTED_UNINSTALL_LOG: log },
+        env: { ...process.env, ...b.env, TREATABLE_UNINSTALL_LOG: log },
         timeout: 60_000,
       });
       const answer = JSON.parse(stdout.trim().split("\n").pop() as string) as { started?: boolean; log?: string };
@@ -1158,25 +1164,25 @@ describe(
     let root: string;
     const boxes: Box[] = [];
 
-    const helperBinary = (): string => join(MENUBAR_PKG, ".build", "release", "granted-menubar");
+    const helperBinary = (): string => join(MENUBAR_PKG, ".build", "release", "treatable-menubar");
 
-    /** Chooses the item the way a click does (see the helper's GRANTED_MENUBAR_SELF_TEST). */
+    /** Chooses the item the way a click does (see the helper's TREATABLE_MENUBAR_SELF_TEST). */
     const click = async (b: Box, confirm: "yes" | "no", log: string): Promise<string> => {
       const { stdout } = await execFileAsync(helperBinary(), [], {
         env: {
           ...process.env,
           ...b.env,
-          GRANTED_PORT: String(PORT),
-          GRANTED_TRAY_SCRIPT: b.trayScript,
-          GRANTED_LOG_FILE: join(b.logDir, `server-${PORT}.log`),
-          GRANTED_MENUBAR_CONFIRM: confirm,
-          GRANTED_UNINSTALL_LOG: log,
-          GRANTED_MENUBAR_SELF_TEST: "click:Uninstall Granted…",
+          TREATABLE_PORT: String(PORT),
+          TREATABLE_TRAY_SCRIPT: b.trayScript,
+          TREATABLE_LOG_FILE: join(b.logDir, `server-${PORT}.log`),
+          TREATABLE_MENUBAR_CONFIRM: confirm,
+          TREATABLE_UNINSTALL_LOG: log,
+          TREATABLE_MENUBAR_SELF_TEST: "click:Uninstall Treatable…",
         },
         timeout: 4 * 60_000,
       });
-      assert.match(stdout, /clicking "Uninstall Granted…"/);
-      assert.match(stdout, /"Uninstall Granted…" done/);
+      assert.match(stdout, /clicking "Uninstall Treatable…"/);
+      assert.match(stdout, /"Uninstall Treatable…" done/);
       return stdout;
     };
 

@@ -5,9 +5,9 @@
  * a FAKE Granted install's `npm run build`/`npm run start` / `npm run setup:local` for real —
  * both macOS paths: the plain detached launchMacScaffoldTask one (an install
  * with no scripts/macos) and, for an install that has it, the real
- * granted-tray.sh background one, where launchd runs the server under a
+ * treatable-tray.sh background one, where launchd runs the server under a
  * throwaway LaunchAgent label. No menu-bar icon is started here (fixtures.ts
- * sets GRANTED_MENUBAR_HELPER=none: a test must not put an icon on the
+ * sets TREATABLE_MENUBAR_HELPER=none: a test must not put an icon on the
  * machine's menu bar) — the Swift helper itself is covered by
  * macTray.integration.test.ts. The Terminal-launch
  * call itself (openInstallTerminal's darwin branch) is never exercised here,
@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  GRANTED_HTML,
+  FAKE_APP_HTML,
   TEST_PORT,
   TEST_URL,
   appWindowUrls,
@@ -246,7 +246,7 @@ test("with no Chrome or Edge on the Mac, Granted still opens, in a browser tab, 
   install.cleanup();
   install = makeFakeInstall({ withMacScripts: true });
   configureHostedKeys();
-  const a = await start({ GRANTED_APP_BROWSER: "none" });
+  const a = await start({ GRANTED_APP_BROWSER: "none", TREATABLE_APP_BROWSER: "none" });
   await page.getByRole("button", { name: "Yes, open Granted" }).click();
   await expect(page.getByText(/Granted is open in your browser/)).toBeVisible({ timeout: 60_000 });
   expect(await openedUrls(a)).toEqual([TEST_URL]);
@@ -272,16 +272,16 @@ test("an install with scripts/macos offers 'Add Granted to the Dock', ticked, an
   // Granted is macLauncher.integration.test.ts's job.
   await page.getByRole("button", { name: "Not now" }).click();
   await expect(page.getByText("Added Granted to your Applications folder and to the Dock.")).toBeVisible();
-  const appPath = join(install.applicationsDir, "Granted.app");
+  const appPath = join(install.applicationsDir, "Treatable.app");
   expect(existsSync(join(appPath, "Contents", "Info.plist"))).toBe(true);
-  expect(existsSync(join(appPath, "Contents", "MacOS", "Granted"))).toBe(true);
-  expect(existsSync(join(appPath, "Contents", "Resources", "granted.icns"))).toBe(true);
+  expect(existsSync(join(appPath, "Contents", "MacOS", "Treatable"))).toBe(true);
+  expect(existsSync(join(appPath, "Contents", "Resources", "treatable.icns"))).toBe(true);
   // The launcher runs this install's own tray script, with the test port.
-  const launcher = readFileSync(join(appPath, "Contents", "MacOS", "Granted"), "utf8");
+  const launcher = readFileSync(join(appPath, "Contents", "MacOS", "Treatable"), "utf8");
   // realpathSync: the script resolves its own folder with `pwd -P`, so the
   // path it bakes in is /private/var/folders/… where mkdtemp handed back
   // /var/folders/… (the same symlink the macTray integration test resolves).
-  expect(launcher).toContain(join(realpathSync(install.scaffoldDir), "scripts", "macos", "granted-tray.sh"));
+  expect(launcher).toContain(join(realpathSync(install.scaffoldDir), "scripts", "macos", "treatable-tray.sh"));
   expect(launcher).toContain(`--port ${TEST_PORT}`);
   expect(dockEntries()).toContain(appPath);
   // And the screen then tells the user where to open Granted from.
@@ -297,8 +297,8 @@ test("unticking 'Add Granted to the Dock' still creates the launcher, and leaves
   await page.getByRole("button", { name: "Not now" }).click();
   // The launcher is not optional — only its place in the Dock is.
   await expect(page.getByText("Added Granted to your Applications folder.")).toBeVisible();
-  expect(existsSync(join(install.applicationsDir, "Granted.app", "Contents", "MacOS", "Granted"))).toBe(true);
-  expect(dockEntries()).not.toContain(join(install.applicationsDir, "Granted.app"));
+  expect(existsSync(join(install.applicationsDir, "Treatable.app", "Contents", "MacOS", "Treatable"))).toBe(true);
+  expect(dockEntries()).not.toContain(join(install.applicationsDir, "Treatable.app"));
   await expect(page.getByText(/from the Granted icon in the Dock/)).toHaveCount(0);
 });
 
@@ -314,7 +314,7 @@ test("an install without scripts/macos offers no Dock box and creates no launche
 
 test("already running: Yes just opens the browser, without starting a second server", async () => {
   configureHostedKeys();
-  const server = await serveOnTestPort(GRANTED_HTML);
+  const server = await serveOnTestPort(FAKE_APP_HTML);
   try {
     const a = await start();
     await page.getByRole("button", { name: "Yes, open Granted" }).click();
