@@ -41,7 +41,7 @@ function mount({study,prefs=DEFAULT_UI_PREFS}:{study?:string;prefs?:any}={}){
 
 test('the shipped overlay ranks a results page on its own, with Your details limited to age band, sex and short condition terms',async()=>{
  const m=mount();try{await m.start();
-  assert.match(m.shown(),/AI-matched results/);assert.match(m.shown(),/Studies on this page, best matches first/);assert.doesNotMatch(m.shown(),/Understand this study|Choose up to two studies/,'a results page does not mount the study brief chooser');
+  assert.match(m.shown(),/AI-matched results/);assert.doesNotMatch(m.shown(),/Understand this study|Choose up to two studies/,'a results page does not mount the study brief chooser');
   assert.ok(m.root().findAll(n=>n.props['data-treatable-guide']==='ai-ranking').length>=1,'the setting the intro points at is on screen');
   await settle(1000);
   assert.deepEqual(m.requests('site.aiRank').map(v=>v.payload),[{details:{}}],'one automatic ranking request, with no details yet');
@@ -63,14 +63,14 @@ test('the overlay shows labels, reasons, the failure fallback and How this was r
  const m=mount();try{await m.start();
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',mode:'test',studies:[{nctId:A,title:'Study A',percent:91,reasonId:'strong_match',checks:[],score:91,probabilities:[0,0,.27,.73]},{nctId:B,title:'Study B',percent:4,reasonId:'not_recruiting',checks:['not_recruiting','outside_age_range'],score:40,probabilities:[.1,.4,.4,.1]}],request:{text:'{\n  "model": "gpt-6-luna"\n}',bytes:24,truncated:false},profile:{conditions:['Asthma'],ageBand:'45_59'}});
   const shown=m.shown();
-  for(const expected of ['Ranked 2 studies','91%','Strong match for your condition','4%','Not recruiting · Outside the listed age range','Technical details','Test run','gpt-6-luna','Relevance score 91 of 100','Strongly related','73.0%','condition terms Asthma','Restore site order'])assert.ok(shown.includes(expected),expected);
+  for(const expected of ['Ranked 2 studies','91%','Strong match for your condition','4%','Not recruiting · Outside the listed age range','Technical details','Test run','gpt-6-luna','Relevance score 91 of 100','Strongly related','73.0%','condition terms Asthma','Show the website’s order'])assert.ok(shown.includes(expected),expected);
   const section=text(m.root().find(n=>n.type==='section'&&n.props['aria-labelledby']==='ai-ranking-heading').children);assert.doesNotMatch(section,/eligib/i,'the ranking section never predicts eligibility');
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'none',failure:'HELPER_VERSION_MISMATCH',studies:[{nctId:A,title:'Study A',percent:null,reasonId:'not_scored',checks:[]},{nctId:B,title:'Study B',percent:0,reasonId:'not_recruiting',checks:['not_recruiting']}]});
   assert.match(m.shown(),/AI scoring did not run, so record checks set the order/);assert.match(m.shown(),/Reinstall the helper/);assert.match(m.shown(),/HELPER_VERSION_MISMATCH/);assert.match(m.shown(),/No AI scoring ran for this page/);const statusLine=m.root().findAll(n=>n.type==='p'&&n.props.role==='status'&&/AI scoring did not run/.test(text(n.children)))[0];assert.ok(statusLine,'the status line is there');assert.doesNotMatch(text(statusLine.children),/HELPER_VERSION_MISMATCH/,'the raw code is not in the patient-facing status line, only in How this was ranked');assert.doesNotMatch(m.shown(),/Live OpenAI Decisions result|Sent for scoring/);
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',failure:'RATE_LIMITED',request:{text:'{}',bytes:2,truncated:false},profile:{conditions:['Asthma']},studies:[]});assert.match(m.shown(),/The request below was sent or may have been sent, but no valid scores came back/);
   await m.emitRanking({phase:'done',total:2,applied:true,provider:'none',note:'declined',failure:'CONFIRMATION_CANCELLED',studies:[]});assert.match(m.shown(),/paused until you allow it/);
   await m.emitRanking({phase:'confirming',total:2});assert.match(m.shown(),/Waiting for your answer in the Treatable confirmation window/);
-  const restore=m.root().findAll(n=>n.type==='button'&&text(n.children)==='Restore site order');assert.equal(restore.length,0,'no restore while a ranking is pending');
+  const restore=m.root().findAll(n=>n.type==='button'&&text(n.children)==='Show the website’s order');assert.equal(restore.length,0,'no restore while a ranking is pending');
  }finally{m.restore()}
 });
 
@@ -120,6 +120,18 @@ test('a toolbar press that expands a compact popup expands its view too, and mal
   for(const bad of [{type:'site.view',hidden:'no',collapsed:false},{type:'site.view',hidden:false,collapsed:false,extra:1},{type:'site.view',collapsed:false}])await m.emit(bad);
   assert.equal(labelled('Expand search assistant'),1,'malformed reports change nothing');
   await m.emit({type:'site.view',hidden:false,collapsed:false});
-  assert.equal(labelled('Collapse search assistant'),1,'the view agrees with the expanded frame');assert.match(m.shown(),/Studies on this page, best matches first/,'the ranking section is visible once expanded');assert.doesNotMatch(m.shown(),/Replay intro/,'Replay intro now lives in Settings, closed here');assert.doesNotMatch(m.shown(),/Search ClinicalTrials\.gov|More filters|Search the live registry/);
+  assert.equal(labelled('Collapse search assistant'),1,'the view agrees with the expanded frame');assert.ok(m.root().findAll(n=>n.type==='section'&&n.props['aria-labelledby']==='ai-ranking-heading').length===1,'the ranking section is visible once expanded');assert.doesNotMatch(m.shown(),/Replay intro/,'Replay intro now lives in Settings, closed here');assert.doesNotMatch(m.shown(),/Search ClinicalTrials\.gov|More filters|Search the live registry/);
+ }finally{m.restore()}
+});
+
+test('badged is dropped when the page moves to a new snapshot generation: the full list returns',async()=>{
+ const m=mount();try{await m.start();
+  const studies=[{nctId:A,title:'Study A',percent:91,reasonId:'strong_match',checks:[],score:91},{nctId:B,title:'Study B',percent:4,reasonId:'not_recruiting',checks:['not_recruiting','outside_age_range'],score:40}] as any;
+  await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',mode:'live',badged:true,studies});
+  assert.match(m.shown(),/Match % is on each card/);const lists=()=>m.root().findAll(n=>n.type==='ol'&&String(n.props.className).startsWith('ranking-list')&&n.props.className!=='ranking-list moved-list'&&n.parent?.type!=='details');assert.equal(lists().length,0,'no duplicate list while the badges are on the cards (the full list is inside the closed disclosure)');assert.match(m.shown(),/Not recruiting · Outside the listed age range/);
+  await m.emit({type:'site.snapshot',snapshot:{generation:'g2',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[A,B],diagnostic:'Two cards',supported:true}});
+  assert.doesNotMatch(m.shown(),/Match % is on each card/,'the badged claim ended with the generation');assert.equal(lists().length,1,'the list is back');
+  await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',mode:'live',badged:true,studies});
+  assert.match(m.shown(),/Match % is on each card/,'a ranking that arrives for the current generation is badged again');
  }finally{m.restore()}
 });

@@ -38,8 +38,8 @@ export function parseRankingState(v:unknown):RankingState|undefined{
 export function collapsedStatus(state:RankingState|undefined):string|undefined{
  if(!state)return;
  if(state.phase==='checking'||state.phase==='preparing'||state.phase==='scoring')return'Ranking…';
- if(state.phase==='confirming')return'Waiting for your answer';
+ if(state.phase==='confirming')return'Waiting for your answer in the Treatable window';
  if(state.phase!=='done'||state.applied===false||!state.studies?.length)return;
  const n=state.studies.length,scored=state.provider!=='none'&&!state.failure,top=Math.max(-1,...state.studies.map(s=>s.percent??-1));
- return scored&&top>=0?`Ranked ${n} · top match ${top}%`:`Ranked ${n} · record checks only`;
+ return scored&&top>=0?`Ranked ${n} · top match ${top}%`:`Ranked ${n} · no AI score`;
 }

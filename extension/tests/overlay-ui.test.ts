@@ -22,13 +22,13 @@ test('overlay renders no search form and no page-matching block: no replica of t
  for(const gone of ['Find my matches','On this page','Only the visible cards loaded','Load fresh study records','Show diagnostics','End page matching','Condition/disease','Other terms','Intervention/treatment','Location','More filters','Which studies to show','Search ClinicalTrials.gov','Search the live registry','Find studies for you','shared with ClinicalTrials.gov','No OpenAI request is made by this search','five minutes'])assert.ok(!html.includes(gone),gone);
  assert.doesNotMatch(html,/<form|<input|<select|<textarea|<details|Free-text notes|Remember|API demo|Preview the fictional/);
 });
-test('the website-filters help is not in the overlay body; the ranking section offers it beside Restore site order',()=>{
+test('the website-filters help is not in the overlay body; the ranking section offers it beside Show the website’s order',()=>{
  let started=0;const guide:any={canSearchHelp:true,startSearchHelp:()=>started++,active:false};
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(OverlayView,{vm:view({guide})})),/Show me how to search|website’s filters/,'the overlay body has no search control');
  const model:any={aiRanking:'on',connected:true,busy:false,setAiRanking(){},restore(){},again(){},ranking:{phase:'done',applied:true,provider:'none',studies:[{nctId:'NCT00000001',title:'A',percent:80,checks:[]}]}};
  const renderer=TestRenderer.create(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>started++}}));
- const row=renderer.root.findAllByProps({className:'button-row'}).find(node=>node.findAllByType('button').some(b=>b.children.includes('Restore site order')))!;
- const labels=row.findAllByType('button').map(b=>b.children.join(''));assert.deepEqual(labels,['Restore site order','Show me the website’s filters']);
+ const row=renderer.root.findAllByProps({className:'button-row'}).find(node=>node.findAllByType('button').some(b=>b.children.includes('Show the website’s order')))!;
+ const labels=row.findAllByType('button').map(b=>b.children.join(''));assert.deepEqual(labels,['Show the website’s order','Show me the website’s filters']);
  row.findAllByType('button')[1].props.onClick();assert.equal(started,1);renderer.unmount();
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(RankingSection,{vm:model})),/website’s filters/,'offered only when the guide can run');
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}}})).replace(/<button[^>]*>Show me the website’s filters<\/button>/,''),/website’s filters/);
