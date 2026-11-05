@@ -1,8 +1,0 @@
-import React,{useEffect,useState}from'react';import{createRoot}from'react-dom/client';import'./confirm-send.css';
-import{RankConfirm}from'./rank-confirm-view';
-function ConfirmSend(){const[context,setContext]=useState<any>(),[error,setError]=useState(''),[busy,setBusy]=useState(false);useEffect(()=>{let active=true;void chrome.runtime.sendMessage({kind:'site.confirmContext'}).then((v:any)=>{if(!active)return;if(v?.ok===true)setContext(v);else setError('This confirmation is no longer available. Return to Treatable on the study page.')}).catch(()=>setError('This confirmation is unavailable.'));return()=>{active=false}},[]);async function choose(accepted:boolean){if(busy)return;setBusy(true);try{await chrome.runtime.sendMessage({kind:'site.confirmSend',accepted});window.close()}catch{setError('Nothing was sent. Return to the study page.');setBusy(false)}}const summary=context?.summary;
- if(context?.operation==='rank')return <main><p className="eyebrow">TREATABLE · SECURE CONFIRMATION</p>{error&&<p role="alert">{error}</p>}{summary&&<RankConfirm summary={summary} busy={busy} choose={accepted=>void choose(accepted)}/>}</main>;
- /* AI-matched results is the only operation the background confirms. Before its context arrives, or when it is unavailable, the window
-  * shows its heading and any error; it never renders a summary for another operation. */
- return <main><p className="eyebrow">TREATABLE · SECURE CONFIRMATION</p><h1>Confirm what you’ll share</h1><p>This separate extension window confirms the send. Your profile stays in the study-page form.</p>{error&&<p role="alert">{error}</p>}</main>}
-createRoot(document.getElementById('root')!).render(<ConfirmSend/>);

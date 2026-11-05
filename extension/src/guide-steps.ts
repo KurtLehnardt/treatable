@@ -85,10 +85,10 @@ export const COPY = {
     skip: 'Skip',
   },
   aiRanking: {
-    title: 'AI-matched results are on',
+    title: 'AI-matched results',
     body: [
-      'On a ClinicalTrials.gov results page, Treatable puts the studies that best match your search first and shows a match percentage in a small circle on each card. Studies that clearly do not fit, such as ones that are not recruiting, move to the end.',
-      'Before the first ranking, Treatable shows you what it sends to OpenAI and asks once for this browser session.',
+      'On a ClinicalTrials.gov results page, Treatable can put the studies that best match your search first and show a match percentage in a small circle on each card. Studies that clearly do not fit, such as ones that are not recruiting, move to the end.',
+      'Nothing is ranked until you turn on this switch. The line beside it says what turning it on sends.',
       'Prefer the website’s own order? Switch off AI-matched results here at any time.',
     ],
     next: 'Next',

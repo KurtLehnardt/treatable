@@ -30,11 +30,17 @@ test('the header carries no eyebrow or session line, and the footer no developer
   }
 });
 
-test('the AI-matched results switch keeps its default and shows a one-line helper',()=>{
-  const on=overlay({setAiRanking(){},aiRanking:'on'}),off=overlay({setAiRanking(){},aiRanking:'off'});
-  assert.match(on,/<input type="checkbox" role="switch" checked=""/);assert.doesNotMatch(off,/role="switch" checked/);
+test('the AI-matched results switch is off by default, shows a one-line helper and always has its disclosure beside it',()=>{
+  const on=overlay({setAiRanking(){},aiRanking:'on'}),off=overlay({setAiRanking(){},aiRanking:'off'}),unset=overlay({setAiRanking(){}});
+  assert.match(on,/<input type="checkbox" role="switch"[^>]* checked=""/);assert.doesNotMatch(off,/role="switch"[^>]* checked/);assert.doesNotMatch(unset,/role="switch"[^>]* checked/,'no value means off');
   assert.match(on,/<small>Best matches first, with a match % on each card\.<\/small>/);
   assert.match(off,/<small>The website keeps its own order\.<\/small>/);
+  /* Each word is checked against what is sent: rank-background.ts sends only condition terms (shared/rank-contract.mjs, at most six of at
+   * most 80 characters), native/rank.mjs adds the public records of the studies on the page, and the local model sends nothing to OpenAI. */
+  const openai='<p id="ai-switch-disclosure" class="ai-disclosure">Sends short condition words and the page’s public study records to OpenAI to sort results. Off unless you turn it on.</p>';
+  for(const markup of [on,off,unset])assert.ok(markup.includes(openai),'the OpenAI disclosure is beside the switch');assert.match(off,/aria-describedby="ai-switch-disclosure"/);
+  assert.ok(overlay({setAiRanking(){},provider:'local'}).includes('<p id="ai-switch-disclosure" class="ai-disclosure">Sorts results with the local model on this device. Nothing is sent to OpenAI.</p>'));
+  assert.doesNotMatch(overlay({setAiRanking(){},collapsed:true}),/role="switch"|ai-switch-disclosure/,'collapsed, neither the switch nor its disclosure is shown');
 });
 
 // Every code in the table before the plain-language rewrite. None may be dropped.
@@ -114,9 +120,9 @@ test('Your details says what is sent, when it is asked about, and that age band 
   const {YourDetailsSettings}=await import('../src/your-details-view');
   const html=renderToStaticMarkup(React.createElement(DetailsContext.Provider,{value:sessionDetailsStore()},React.createElement(YourDetailsSettings,{})));
   const text=html.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
-  /* Consent is asked once per browser session (rank-background.ts consent.has(); ranking-consent.ts keeps one marker in chrome.storage.session), then terms typed later go out on their own. */
-  assert.match(text,/Treatable asks once per browser session, before the first ranking\./);
-  assert.match(text,/Short condition words are sent to OpenAI for AI-matched results\./);
+  /* Turning the AI-matched results switch on is the consent (rank-background.ts checks the background's record before every helper call), so terms typed later go out only while it stays on. */
+  assert.match(text,/Short condition words are sent to OpenAI only while AI-matched results is on\./);
+  assert.doesNotMatch(text,/browser session|asks once|before the first ranking/i,'nothing about the removed confirmation');
   assert.match(text,/Age band and sex only sort results on this device\./);
   assert.match(text,/Nothing is sent when you use the local model\./);
   assert.match(text,/cleared when the session ends/);

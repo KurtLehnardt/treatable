@@ -1,14 +1,14 @@
 /** The AI-matched results status the background posts to the overlay. Built by the background and validated again on arrival. */
 import{isReasonId,CHECK_REASONS,type CheckReason,type RankReasonId}from'./rank-merge';
 import{AGE_BANDS}from'../shared/age-bands.mjs';
-export type RankingPhase='checking'|'preparing'|'confirming'|'scoring'|'done'|'off'|'unavailable';
+export type RankingPhase='checking'|'preparing'|'scoring'|'done'|'off'|'unavailable';
 /** Why ranking used record checks only, or could not run at all. */
-export type RankingNote='no_condition'|'too_many'|'no_cards'|'declined';
+export type RankingNote='no_condition'|'too_many'|'no_cards';
 export interface RankingStudyView{nctId:string;title:string;percent:number|null;reasonId:RankReasonId;checks:CheckReason[];score?:number;probabilities?:number[]}
 export interface RankingTraceBody{text:string;bytes:number;truncated:boolean}
 export interface RankingState{phase:RankingPhase;total?:number;studies?:RankingStudyView[];applied?:boolean;provider?:'openai'|'local'|'none';mode?:'live'|'test';failure?:string;note?:RankingNote;request?:RankingTraceBody;profile?:{conditions:string[];ageBand?:string;sex?:string}}
-const PHASES:readonly RankingPhase[]=['checking','preparing','confirming','scoring','done','off','unavailable'];
-const NOTES:readonly RankingNote[]=['no_condition','too_many','no_cards','declined'];
+const PHASES:readonly RankingPhase[]=['checking','preparing','scoring','done','off','unavailable'];
+const NOTES:readonly RankingNote[]=['no_condition','too_many','no_cards'];
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const only=(v:Record<string,unknown>,keys:readonly string[])=>Object.keys(v).every(k=>keys.includes(k));
 const text=(v:unknown,max:number)=>typeof v==='string'&&v.length<=max;

@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
+import {AI_SWITCH_DISCLOSURE} from './ai-switch';
 function useResolvedTheme(theme: OverlayTheme) {
  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
  useEffect(() => {
@@ -82,7 +83,9 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  return <main {...mainAttrs}>
   {header}
   {settingsPanel}
-  {vm.setAiRanking && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label></div>}
+  {/* Turning the switch on is the person's consent, so it is shown only with its disclosure beside it: never while collapsed, where the
+     * compact frame has no room for that line. It is off unless the person turns it on. */}
+  {vm.setAiRanking && !vm.collapsed && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking === 'on'} disabled={vm.ended || vm.aiSwitchBusy} aria-describedby="ai-switch-disclosure" onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off', event)}/><span><strong>AI-matched results</strong><small>{vm.aiRanking === 'on' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label><p id="ai-switch-disclosure" className="ai-disclosure">{AI_SWITCH_DISCLOSURE[vm.provider === 'local' ? 'local' : 'openai']}</p></div>}
   {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button></div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
   </div></>}

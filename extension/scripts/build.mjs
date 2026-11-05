@@ -1,5 +1,5 @@
 import {build} from 'esbuild';
-import {mkdir,cp,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdir,cp,readFile,readdir,writeFile,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -9,7 +9,7 @@ const swalCssPlugin={name:'swal-css',setup(b){b.onLoad({filter:/guide-swal-css\.
 const output='dist';
 await rm(path.join(root,output),{recursive:true,force:true});
 await mkdir(path.join(root,output,'data'),{recursive:true});
-await build({entryPoints:{background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'confirm-send':path.join(root,'src/confirm-send.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')},plugins:[swalCssPlugin]});
+await build({entryPoints:{background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')},plugins:[swalCssPlugin]});
 try{await readFile(path.join(root,'src/site-content.ts'));await build({entryPoints:[path.join(root,'src/site-content.ts')],outfile:path.join(root,output,'site-content.js'),bundle:true,format:'iife',platform:'browser',target:'chrome142',minify:true,legalComments:'eof',plugins:[swalCssPlugin]});}catch(error){if(error.code!=='ENOENT')throw error;}
 const sites=JSON.parse(await readFile(path.join(root,'sites.json'),'utf8'));
 const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
@@ -24,6 +24,9 @@ if(!csp.includes(networkRule+';'))throw Error('Only named registry origins may r
 const privateCsp=csp.replace(ancestorRule,"frame-ancestors 'none'").replace(networkRule,"connect-src 'self'");
 if(!/(^|; )default-src 'none'(;|$)/.test(privateCsp)||!/(^|; )script-src 'self'(;|$)/.test(privateCsp)||/https?:|\*|data:|blob:|'unsafe-/.test(privateCsp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
-for(const name of ['overlay','score-badge','confirm-send'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
+for(const name of ['overlay','score-badge'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
 await cp(path.join(root,'../scaffold/data/us-zip-centroids.json'),path.join(root,output,'data/us-zip-centroids.json'));
+// Native messaging is granted to the whole extension, so keep every helper connection in the service worker: fail the build if any other
+// bundle (the overlay and badge frames, or the content script) names a native messaging call.
+for(const name of (await readdir(path.join(root,output))).filter(name=>name.endsWith('.js')&&name!=='background.js'))if(/connectNative|sendNativeMessage/.test(await readFile(path.join(root,output,name),'utf8')))throw Error(`Only the background service worker may call native messaging; ${name} does`);
 console.log('Built private Chrome extension');

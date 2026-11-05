@@ -9,12 +9,13 @@ class Events{listeners:((...v:any[])=>void)[]=[];addListener=(f:(...v:any[])=>vo
 const flush=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r))};
 /** Waits for a condition that depends on real async work (the worker awaits crypto.subtle.digest, which runs on the libuv threadpool, so a fixed number of event-loop turns is a race). */
 async function until(condition:()=>unknown,what:string){for(let i=0;i<500&&!condition();i++)await new Promise(r=>setTimeout(r,2));assert.ok(condition(),`timed out waiting for ${what}`)}
-function broker(url=SEARCH){
+/** `local` stands in for chrome.storage.local; by default it can only delete, as the legacy cleanup needs. */
+function broker(url=SEARCH,local:any={remove:async()=>{}}){
  const connect=new Events(),clicked=new Events(),scripts:any[]=[],natives:any[]=[];
  const snapshot=()=>({generation:'doc-1',url,nctIds:url===SEARCH?['NCT00000001','NCT00000002']:[],diagnostic:'Synthetic page.',supported:url===SEARCH});
  const chrome:any={runtime:{id,lastError:undefined,getURL:(p:string)=>`${origin}/${p}`,onConnect:connect,onMessage:new Events(),onInstalled:new Events(),onStartup:new Events(),connectNative:()=>{const n={sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(JSON.parse(JSON.stringify(v)))},disconnect(){this.closed=true}};natives.push(n);return n}},
   action:{onClicked:clicked,setTitle:async()=>{}},tabs:{query:async()=>[],get:async()=>({id:1,url}),update:async()=>{},create:async()=>{},sendMessage:async(_t:number,m:any)=>({ok:true,result:['snapshot','availability','clearAvailability','restore'].includes(m.type)?snapshot():{}}),onUpdated:new Events(),onActivated:new Events(),onRemoved:new Events()},
-  scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async()=>({id:2,tabs:[{id:9}]})},storage:{session:{remove:async()=>{}},local:{remove:async()=>{}}}};
+  scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async()=>({id:2,tabs:[{id:9}]})},storage:{session:{remove:async()=>{}},local,onChanged:new Events()}};
  const context=vm.createContext({chrome,URL,crypto:webcrypto,setTimeout,clearTimeout,setInterval,clearInterval,TextDecoder,TextEncoder,AbortController,structuredClone,fetch:async()=>{throw new Error('offline')}});
  vm.runInContext(bundle,context,{filename:'built-background.js'});
  const frame=(over:any={})=>({id,tab:{id:1,url},frameId:2,documentId:'frame-doc',url:`${origin}/overlay.html`,...over});
@@ -56,3 +57,16 @@ test('a port no broker owns, including the retired side-panel port, is disconnec
  assert.equal(b.natives.length,0);const own=b.port(OVERLAY,{id,url:`${origin}/overlay.html`});assert.equal(own.closed,false,'ports on an owned name are left to their broker until it refuses them')});
 
 test('the built worker ignores runtime messages from the retired page and exposes no readPage handler',async()=>{const b=broker();assert.ok(b.chrome.runtime.onMessage.listeners.length>0,'the worker registers runtime message listeners, so the loop below checks them');for(const sender of [{id,url:`${origin}/panel.html`},{id,url:`${origin}/overlay.html`,tab:{id:1}}]){for(const listener of b.chrome.runtime.onMessage.listeners){let answered:any='none';const keep=listener({kind:'readPage'},sender,(v:any)=>{answered=v});assert.notEqual(keep,true,'no listener keeps the channel open for readPage');assert.equal(answered,'none')}}assert.equal(b.scripts.length,0,'no page was read')});
+
+test('the built worker keeps AI-matched results off until the overlay turns the switch on, keeps content scripts out of its storage, and only then opens a helper connection',async()=>{
+ const store=new Map<string,unknown>(),levels:unknown[]=[];
+ const local={get:async(k:string)=>store.has(k)?{[k]:store.get(k)}:{},set:async(items:Record<string,unknown>)=>{for(const[k,v]of Object.entries(items))store.set(k,v)},remove:async(k:string)=>{store.delete(k)},setAccessLevel:async(v:unknown)=>{levels.push(v)}};
+ const b=broker(SEARCH,local);assert.deepEqual(JSON.parse(JSON.stringify(levels)),[{accessLevel:'TRUSTED_CONTEXTS'}],'the worker asks Chrome to keep content scripts out of local storage when it starts');
+ const p=await b.overlay();assert.equal(p.sent.find((m:any)=>m.type==='site.ready').aiConsent,null,'off by default');
+ p.onMessage.emit({id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>p.sent.some((m:any)=>m.type==='site.ranking'&&m.state.phase==='off'),'the off state');assert.equal(b.natives.length,0,'no helper connection while off');
+ p.onMessage.emit({id:'on',type:'site.aiSwitch',payload:{on:true,disclosure:'openai'}});await until(()=>p.sent.some((m:any)=>m.id==='on'),'the switch reply');
+ assert.deepEqual(p.sent.find((m:any)=>m.id==='on'),{id:'on',ok:true,result:{consent:'openai'}});assert.equal(store.get('treatable.aiRankingConsent'),'openai-switch-2026-11');
+ p.onMessage.emit({id:'r2',type:'site.aiRank',payload:{details:{}}});await until(()=>b.natives[0]?.sent.length===1,'prepareRank');assert.equal(b.natives[0].sent[0].type,'prepareRank');
+ p.onMessage.emit({id:'off',type:'site.aiSwitch',payload:{on:false}});await until(()=>b.natives[0].closed,'the helper connection to close');
+ await until(()=>p.sent.some((m:any)=>m.id==='off'),'the off reply');assert.equal(store.has('treatable.aiRankingConsent'),false);assert.equal(b.natives[0].sent.length,1,'nothing after prepareRank');
+});

@@ -13,11 +13,11 @@ import {installSiteContent} from '../src/site-content';
 import {captureSiteActivations} from '../src/overlay-port';
 
 const flush = async () => {await new Promise<void>(r => setImmediate(r)); await new Promise<void>(r => setImmediate(r))};
-const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null, aiRanking: 'on'};
-const SAVED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'};
+const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null};
+const SAVED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'local', localModel: 'qwen3.5:9b'};
 /** A record saved before the model provider setting existed, and how it loads. */
 const LEGACY = {displayMode: 'popup', theme: 'dark'};
-const LEGACY_LOADED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'openai', localModel: null, aiRanking: 'on'};
+const LEGACY_LOADED: UiPrefs = {displayMode: 'popup', theme: 'dark', provider: 'openai', localModel: null};
 /** Only the display fields, for checks of what the overlay rendered. */
 const SHOWN_DEFAULTS = {displayMode: 'popup', theme: 'system'}, SHOWN_SAVED = {displayMode: 'popup', theme: 'dark'};
 
@@ -35,9 +35,11 @@ function fakeArea(initial: Record<string, unknown> = {}) {
 const rootOf = (area: unknown) => ({storage: {local: area}});
 
 test('schema accepts exactly the allowed display modes, themes, providers and model names and rejects everything else', () => {
- for (const displayMode of DISPLAY_MODES) for (const theme of THEMES) assert.deepEqual(parseUiPrefs({displayMode, theme}), {displayMode, theme, provider: 'openai', localModel: null, aiRanking: 'on'}, 'a two-key record from before the provider setting still loads');
- for (const provider of MODEL_PROVIDERS) for (const localModel of [null, 'qwen3.5:9b', 'qwen2.5:14b', 'gemma4', 'batiai/gemma4-26b:q4', 'llama3.2:3b-instruct-q4_K_M']) assert.deepEqual(parseUiPrefs({displayMode: 'sidebar', theme: 'light', provider, localModel}), {displayMode: 'sidebar', theme: 'light', provider, localModel, aiRanking: 'on'}, 'a four-key record from before AI-matched results still loads, with it on');
- for (const aiRanking of AI_RANKING) assert.deepEqual(parseUiPrefs({...SAVED, aiRanking}), {...SAVED, aiRanking});
+ for (const displayMode of DISPLAY_MODES) for (const theme of THEMES) assert.deepEqual(parseUiPrefs({displayMode, theme}), {displayMode, theme, provider: 'openai', localModel: null}, 'a two-key record from before the provider setting still loads');
+ for (const provider of MODEL_PROVIDERS) for (const localModel of [null, 'qwen3.5:9b', 'qwen2.5:14b', 'gemma4', 'batiai/gemma4-26b:q4', 'llama3.2:3b-instruct-q4_K_M']) assert.deepEqual(parseUiPrefs({displayMode: 'sidebar', theme: 'light', provider, localModel}), {displayMode: 'sidebar', theme: 'light', provider, localModel}, 'the current four-key record loads');
+ /* Migration: a record from the version that stored the switch here still loads its other choices, and the switch is dropped, so a
+  * stored 'on' never turns AI-matched results on (the switch now lives in the background's consent record). */
+ for (const aiRanking of AI_RANKING) {const loaded = parseUiPrefs({...SAVED, aiRanking}); assert.deepEqual(loaded, SAVED, aiRanking); assert.equal(Object.hasOwn(loaded!, 'aiRanking'), false, aiRanking)}
  const four = (patch: Record<string, unknown>) => ({...SAVED, ...patch});
  for (const bad of [
   four({provider: 'anthropic'}), four({provider: 'Local'}), four({provider: ''}), four({provider: null}), four({provider: undefined}),
@@ -112,10 +114,12 @@ test('no other key, value or health data can be written through the preferences 
  assert.deepEqual(area.calls, ['set:' + UI_PREFS_KEY]);
  assert.deepEqual([...area.store.keys()], [UI_PREFS_KEY]);
  assert.doesNotMatch(JSON.stringify([...area.store]), /PRIVATE_CANARY|83702|Pat Example|NCT0|fibromyalgia/);
- assert.deepEqual(area.store.get(UI_PREFS_KEY), LEGACY_LOADED, 'every save writes the full five-field record');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), LEGACY_LOADED, 'every save writes the full four-field record');
  assert.equal(await saveUiPrefs(area, SAVED), true);
  assert.deepEqual(area.store.get(UI_PREFS_KEY), SAVED);
- assert.deepEqual(Object.keys(area.store.get(UI_PREFS_KEY) as object).sort(), ['aiRanking', 'displayMode', 'localModel', 'provider', 'theme']);
+ assert.deepEqual(Object.keys(area.store.get(UI_PREFS_KEY) as object).sort(), ['displayMode', 'localModel', 'provider', 'theme']);
+ assert.equal(await saveUiPrefs(area, {...SAVED, aiRanking: 'on'}), true, 'a record in the earlier shape is accepted');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), SAVED, 'and saved without the switch, which the preferences never store again');
 });
 
 test('subscription delivers only valid local preference changes', () => {
@@ -133,7 +137,7 @@ test('subscription delivers only valid local preference changes', () => {
  emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}}});
  emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: '../x'}}});
  emit({[UI_PREFS_KEY]: {newValue: {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'off'}}});
- assert.deepEqual(seen, [{displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'on'}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'off'}]);
+ assert.deepEqual(seen, [{displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}, {displayMode: 'sidebar', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}]);
  stop();
  assert.equal(listeners.length, 0);
  assert.doesNotThrow(() => subscribeUiPrefs(() => {}, {})());
@@ -222,8 +226,8 @@ test('display mode and theme persist across a simulated reload and are applied o
 test('a corner-card display saved by an older version reads as the default popup, keeps every other choice, and is never offered or written again', async () => {
  assert.deepEqual([...DISPLAY_MODES], ['popup', 'sidebar']);
  assert.deepEqual(parseUiPrefs({displayMode: 'overlay', theme: 'dark'}), LEGACY_LOADED, 'two-key record');
- assert.deepEqual(parseUiPrefs({displayMode: 'overlay', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}), {displayMode: 'popup', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b', aiRanking: 'on'}, 'four-key record');
- assert.deepEqual(parseUiPrefs({...SAVED, displayMode: 'overlay', aiRanking: 'off'}), {...SAVED, aiRanking: 'off'}, 'five-key record');
+ assert.deepEqual(parseUiPrefs({displayMode: 'overlay', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}), {displayMode: 'popup', theme: 'light', provider: 'local', localModel: 'qwen3.5:9b'}, 'four-key record');
+ assert.deepEqual(parseUiPrefs({...SAVED, displayMode: 'overlay', aiRanking: 'off'}), SAVED, 'five-key record');
  for (const bad of [{displayMode: 'Overlay', theme: 'dark'}, {displayMode: 'overlay ', theme: 'dark'}, {displayMode: 'overlay', theme: 'neon'}, {displayMode: 'overlay', theme: 'dark', zip: '83702'}]) assert.equal(parseUiPrefs(bad), undefined, JSON.stringify(bad));
  const area = fakeArea({[UI_PREFS_KEY]: {...SAVED, displayMode: 'overlay', theme: 'light'}});
  const loaded = await loadUiPrefs(area);
@@ -245,13 +249,12 @@ test('changing one setting keeps the other and every save is the full validated 
  act(() => latest.setDisplayMode('sidebar'));
  assert.deepEqual(area.store.get(UI_PREFS_KEY), {...SAVED, displayMode: 'sidebar', theme: 'light'});
  act(() => latest.setProvider('openai'));
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: 'qwen3.5:9b', aiRanking: 'on'}, 'switching back to OpenAI keeps the last local choice');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: 'qwen3.5:9b'}, 'switching back to OpenAI keeps the last local choice');
  act(() => latest.setLocalModel(null));
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'on'});
- act(() => latest.setAiRanking('off'));
- assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null, aiRanking: 'off'});
- for (const bad of ['maybe', '', undefined, 3]) act(() => latest.setAiRanking(bad));
- assert.equal(latest.aiRanking, 'off', 'invalid AI-matched results values are ignored');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY), {displayMode: 'sidebar', theme: 'light', provider: 'openai', localModel: null});
+ const writes = area.calls.length;
+ for (const value of ['on', 'off', 'maybe', '', undefined, 3]) act(() => latest.setAiRanking(value));
+ assert.equal(latest.aiRanking, 'off', 'the switch stays off: it is turned on only by a click the background records');assert.equal(area.calls.length, writes, 'the switch never writes the preferences record');
  act(() => session.renderer.unmount());
 });
 
@@ -262,7 +265,7 @@ test('invalid values and missing storage never break the overlay or write anythi
  for (const bad of ['neon', '', undefined, null, 3, {x: 1}, 'Dark']) act(() => latest.setTheme(bad));
  for (const bad of ['anthropic', '', undefined, null, 3, {x: 1}, 'Local']) act(() => latest.setProvider(bad));
  for (const bad of ['', undefined, 3, {x: 1}, '../x', 'PRIVATE_CANARY', 'qwen3.5:9b fibromyalgia', 'gemma4:cloud']) act(() => latest.setLocalModel(bad));
- assert.deepEqual({displayMode: latest.displayMode, theme: latest.theme, provider: latest.provider, localModel: latest.localModel, aiRanking: latest.aiRanking}, DEFAULTS);
+ assert.deepEqual({displayMode: latest.displayMode, theme: latest.theme, provider: latest.provider, localModel: latest.localModel}, DEFAULTS);assert.equal(latest.aiRanking, 'off');
  assert.deepEqual(area.calls.filter(c => !c.startsWith('get:')), []);
  assert.equal(area.store.size, 0);
  act(() => session.renderer.unmount());
@@ -372,14 +375,14 @@ test('a model choice saved by another Treatable page is kept when this page late
  act(()=>listeners.forEach(f=>f({[UI_PREFS_KEY]:{newValue:other}},'local')));
  assert.equal(latest.provider,'local');assert.equal(latest.localModel,'qwen3.5:9b');
  act(()=>latest.setTheme('dark'));
- assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark',aiRanking:'on'},'the other page\'s Local choice is not reverted');
+ assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark'},'the other page\'s Local choice is not reverted');
  act(()=>renderer.unmount());
 });
 
-test('no build ever persisted a hiding choice: saveUiPrefs writes exactly five keys, and a record carrying hiding keys is not read as preferences', async () => {
+test('no build ever persisted a hiding choice: saveUiPrefs writes exactly four keys, and a record carrying hiding keys is not read as preferences', async () => {
  const written = fakeArea();
  await saveUiPrefs(written, {...DEFAULT_UI_PREFS});
- assert.deepEqual(Object.keys(written.store.get(UI_PREFS_KEY) as object).sort(), ['aiRanking', 'displayMode', 'localModel', 'provider', 'theme'], 'the saved record has exactly the five preference keys');
+ assert.deepEqual(Object.keys(written.store.get(UI_PREFS_KEY) as object).sort(), ['displayMode', 'localModel', 'provider', 'theme'], 'the saved record has exactly the four preference keys');
  for (const extra of [{onlyAccepting: true}, {availability: {onlyAccepting: true, includeSoon: false, includeInvitation: false}}, {onlyAccepting: false, includeSoon: true, includeInvitation: true}]) {
   const stored = {...DEFAULT_UI_PREFS, ...extra};
   assert.equal(parseUiPrefs(stored), undefined, 'the strict parser rejects a record with extra keys');
