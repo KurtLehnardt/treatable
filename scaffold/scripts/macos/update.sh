@@ -133,7 +133,17 @@ cleanup() {
 trap cleanup EXIT
 
 REF=""
-PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)/lib/runtime.mjs")}"
+# The port: --port, else $TREATABLE_PORT, else the app's own APP_PORT
+# (scaffold/lib/runtime.mjs). Looked up only when neither was given, after the
+# options are read: reading APP_PORT needs node on PATH and this install's
+# lib/, and a caller that passes --port (the ~/Applications launcher, started
+# from Finder with launchd's minimal PATH) must not depend on either.
+# PORT_GIVEN keeps an explicitly empty --port '' an error, as in
+# applications-launcher.sh.
+# Read from the install being updated, never relative to this file: this runs
+# as a copy of itself in $TMPDIR (see the re-exec above).
+PORT=""
+PORT_GIVEN=0
 INSTALL_DIR=""
 NO_RESTART=0
 
@@ -151,16 +161,12 @@ need_value() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref) need_value "$#" --ref; REF="$2"; shift 2 ;;
-    --port) need_value "$#" --port; PORT="$2"; shift 2 ;;
+    --port) need_value "$#" --port; PORT="$2"; PORT_GIVEN=1; shift 2 ;;
     --install-dir) need_value "$#" --install-dir; INSTALL_DIR="$2"; shift 2 ;;
     --no-restart) NO_RESTART=1; shift ;;
     *) printf 'update.sh: unknown option %s\n' "$1" >&2; exit 64 ;;
   esac
 done
-
-case "$PORT" in
-  ''|*[!0-9]*) printf 'update.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
-esac
 
 [ -n "$INSTALL_DIR" ] || INSTALL_DIR="$TREATABLE_UPDATE_DEFAULT_DIR"
 case "$INSTALL_DIR" in
@@ -169,6 +175,11 @@ case "$INSTALL_DIR" in
 esac
 while [ "${INSTALL_DIR%/}" != "$INSTALL_DIR" ]; do INSTALL_DIR="${INSTALL_DIR%/}"; done
 [ -n "$INSTALL_DIR" ] || INSTALL_DIR="/"
+
+if [ "$PORT_GIVEN" = "0" ]; then PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$INSTALL_DIR/scaffold/lib/runtime.mjs")}"; fi
+case "$PORT" in
+  ''|*[!0-9]*) printf 'update.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
+esac
 
 SCAFFOLD_DIR="$INSTALL_DIR/scaffold"
 TRAY_SCRIPT="$SCAFFOLD_DIR/scripts/macos/treatable-tray.sh"

@@ -45,7 +45,8 @@
 #   treatable-tray.sh build-helper           build the menu-bar helper, print its path
 #   treatable-tray.sh helper-path            print the menu-bar helper's path
 #
-# Every subcommand accepts --port N (default: $TREATABLE_PORT, else 3000).
+# Every subcommand accepts --port N (default: $TREATABLE_PORT, else the app's
+# APP_PORT from scaffold/lib/runtime.mjs).
 #
 # Status reporting is the installer's existing mechanism, unchanged: the
 # {state,message,pid} JSON of install-macos.sh's write_status, plus the
@@ -81,7 +82,15 @@ SUPPORT_DIR="$(dirname -- "$SETTINGS_PATH")"
 STATUS_PATH="${TREATABLE_STATUS_FILE:-}"
 DOMAIN="gui/$(id -u)"
 
-PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCAFFOLD_DIR/lib/runtime.mjs")}"
+# The port: --port, else $TREATABLE_PORT, else the app's own APP_PORT
+# (scaffold/lib/runtime.mjs). Looked up only when neither was given, after the
+# options are read: reading APP_PORT needs node on PATH and this install's
+# lib/, and a caller that passes --port (the ~/Applications launcher, started
+# from Finder with launchd's minimal PATH) must not depend on either.
+# PORT_GIVEN keeps an explicitly empty --port '' an error, as in
+# applications-launcher.sh.
+PORT=""
+PORT_GIVEN=0
 OPEN_BROWSER=0
 NO_HELPER=0
 SERVER_ONLY=0
@@ -104,7 +113,7 @@ COMMAND="${1:-}"
 if [ $# -gt 0 ]; then shift; fi
 while [ $# -gt 0 ]; do
   case "$1" in
-    --port) need_value "$#" --port; PORT="$2"; shift 2 ;;
+    --port) need_value "$#" --port; PORT="$2"; PORT_GIVEN=1; shift 2 ;;
     --status-path) need_value "$#" --status-path; STATUS_PATH="$2"; shift 2 ;;
     --mode) need_value "$#" --mode; MODE="$2"; shift 2 ;;
     --open-browser) OPEN_BROWSER=1; shift ;;
@@ -114,6 +123,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ "$PORT_GIVEN" = "0" ]; then PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCAFFOLD_DIR/lib/runtime.mjs")}"; fi
 case "$PORT" in
   ''|*[!0-9]*) printf 'treatable-tray.sh: --port must be a number (got %s)\n' "$PORT" >&2; exit 64 ;;
 esac
