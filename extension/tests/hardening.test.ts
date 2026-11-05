@@ -34,7 +34,7 @@ test('ranking-consent.ts keeps the AI-matched results switch as one fixed marker
  assert.match(consent,/export const RANKING_CONSENT_KEY='treatable\.aiRankingConsent';/);
  assert.match(consent,/RANKING_CONSENT_VALUES:Readonly<Record<AiConsent,string>>=Object\.freeze\(\{openai:'openai-switch-2026-11',local:'local-switch-2026-11'\}\);/,'two fixed marker strings, nothing typed');
  assert.deepEqual([...new Set([...consent.matchAll(/\.storage\??\.(\w+)/g)].map(m=>m[1]))].sort(),['local','onChanged'],'the local area and its change events only');
- assert.deepEqual(consent.match(/area\.(get|set|remove)\([^)]*\)/g),['area.get(RANKING_CONSENT_KEY)','area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_VALUES[consent]})','area.remove(RANKING_CONSENT_KEY)'],'a fixed marker is the only value ever written');
+ assert.deepEqual(consent.match(/area\.(get|set|remove)\([^)]*\)/g),['area.get(RANKING_CONSENT_KEY)','area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_VALUES[consent]})','area.remove(RANKING_CONSENT_KEY)','area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_OFF})'],'fixed markers are the only values ever written');assert.match(consent,/export const RANKING_CONSENT_OFF='off';/);
  assert.match(consent,/setAccessLevel\?\.\(\{accessLevel:'TRUSTED_CONTEXTS'\}\)/,'content scripts are kept out of local storage');
  assert.doesNotMatch(consent,/\.(clear|getKeys|getBytesInUse)\(|\.session\b|\.sync\b/);
  for(const {name,text} of sources)if(name!=='ranking-consent.ts')assert.doesNotMatch(text,/treatable\.(aiRankingConsent|rankingConsent)/,`${name}: names the consent key directly`);

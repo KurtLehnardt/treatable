@@ -11,6 +11,8 @@ import {isAiConsent,type AiConsent} from './ai-switch';
 export const RANKING_CONSENT_KEY='treatable.aiRankingConsent';
 /** Changing a value (for example when its disclosure changes) turns the switch off for everyone until they turn it on again. */
 export const RANKING_CONSENT_VALUES:Readonly<Record<AiConsent,string>>=Object.freeze({openai:'openai-switch-2026-11',local:'local-switch-2026-11'});
+/** Written only when removing the record fails; like any other value that is not one of the two above, it reads as off. */
+export const RANKING_CONSENT_OFF='off';
 export interface RankingConsentArea{get:(key:string)=>Promise<unknown>;set:(items:Record<string,unknown>)=>Promise<void>;remove:(key:string)=>Promise<void>}
 export interface RankingConsent{get():Promise<AiConsent|null>;grant(consent:AiConsent):Promise<boolean>;revoke():Promise<boolean>;watch(listener:(consent:AiConsent|null)=>void):()=>void}
 function parse(value:unknown):AiConsent|null{return value===RANKING_CONSENT_VALUES.openai?'openai':value===RANKING_CONSENT_VALUES.local?'local':null}
@@ -21,8 +23,9 @@ export function rankingConsent(area:RankingConsentArea|undefined,root?:any):Rank
  return{
   async get(){if(!area)return null;try{const stored=await area.get(RANKING_CONSENT_KEY);return stored&&typeof stored==='object'&&Object.hasOwn(stored,RANKING_CONSENT_KEY)?parse((stored as Record<string,unknown>)[RANKING_CONSENT_KEY]):null}catch{return null}},
   async grant(consent){if(!area||!isAiConsent(consent))return false;try{await area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_VALUES[consent]});return true}catch{return false}},
-  /* Turning the switch off must stick: a failed removal is tried twice more before it is reported. */
-  async revoke(){if(!area)return true;for(let attempt=0;attempt<3;attempt++){try{await area.remove(RANKING_CONSENT_KEY);return true}catch{}}return false},
+  /* Turning the switch off must stick. A failed removal is tried again, then the record is overwritten with a value that reads as off;
+   * only when all of that fails is it reported. */
+  async revoke(){if(!area)return true;for(let attempt=0;attempt<3;attempt++){try{await area.remove(RANKING_CONSENT_KEY);return true}catch{}try{await area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_OFF});return true}catch{}await new Promise(r=>setTimeout(r,50*(attempt+1)))}return false},
   watch(listener){const source=root?.storage?.onChanged;if(!source||typeof source.addListener!=='function')return()=>{};const changed=(changes:Record<string,{newValue?:unknown}>,areaName:string)=>{if(areaName==='local'&&changes&&Object.hasOwn(changes,RANKING_CONSENT_KEY))listener(parse(changes[RANKING_CONSENT_KEY]?.newValue))};source.addListener(changed);return()=>source.removeListener?.(changed)},
  };
 }

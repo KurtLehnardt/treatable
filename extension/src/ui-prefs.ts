@@ -69,13 +69,19 @@ export function uiPrefsArea(root: any = typeof chrome !== 'undefined' ? chrome :
 
 /** Loads saved preferences. Never throws: missing storage, read errors and invalid stored values all give the defaults. */
 export async function loadUiPrefs(area: UiPrefsArea | undefined): Promise<UiPrefs> {
+ return (await readUiPrefs(area)) ?? {...DEFAULT_UI_PREFS};
+}
+
+/** The saved preferences, or the defaults when nothing was ever saved. Unlike loadUiPrefs it gives undefined when storage is unavailable,
+ * the read fails or the stored record is invalid, so AI-matched results can stay off instead of falling back to the OpenAI default. */
+export async function readUiPrefs(area: UiPrefsArea | undefined): Promise<UiPrefs | undefined> {
  try {
-  if (!area) return {...DEFAULT_UI_PREFS};
+  if (!area) return undefined;
   const stored = await area.get(UI_PREFS_KEY);
-  const record = stored && typeof stored === 'object' && Object.hasOwn(stored, UI_PREFS_KEY) ? (stored as Record<string, unknown>)[UI_PREFS_KEY] : undefined;
-  return parseUiPrefs(record) ?? {...DEFAULT_UI_PREFS};
+  if (!stored || typeof stored !== 'object' || !Object.hasOwn(stored, UI_PREFS_KEY)) return {...DEFAULT_UI_PREFS};
+  return parseUiPrefs((stored as Record<string, unknown>)[UI_PREFS_KEY]);
  } catch {
-  return {...DEFAULT_UI_PREFS};
+  return undefined;
  }
 }
 

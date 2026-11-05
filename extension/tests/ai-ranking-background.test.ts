@@ -75,7 +75,7 @@ test('Restore original order and turning the switch off put the website order ba
  const h=rig(),p=await connected(h);await h.turnOn();
  await rank(h);await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
  const restores=()=>h.commands.filter(c=>c.type==='restore').length,before=restores();
- assert.deepEqual((await h.turnOff()).result,{consent:null});assert.equal(restores(),before+1,'the ranked page goes back to the website order');
+ assert.deepEqual((await h.turnOff()).result,{consent:null,saved:true});assert.equal(restores(),before+1,'the ranked page goes back to the website order');
  assert.equal(h.store.has(RANKING_CONSENT_KEY),false,'the record is removed');assert.equal(told(p).at(-1),null);
  await h.turnOn();await rank(h,'r2');await until(()=>ranking(p).filter((s:any)=>s.phase==='done').length===2);
  await h.service.handle(1,{id:'restore',type:'site.restore',payload:{}});assert.equal(restores(),before+2);
@@ -97,7 +97,7 @@ test('turning the switch off mid-ranking aborts it before executeRank: the helpe
  await rank(h);await until(()=>h.held.length===1);
  const off=h.turnOff();
  assert.equal(h.natives[0].disconnected,true,'the helper connection closes before the storage write');assert.equal(h.service.ranker.isRunning(1),false);
- assert.deepEqual((await off).result,{consent:null});assert.equal(h.store.has(RANKING_CONSENT_KEY),false);
+ assert.deepEqual((await off).result,{consent:null,saved:true});assert.equal(h.store.has(RANKING_CONSENT_KEY),false);
  h.held[0]();await flush();await new Promise(r=>setTimeout(r,20));
  assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank'],'no executeRank');
  await rank(h,'r2');await until(()=>ranking(p).at(-1)?.phase==='off');
@@ -126,16 +126,31 @@ test('an off that arrives while the turn-on is being written wins: nothing is se
  const h=rig(),p=await connected(h);let release!:()=>void;const set=h.area.set;h.area.set=async(items:Record<string,unknown>)=>{await new Promise<void>(r=>{release=r});await set(items)};
  const on=h.turnOn();await until(()=>!!release);
  const off=h.turnOff();assert.equal(await h.service.aiConsent(),null,'off at once, before either write finishes');
- release();assert.deepEqual((await on).result,{consent:null},'the turn-on reports off');assert.deepEqual((await off).result,{consent:null});
+ release();assert.deepEqual((await on).result,{consent:null},'the turn-on reports off');assert.deepEqual((await off).result,{consent:null,saved:true});
  assert.equal(h.store.has(RANKING_CONSENT_KEY),false);await flush();await rank(h);await until(()=>ranking(p).at(-1)?.phase==='off');assert.equal(h.nativeSent.length,0);
  p.disconnect();
 });
 
-test('when Chrome cannot remove the record, the switch stays off in the worker and the overlay is told the change was not saved',async()=>{
- const h=rig(),p=await connected(h);await h.turnOn();let removes=0;h.area.remove=async()=>{removes++;throw Error('disk')};
- await assert.rejects(h.turnOff(),'the overlay hears that turning off was not saved');assert.equal(removes,3,'the removal is tried three times');
- assert.equal(h.store.get(RANKING_CONSENT_KEY),RANKING_CONSENT_VALUES.openai,'the stored record could not be removed');assert.equal(await h.service.aiConsent(),null,'this worker still reads it as off');assert.equal(told(p).at(-1),null);
+test('when Chrome cannot remove the record it is overwritten with an off value, which a restarted worker also reads as off',async()=>{
+ const h=rig(),p=await connected(h);await h.turnOn();h.area.remove=async()=>{throw Error('disk')};
+ assert.deepEqual((await h.turnOff()).result,{consent:null,saved:true});assert.equal(h.store.get(RANKING_CONSENT_KEY),'off');
+ const restarted=installSiteAssistant(h.api,{lookupPublicStudy:async(id:string)=>records[id],rankNative:()=>{throw Error('no helper connection expected')}});
+ assert.equal(await restarted.aiConsent(),null,'after a restart the stored value still reads as off');
+ p.disconnect();
+});
+
+test('when Chrome can neither remove nor overwrite the record, the switch stays off in the worker and the overlay is told it was not saved',async()=>{
+ const h=rig(),p=await connected(h);await h.turnOn();let writes=0;h.area.remove=async()=>{writes++;throw Error('disk')};h.area.set=async()=>{writes++;throw Error('disk')};
+ assert.deepEqual((await h.turnOff()).result,{consent:null,saved:false},'the overlay hears that turning off was not saved');assert.equal(writes,6,'removal and overwrite are each tried three times');
+ assert.equal(h.store.get(RANKING_CONSENT_KEY),RANKING_CONSENT_VALUES.openai,'the stored record could not be changed');assert.equal(await h.service.aiConsent(),null,'this worker still reads it as off');assert.equal(told(p).at(-1),null);
  await rank(h);await until(()=>ranking(p).at(-1)?.phase==='off');assert.equal(h.nativeSent.length,0,'nothing is sent');
+ p.disconnect();
+});
+
+test('unreadable preferences keep AI-matched results off instead of falling back to the OpenAI default',async()=>{
+ const h=rig({local:{[UI_PREFS_KEY]:{displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b'}}}),p=await connected(h);await h.turnOn();
+ const get=h.area.get;h.area.get=async(key:string)=>{if(key===UI_PREFS_KEY)throw Error('disk');return get(key)};
+ await rank(h);await until(()=>ranking(p).at(-1)?.phase==='off');assert.equal(h.nativeSent.length,0,'nothing reaches the helper');
  p.disconnect();
 });
 

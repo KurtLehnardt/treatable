@@ -20,12 +20,21 @@ export const AI_SWITCH_DISCLOSURE:Readonly<Record<ModelProvider,string>>=Object.
  * model sends nothing to OpenAI, so it runs when the switch was turned on beside either disclosure. */
 export function aiRankingFor(consent:AiConsent|null|undefined,provider:ModelProvider|undefined):AiRanking{return consent==='openai'||consent==='local'&&provider==='local'?'on':'off'}
 /**
- * The overlay is a frame inside the ClinicalTrials.gov page, so script on that page could hide it, fade it or cover it with a decoy and
- * line the switch up under something else. A turn-on therefore counts only when the browser reports the switch and its disclosure fully
- * visible (IntersectionObserver with trackVisibility: not covered, faded, filtered or transformed by anything in the page or the frame)
- * and has kept reporting that for at least this long.
+ * The overlay is a frame inside the ClinicalTrials.gov page, so script on that page could hide it, fade it, clip it, cover it with a
+ * decoy or move it under the pointer between two clicks. A turn-on therefore counts only when, for at least this long before the click
+ * or key press:
+ * - the browser has reported the whole switch row (switch and disclosure) in view and fully visible (IntersectionObserver with
+ *   trackVisibility: not clipped, covered, faded, filtered or transformed by anything in the page or the frame); and
+ * - the pointer has been inside the frame, or the frame has had keyboard focus. A frame moved under the pointer, or a click that comes
+ *   straight from the website, starts both clocks again.
  */
 export const AI_SWITCH_MIN_SHOWN_MS=500;
+/** performance.now() times since when each condition above has held, or undefined while it does not. */
+export interface SwitchExposure{shown?:number;pointer?:number;focus?:number}
+export function exposedLongEnough(exposure:SwitchExposure,now:number):boolean{
+ const held=(since:number|undefined)=>since!==undefined&&Number.isFinite(now)&&now-since>=AI_SWITCH_MIN_SHOWN_MS;
+ return held(exposure.shown)&&(held(exposure.pointer)||held(exposure.focus));
+}
 /** True only for a person's own click or key press on the switch: a trusted browser event while this frame has transient user activation.
  * A script that sets the switch, a synthetic event or a call without an event is not consent. */
 export function fromUserGesture(event:unknown):boolean{

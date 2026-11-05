@@ -34,7 +34,7 @@ function mount({study,prefs=DEFAULT_UI_PREFS,consent=null}:{study?:string;prefs?
  class FakeObserver{target:any;disconnected=false;constructor(public callback:(entries:any[])=>void,public options:any){observers.push(this)}observe(target:any){this.target=target}disconnect(){this.disconnected=true}}
  Object.defineProperty(globalThis,'IntersectionObserver',{configurable:true,writable:true,value:FakeObserver});
  /** Reports the switch row visible (or not) since `ms` ago to every live observer. */
- const report=(isVisible:boolean,ms=1000)=>{for(const o of observers)if(!o.disconnected&&o.target)o.callback([{isVisible,time:performance.now()-ms,intersectionRatio:1}])};
+ const report=(isVisible:boolean,ms=1000,ratio=1)=>{for(const o of observers)if(!o.disconnected&&o.target)o.callback([{isVisible,isIntersecting:ratio>0,time:performance.now()-ms,intersectionRatio:ratio}])};
  const applyPort:any={onMessage:new Events(),onDisconnect:new Events(),postMessage(){},disconnect(){}};
  const local={get:async(key:string)=>key===ONBOARDING_FLAG_KEY?{[key]:ONBOARDING_VERSION}:{},set:async()=>{},remove:async()=>{}},storageWrites:any[]=[];
  const runtime={connect:({name}:{name:string})=>{if(name==='treatable.site.overlay.v1')return sitePort;if(name==='treatable-apply-v1')return applyPort;throw Error('unexpected port '+name)},sendMessage:async()=>({ok:true}),getURL:(v:string)=>`chrome-extension://test/${v}`};
@@ -46,10 +46,13 @@ function mount({study,prefs=DEFAULT_UI_PREFS,consent=null}:{study?:string;prefs?
  const emitRanking=async(state:RankingState)=>{await act(async()=>{messages.emit({type:'site.ranking',state})});await settle()};
  const emit=async(v:any)=>{await act(async()=>{messages.emit(v)});await settle()};
  const toggle=()=>renderer.root.findAll(n=>n.type==='input'&&n.props.role==='switch')[0];
+ /** A pointer or focus event that happened `ms` ago, as the browser would deliver it for the frame boundary (no related target). */
+ const past=(target:EventTarget,type:string,ms:number)=>{const e=new Event(type);Object.defineProperty(e,'timeStamp',{value:performance.now()-ms});Object.defineProperty(e,'relatedTarget',{value:null});target.dispatchEvent(e)};
  /** Flips the switch as React would report it: `trusted` is the browser's isTrusted on the event; `active` the frame's user activation;
-  * `visible` whether the browser reports the switch row fully visible, and for how long (`visibleMs`). */
- const flip=async(checked:boolean,{trusted=true,active=true,visible=true,visibleMs=1000}:{trusted?:boolean;active?:boolean;visible?:boolean;visibleMs?:number}={})=>{report(visible,visibleMs);activation.isActive=active;await act(async()=>toggle().props.onChange({target:{checked},nativeEvent:{isTrusted:trusted}}));activation.isActive=false;await settle()};
- return{start,restore,requests,emitRanking,emit,storageWrites,toggle,flip,observers,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
+  * `visible` whether the browser reports the switch row fully visible, and for how long (`visibleMs`); `pointerMs` since when the pointer
+  * has been inside the frame (null: it is not). */
+ const flip=async(checked:boolean,{trusted=true,active=true,visible=true,visibleMs=1000,ratio=1,pointerMs=1000}:{trusted?:boolean;active?:boolean;visible?:boolean;visibleMs?:number;ratio?:number;pointerMs?:number|null}={})=>{report(visible,visibleMs,ratio);past(doc,'pointerout',0);if(pointerMs!==null)past(doc,'pointerover',pointerMs);activation.isActive=active;await act(async()=>toggle().props.onChange({target:{checked},nativeEvent:{isTrusted:trusted}}));activation.isActive=false;await settle()};
+ return{start,restore,requests,emitRanking,emit,storageWrites,toggle,flip,observers,past,win,doc,messages,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
 }
 
 test('default off: the switch is off on first open with its disclosure beside it, and nothing ranks; only the person’s own click turns it on',async()=>{
@@ -71,13 +74,46 @@ test('default off: the switch is off on first open with its disclosure beside it
 test('a click on a switch the page has covered, faded or only just shown is not consent',async()=>{
  const m=mount();try{await m.start();
   const observer=m.observers.find((o:any)=>!o.disconnected);assert.ok(observer,'the switch row is watched');assert.equal(observer.options.trackVisibility,true,'with the browser visibility check');assert.ok(observer.options.delay>=100);
-  await m.flip(true,{visible:false});assert.match(m.shown(),/was not turned on because Treatable was not fully in view/);
-  await m.flip(true,{visible:true,visibleMs:100});
-  assert.equal(m.requests('site.aiSwitch').length,0,'covered, faded or shown for less than half a second: nothing is turned on');assert.equal(m.toggle().props.checked,false);
-  assert.equal(m.toggle().props.disabled,false,'a pending turn-on never disables the switch, so keyboard focus stays on it');
-  /* The browser reports it hidden, then visible again a second ago: the time counts from when it became visible again. */
-  await m.flip(true,{visible:false});await m.flip(true);assert.deepEqual(m.requests('site.aiSwitch').map(v=>v.payload),[{on:true,disclosure:'openai'}],'shown, unobstructed, for long enough: it turns on');
+  await m.flip(true,{visible:false});assert.match(m.shown(),/AI-matched results was not turned on\. Close anything that covers Treatable/);
+  await m.flip(true,{visible:false});await m.flip(true,{visibleMs:100});
+  await m.flip(true,{visible:false});await m.flip(true,{ratio:0.5});
+  await m.flip(true,{visible:false});await m.flip(true,{pointerMs:100});
+  await m.flip(true,{pointerMs:null});
+  assert.equal(m.requests('site.aiSwitch').length,0,'covered, faded, clipped to the bare switch, shown for less than half a second, moved under the pointer or clicked straight from the website: nothing is turned on');assert.equal(m.toggle().props.checked,false);
+  /* The browser reports it hidden, then fully visible again a second ago, with the pointer resting on the frame: it turns on. */
+  await m.flip(true,{visible:false});
+  let release!:()=>void;const held=new Promise<void>(r=>{release=r});const answer=m.messages.emit.bind(m.messages);m.messages.emit=(v:any)=>{if(v?.result?.consent==='openai')void held.then(()=>answer(v));else answer(v)};
+  await m.flip(true);assert.deepEqual(m.requests('site.aiSwitch').map(v=>v.payload),[{on:true,disclosure:'openai'}]);
+  assert.equal(m.toggle().props['aria-busy'],true,'while the background records it, the switch is marked busy');assert.equal(m.toggle().props.disabled,false,'and never disabled, so keyboard focus stays on it');
+  await m.flip(true);assert.equal(m.requests('site.aiSwitch').length,1,'a second press while busy asks nothing');
+  await act(async()=>{release();await held});await settle();assert.equal(m.toggle().props.checked,true);assert.equal(m.toggle().props['aria-busy'],undefined);
  }finally{m.restore()}
+ /* Keyboard and assistive technology: no pointer in the frame, but the frame has had focus for a moment. */
+ const k=mount();try{await k.start();k.past(k.win,'blur',0);k.past(k.win,'focus',1000);await k.flip(true,{pointerMs:null});assert.deepEqual(k.requests('site.aiSwitch').map(v=>v.payload),[{on:true,disclosure:'openai'}])}finally{k.restore()}
+ const q=mount();try{await q.start();q.past(q.win,'blur',0);q.past(q.win,'focus',100);await q.flip(true,{pointerMs:null});assert.equal(q.requests('site.aiSwitch').length,0,'focus that only just arrived does not count')}finally{q.restore()}
+});
+
+test('a turn-off is never held back by other pending site actions, on either side of the port',async()=>{
+ const {SiteClient}=await import('../src/overlay-port');
+ const messages=new Events(),sent:any[]=[];const port:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){sent.push(v);if(v.type==='site.authenticate')queueMicrotask(()=>messages.emit({type:'site.ready',snapshot:{generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[],diagnostic:'',supported:false}}))}};
+ const client=new SiteClient({connect:()=>port});await client.authenticate('a'.repeat(64));
+ for(let i=0;i<4;i++)void client.request('site.ping',{generation:'g1'}).catch(()=>{});
+ await assert.rejects(client.request('site.aiSwitch',{on:true,disclosure:'openai'}),'a turn-on waits like any other action');
+ void client.request('site.aiSwitch',{on:false}).catch(()=>{});
+ assert.deepEqual(sent.filter(v=>v.type==='site.aiSwitch').map(v=>v.payload),[{on:false}],'the turn-off is sent');
+ client.disconnect();
+ assert.match(readFileSync(new URL('../src/site-background.ts',import.meta.url),'utf8'),/pending\.size>=\(req\.type==='site\.aiSwitch'&&req\.payload\?\.on===false\?8:4\)/,'the background makes the same room for it');
+});
+
+test('a turn-off the background never confirms shows the switch on again, and one it could not save says so',async()=>{
+ const n=mount({consent:'openai'});try{await n.start();const emit=n.messages.emit.bind(n.messages);
+  n.messages.emit=(v:any)=>emit(v?.result&&v.result.consent===null?{id:v.id,ok:false}:v);
+  await act(async()=>n.toggle().props.onChange({target:{checked:false}}));await settle();
+  assert.equal(n.toggle().props.checked,true,'nothing was stopped, so the switch does not claim it is off');assert.match(n.shown(),/Treatable could not turn off AI-matched results\. Try the switch again\./);
+  n.messages.emit=(v:any)=>emit(v?.result&&v.result.consent===null?{...v,result:{consent:null,saved:false}}:v);
+  await act(async()=>n.toggle().props.onChange({target:{checked:false}}));await settle();
+  assert.equal(n.toggle().props.checked,false);assert.match(n.shown(),/AI-matched results is off now, but Treatable could not save that\./);
+ }finally{n.restore()}
 });
 
 test('with the local model chosen, the disclosure says nothing is sent to OpenAI, and turning the switch on records the local model disclosure',async()=>{

@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
-import {AI_SWITCH_DISCLOSURE,AI_SWITCH_MIN_SHOWN_MS} from './ai-switch';
+import {AI_SWITCH_DISCLOSURE,exposedLongEnough,type SwitchExposure} from './ai-switch';
 function useResolvedTheme(theme: OverlayTheme) {
  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
  useEffect(() => {
@@ -21,24 +21,34 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  const [searchError, setSearchError] = useState(false);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
- /* The switch row (switch and disclosure) and since when the browser has reported it fully visible: not covered, faded, filtered or
-  * transformed by anything in the page or this frame. Script on the website could otherwise hide or cover the frame and line the switch
-  * up under a decoy, so a turn-on counts only after it has been shown like that for AI_SWITCH_MIN_SHOWN_MS (see ai-switch.ts). Without
-  * this browser support it is never reported visible, and the switch cannot be turned on. */
+ /* What a turn-on needs besides the person's own click or key press (see AI_SWITCH_MIN_SHOWN_MS in ai-switch.ts): since when the
+  * browser has reported the whole switch row in view and fully visible, since when the pointer has been inside this frame, and since
+  * when this frame has had focus. Script on the website could otherwise hide, clip, cover or move the frame and line the switch up under
+  * a decoy. Without the browser's visibility check the row is never reported visible, and the switch cannot be turned on. */
  const showSwitch = !!vm.setAiRanking && !vm.collapsed && vm.connected && !vm.ended;
- const switchRow = useRef<HTMLDivElement | null>(null), shownSince = useRef<number | undefined>(undefined);
+ const switchRow = useRef<HTMLDivElement | null>(null), exposure = useRef<SwitchExposure>({});
  useEffect(() => {
-  shownSince.current = undefined;
+  exposure.current.shown = undefined;
   const row = switchRow.current, Observer = (globalThis as any).IntersectionObserver;
   if (!showSwitch || !row || typeof Observer !== 'function') return;
   let observer: {observe: (target: unknown) => void; disconnect: () => void} | undefined;
   try {
-   observer = new Observer((entries: {isVisible?: unknown; time: number}[]) => {const last = entries[entries.length - 1]; if (!last) return; shownSince.current = last.isVisible === true ? shownSince.current ?? last.time : undefined}, {trackVisibility: true, delay: 100, threshold: [0, 1]});
+   observer = new Observer((entries: {isVisible?: unknown; isIntersecting?: unknown; intersectionRatio?: unknown; time: number}[]) => {const last = entries[entries.length - 1]; if (!last) return; const whole = last.isVisible === true && last.isIntersecting === true && typeof last.intersectionRatio === 'number' && last.intersectionRatio >= 0.99; exposure.current.shown = whole ? exposure.current.shown ?? last.time : undefined}, {trackVisibility: true, delay: 100, threshold: [0, 0.99, 1]});
    observer!.observe(row);
   } catch {return}
-  return () => {observer?.disconnect(); shownSince.current = undefined};
+  return () => {observer?.disconnect(); exposure.current.shown = undefined};
  }, [showSwitch]);
- const switchShown = () => {const since = shownSince.current, now = (globalThis as any).performance?.now?.(); return since !== undefined && typeof now === 'number' && now - since >= AI_SWITCH_MIN_SHOWN_MS};
+ useEffect(() => {
+  const win = (globalThis as any).window, doc = (globalThis as any).document, now = () => (globalThis as any).performance?.now?.() as number;
+  if (typeof win?.addEventListener !== 'function' || typeof doc?.addEventListener !== 'function') return;
+  if (typeof doc.hasFocus === 'function' && doc.hasFocus()) exposure.current.focus = now();
+  /* Entering or leaving this frame: the related target is outside the document. Moving the frame under a resting pointer counts as entering. */
+  const over = (e: PointerEvent) => {if (!e.relatedTarget && exposure.current.pointer === undefined) exposure.current.pointer = e.timeStamp}, out = (e: PointerEvent) => {if (!e.relatedTarget) exposure.current.pointer = undefined};
+  const focus = (e: Event) => {if (exposure.current.focus === undefined) exposure.current.focus = e.timeStamp}, blur = () => {exposure.current.focus = undefined};
+  doc.addEventListener('pointerover', over, true); doc.addEventListener('pointerout', out, true); win.addEventListener('focus', focus); win.addEventListener('blur', blur);
+  return () => {doc.removeEventListener('pointerover', over, true); doc.removeEventListener('pointerout', out, true); win.removeEventListener('focus', focus); win.removeEventListener('blur', blur)};
+ }, []);
+ const switchShown = () => exposedLongEnough(exposure.current, (globalThis as any).performance?.now?.());
  /* Closing ends the session and clears what was typed. Ask first only when there is something to lose; otherwise close at once. */
  const requestClose = useRef(async () => {
   const host = latest.current;
