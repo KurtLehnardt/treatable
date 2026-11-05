@@ -1,6 +1,6 @@
 # Treatable Chrome extension
 
-Treatable helps you find the public clinical studies most worth contacting and prepare to contact their study teams. Its toolbar button opens an overlay on **ClinicalTrials.gov only**. On a results page, **AI-matched results** (on by default) puts the studies that best match your search first, shows a match percentage on each card and moves studies that clearly do not fit to the end. You open a study, read **Understand this study**, and can then press **Generate study brief**. The result is a brief in which every fact is quoted from the official record with a link back to it, three questions to start with, the study's listed contacts, and editable drafts of an email, a phone call script and a follow-up message.
+Treatable helps you find the public clinical studies most worth contacting and prepare to contact their study teams. Its toolbar button opens an overlay on **ClinicalTrials.gov only**. On a results page, **AI-matched results** (on by default) puts the studies that best match your search first, shows a match percentage on each card and moves studies that clearly do not fit to the end. You open a study, read **Understand this study**, and can then press **Get my study summary**. The result is a brief in which every fact is quoted from the official record with a link back to it, three questions to start with, the study's listed contacts, and editable drafts of an email, a phone call script and a follow-up message.
 
 Treatable provides research information, not medical advice. It cannot tell you whether you are eligible for a study or whether a treatment will help you. Your care team and the study team must decide that. Treatable never sends an email or places a call for you.
 
@@ -12,7 +12,7 @@ The standalone prototype on localhost:5556 and the native/mobile app work are se
 
 1. **Search or open a study.** Use the overlay's search form or ClinicalTrials.gov's own controls, then open a study page. On a results page, AI-matched results reorders the cards (see [Decisions ranking](#decisions-ranking-ai-matched-results)), and the overlay lists the studies loaded there and lets you choose up to two for a brief.
 2. **Understand this study.** The overlay downloads the official record from ClinicalTrials.gov and shows excerpts of the study's purpose, participation details, design and recruitment status, plus "Important unknowns" (things the record does not say, such as a missing visit schedule or no listed contact). Registry milestone dates are kept apart from your visit schedule. Nothing in this step is sent to OpenAI.
-3. **Generate study brief.** Pressing this button, which only your own click or key press can do, starts the OpenAI steps described in [How Treatable uses OpenAI](#how-treatable-uses-openai): an Agent selects exact record excerpts and standard questions, then the Decisions API sorts each question by who can answer it. The overlay then shows:
+3. **Get my study summary.** Pressing this button, which only your own click or key press can do, starts the OpenAI steps described in [How Treatable uses OpenAI](#how-treatable-uses-openai): an Agent selects exact record excerpts and standard questions, then the Decisions API sorts each question by who can answer it. The overlay then shows:
    - **What participation could involve**: claims that are word-for-word copies of record excerpts, each with a **Read the supporting record text** link to the official record.
    - **Three questions to start with**: the first three questions that Decisions routes to **Ask the study team**.
    - **How this was generated**: what was sent, what came back and what was checked.
@@ -25,7 +25,7 @@ If you have not generated a brief, steps 2 and 4 to 7 still work, using standard
 
 ## How Treatable uses OpenAI
 
-Two features contact OpenAI, both through a small local native helper on your Mac: **AI-matched results** on results pages makes one Decisions call per ranked page (see [Decisions ranking](#decisions-ranking-ai-matched-results)), and **Generate study brief** makes two calls, in this order:
+Two features contact OpenAI, both through a small local native helper on your Mac: **AI-matched results** on results pages makes one Decisions call per ranked page (see [Decisions ranking](#decisions-ranking-ai-matched-results)), and **Get my study summary** makes two calls, in this order:
 
 | Step | OpenAI API | Model | Job |
 |---|---|---|---|
@@ -108,11 +108,11 @@ Decisions is told not to assess eligibility, benefit or safety.
 
 ### If a step cannot run
 
-The status line under the Generate button names each stage that failed, using plain wording and a failure code. If the helper is not installed, the key is missing or rejected, the account lacks access, a rate limit is reached or OpenAI cannot be reached, Treatable shows that message and the rest of the overlay keeps working. Failures in the Agent or Decisions are never replaced by invented results.
+The status line under the Get my study summary button names each stage that failed, using plain wording and a failure code. If the helper is not installed, the key is missing or rejected, the account lacks access, a rate limit is reached or OpenAI cannot be reached, Treatable shows that message and the rest of the overlay keeps working. Failures in the Agent or Decisions are never replaced by invented results.
 
 ### How this was generated
 
-The **How this was generated** section under the Generate button shows:
+The **How this was generated** section under the Get my study summary button shows:
 - the study IDs and source excerpt IDs that were used;
 - display copies of the exact Agents and Decisions request bodies, formatted for reading, which you can copy (each copy is capped at 64 KiB; the request itself is never shortened, and a cut copy says so);
 - each tool call the Agent made and what the tool returned;
@@ -145,7 +145,7 @@ The earlier profile-based matching form (**Find my matches**, with its own age b
 
 ## Local model option (Ollama on this device)
 
-OpenAI is the default and stays the default. In Settings → **Study brief model**, you can switch **Model provider** to **Local model (Ollama on this device)**. Generate study brief then runs on your own computer through [Ollama](https://ollama.com/download), and nothing is sent to OpenAI: no API key is read and no OpenAI request is made.
+OpenAI is the default and stays the default. In Settings → **Study brief model**, you can switch **Model provider** to **Local model (Ollama on this device)**. Get my study summary then runs on your own computer through [Ollama](https://ollama.com/download), and nothing is sent to OpenAI: no API key is read and no OpenAI request is made.
 
 - **Privacy.** The local model gets the same public study excerpts and question topics the OpenAI steps get, and nothing else. Your name, contact details, typed answers and drafts are never part of it. Nothing leaves the device.
 - **Quality and speed depend on your machine and model.** A local model is smaller than the OpenAI models, so its excerpt choices and question routes can be weaker, and a brief can take from about half a minute to a few minutes. If a step is too slow (step 1 stops after 150 seconds, step 2 after 75, and both must finish within the study session) or its output fails validation, the brief falls back to the same defaults as the OpenAI path and says why. With less than a minute of the session left, Treatable asks you to reopen it before starting a local brief.
@@ -204,7 +204,7 @@ The accepting-only filter defaults to recruiting and available expanded-access s
 Both walkthroughs use [SweetAlert2](https://sweetalert2.github.io/) 11.26.25, bundled into the extension (no CDN, no remote code). Its dialogs are mounted in the extension's own shadow root and carry their own stylesheet, so ClinicalTrials.gov styles do not reach them and theirs do not reach the site. A guide only highlights: it never ticks, types into, submits or clicks anything for you, and it removes its highlight and dialog when it ends or is skipped.
 
 - **Show me how to search** (Treatable panel, search pages only) walks through two website filters. It collapses the panel, highlights **Recruiting** under Study Status and waits for you to tick it, then does the same for **Interventional** under Study Type, explaining that interventional studies test a treatment and observational studies do not assign one. Ticking only stages the filters on ClinicalTrials.gov, so once both are ticked it highlights the site's own **Apply Filters** button and waits for you to press it. If the filters are hidden (the Hide/Show panel on a wide screen, or the Focus Your Search drawer on a narrow one) it highlights the button that opens them. If a box cannot be found it shows plain instructions instead.
-- **Intro tour** starts by itself the first time Treatable is opened, and **Replay intro** (in Settings) runs it again. Steps: welcome, how to change the look of Treatable (Popup, Sidebar, theme), the AI-matched results switch (on by default; it reorders results with a match percentage, and you can switch it off to keep the website's order), starting on ClinicalTrials.gov search, where to type your condition and location, optional filter help (the walkthrough above), opening a study, then Treatable's study tools: Understand this study, Generate study brief, Personalize your email, the editable draft, and Copy full email / Open draft in my email app. The tour only highlights these controls. It never presses Generate study brief, and Treatable never sends the email; you do.
+- **Intro tour** starts by itself the first time Treatable is opened, and **Replay intro** (in Settings) runs it again. Steps: welcome, how to change the look of Treatable (Popup, Sidebar, theme), the AI-matched results switch (on by default; it reorders results with a match percentage, and you can switch it off to keep the website's order), starting on ClinicalTrials.gov search, where to type your condition and location, optional filter help (the walkthrough above), opening a study, then Treatable's study tools: Understand this study, Get my study summary, Personalize your email, the editable draft, and Open draft in my email app. The tour only highlights these controls. It never presses Generate study brief, and Treatable never sends the email; you do.
 
 The tour keeps two values, nothing else, and never anything you type, any search term or any study ID: `treatable.onboardingVersion` (the number 2, in extension-local storage, set when the tour is finished or skipped; the AI-matched results step raised it from 1, so the tour shows once more after this update) and `treatable.onboardingStep` (a bare step number in session storage, so the tour can resume after the page navigates; removed when the tour ends). All access lives in `src/guide-state.ts`, uses the existing `storage` permission, and the deletion-only legacy patient-data cleanup removes only its own key. No network request, new permission or host change is involved. sweetalert2 releases after 11.4.9 on some lines shipped locale- and domain-gated "protestware"; the pinned 11.26.25 has none, and a test fails if a vendor update adds any.
 

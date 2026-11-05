@@ -18,9 +18,9 @@ function mount(h:ReturnType<typeof harness>){const ref:{vm?:ApplyController}={};
 const renderedText=(node:any):string=>typeof node==='string'?node:Array.isArray(node)?node.map(renderedText).join(' '):node?.children?renderedText(node.children):'';
 const html=(vm:ApplyController)=>renderToStaticMarkup(React.createElement(ApplyView,{vm}));
 
-test('source-linked brief renders readable participation, unknowns, three questions and editable email without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const text=html(m.ref.vm!);for(const phrase of ['Understand this study','Two treatments are spaced 4 weeks apart.','Read the supporting record text','Important unknowns','Ask the study team','Your email draft','Open draft in my email app','Treatable sends this study’s public record to OpenAI','Your name, contact details and answers are not included'])assert.ok(text.includes(phrase),phrase);assert.doesNotMatch(text,/Copy full email/,'the records-only copy button is gone');assert.match(text,/textarea/);assert.match(text,/official record/);assert.doesNotMatch(text,/Confirm what you|Review what you will share|Exact API input/);assert.equal(m.ref.vm!.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
+test('source-linked brief renders readable participation, unknowns, three questions and editable email without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const text=html(m.ref.vm!);for(const phrase of ['Understand this study','Two treatments are spaced 4 weeks apart.','Read the supporting record text','Important unknowns','Ask the study team','Your email draft','Open draft in my email app','Treatable sends this study’s public record to OpenAI','Nothing you type is included'])assert.ok(text.includes(phrase),phrase);assert.doesNotMatch(text,/Copy full email/,'the records-only copy button is gone');assert.match(text,/textarea/);assert.match(text,/official record/);assert.doesNotMatch(text,/Confirm what you|Review what you will share|Exact API input/);assert.equal(m.ref.vm!.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
 
-test('manual draft survives late public AI completion and local detail edits; private fields never cross the port',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','LOCAL_NAME_CANARY');m.ref.vm!.edit('email','private@example.org');m.ref.vm!.answer('diagnosis_details','LOCAL_HEALTH_CANARY')});await act(async()=>{m.ref.vm!.editDraft('body','My carefully edited message');m.ref.vm!.requestReview();await flush()});assert.equal(h.held.length,1);await act(async()=>{m.ref.vm!.editDraft('body','The final manual draft');m.ref.vm!.edit('name','SECOND_LOCAL_NAME');h.held[0]();await flush()});assert.equal(m.ref.vm!.draft?.body,'The final manual draft');assert.equal(m.ref.vm!.draftOutdated,true);assert.ok(!JSON.stringify(h.ports[0].sent).match(/LOCAL_NAME|LOCAL_HEALTH|private@example|SECOND_LOCAL/));await act(async()=>m.ref.vm!.updateDraft());assert.match(m.ref.vm!.draft!.body,/SECOND_LOCAL_NAME/);assert.match(m.ref.vm!.draft!.body,/LOCAL_HEALTH_CANARY/);await act(async()=>{m.ref.vm!.copyEmail();await flush()});assert.match(h.copies[0],/LOCAL_HEALTH_CANARY/);}finally{m.unmount()}});
+test('manual draft survives late public AI completion and local detail edits; private fields never cross the port',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','LOCAL_NAME_CANARY');m.ref.vm!.edit('email','private@example.org');m.ref.vm!.answer('diagnosis_details','LOCAL_HEALTH_CANARY')});await act(async()=>{m.ref.vm!.editDraft('body','My carefully edited message');m.ref.vm!.requestReview();await flush()});assert.equal(h.held.length,1);await act(async()=>{m.ref.vm!.editDraft('body','The final manual draft');m.ref.vm!.edit('name','SECOND_LOCAL_NAME');h.held[0]();await flush()});assert.equal(m.ref.vm!.draft?.body,'The final manual draft');assert.equal(m.ref.vm!.draftOutdated,true);assert.ok(!JSON.stringify(h.ports[0].sent).match(/LOCAL_NAME|LOCAL_HEALTH|private@example|SECOND_LOCAL/));await act(async()=>m.ref.vm!.updateDraft());assert.match(m.ref.vm!.draft!.body,/SECOND_LOCAL_NAME/);assert.match(m.ref.vm!.draft!.body,/LOCAL_HEALTH_CANARY/);await act(async()=>{m.ref.vm!.copyMessage();await flush()});assert.match(h.copies[0],/LOCAL_HEALTH_CANARY/);}finally{m.unmount()}});
 
 test('selected-study drafts stay independent; removal clears only that study draft',async()=>{const h=harness(),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush()});await act(async()=>m.ref.vm!.editDraft('body','FIRST_ONLY'));await act(async()=>m.ref.vm!.viewStudy(IDS[1]));assert.doesNotMatch(m.ref.vm!.draft!.body,/FIRST_ONLY/);await act(async()=>m.ref.vm!.editDraft('body','SECOND_ONLY'));await act(async()=>m.ref.vm!.viewStudy(IDS[0]));assert.equal(m.ref.vm!.draft?.body,'FIRST_ONLY');await act(async()=>{m.ref.vm!.selectStudies([IDS[1]]);await flush()});assert.equal(m.ref.vm!.draft?.body,'SECOND_ONLY');await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush();m.ref.vm!.viewStudy(IDS[0])});assert.doesNotMatch(m.ref.vm!.draft!.body,/FIRST_ONLY|SECOND_ONLY/);}finally{m.unmount()}});
 
@@ -77,8 +77,8 @@ test('production overlay entry presents the public brief before search, never mo
  const runtime={connect:({name}:{name:string})=>{if(name==='treatable.site.overlay.v1')return sitePort;if(name==='treatable-apply-v1')return h.runtime.connect();privatePorts++;throw Error('Private-health port must not open')},sendMessage:async()=>({ok:true}),getURL:(v:string)=>`chrome-extension://test/${v}`};
  for(const[key,value]of Object.entries({window:win,document:doc,chrome:{runtime},navigator:{userActivation:{isActive:true}}}))Object.defineProperty(globalThis,key,{configurable:true,value});captureSiteActivations(win);let renderer!:TestRenderer.ReactTestRenderer;
  try{await act(async()=>{renderer=TestRenderer.create(React.createElement(OverlayAssistant));const e=new Event('message');Object.assign(e,{source:parent,origin:'https://clinicaltrials.gov',data:{type:'treatable.site.activate',purpose:'overlay',capability:'a'.repeat(64)}});win.dispatchEvent(e);await flush()});const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Understand this study'));assert.ok(text.indexOf('Understand this study')<text.indexOf('Search for other studies'));assert.doesNotMatch(text,/Find my matches|Confirm what you|Review what you will share/);assert.equal(privatePorts,0);assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false);
- await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n)==='Generate study brief')!.props.onClick();await flush()});
- assert.match(renderedText(renderer.root),/Study review complete/);assert.match(renderedText(renderer.root),/Questions sorted/);
+ await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n)==='Get my study summary')!.props.onClick();await flush()});
+ assert.match(renderedText(renderer.root),/Study summary ready/);assert.match(renderedText(renderer.root),/Questions sorted/);
  const editor=()=>renderer.root.findAllByType('textarea').find(n=>n.props.className==='apply-email')!;
  await act(async()=>{editor().props.onChange({target:{value:'My reviewed enquiry from the production entry.'}});await flush()});
  assert.equal(editor().props.value,'My reviewed enquiry from the production entry.');
@@ -90,18 +90,16 @@ test('production overlay entry presents the public brief before search, never mo
 
 test('real validated activity frames do not settle the result early or expose provider identifiers',async()=>{const h=harness({holdExecute:true,emitTrace:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal(m.ref.vm!.activity.length,1);assert.equal(m.ref.vm!.activity[0].stage,'agent.tool.request');assert.equal(m.ref.vm!.agentBusy,true);assert.equal(m.ref.vm!.result,undefined);assert.doesNotMatch(JSON.stringify(m.ref.vm!.activity),/PROVIDER_ID_CANARY/);await act(async()=>{h.held[0]();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.match(html(m.ref.vm!),/How this was generated/);assert.match(html(m.ref.vm!),/Reading selected public study evidence/);assert.doesNotMatch(html(m.ref.vm!),/PROVIDER_ID_CANARY/);}finally{m.unmount()}});
 
-test('registry milestone estimates remain separate from a participant visit schedule',async()=>{const h=harness(),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});const registry=m.renderer.root.findByProps({className:'brief-registry'});const shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);for(const fact of m.renderer.root.findAllByProps({className:'brief-fact'}))assert.doesNotMatch(renderedText(fact),/2026-12-31/);}finally{m.unmount()}});
+test('registry milestone estimates remain separate from a participant visit schedule',async()=>{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);/* The fallback excerpts are the cards (brief-fact) that must not carry registry dates; a generation without claims renders them. */await act(async()=>{m.ref.vm!.requestReview();await flush()});const registry=m.renderer.root.findByProps({className:'brief-registry'});const shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);const facts=m.renderer.root.findAllByProps({className:'brief-fact'});assert.ok(facts.length>0,'the excerpt cards rendered, so the loop below checks something');for(const fact of facts)assert.doesNotMatch(renderedText(fact),/2026-12-31/);}finally{m.unmount()}});
 
 test('generating a brief keeps the full locally loaded record instead of the size-capped prepared copy',async()=>{const h=harness({truncatePrepared:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.record?.sites.length,1);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.equal(m.ref.vm!.record?.sites.length,1);assert.equal(m.ref.vm!.record?.sitesTruncated,false);assert.equal(m.ref.vm!.plan?.site?.facility,'Synthetic Clinic');}finally{m.unmount()}});
 
-test('Copy message copies only the body; Copy full email keeps labelled To and Subject lines for records; pasted headers never reach the handoff',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;assert.equal(to,'one@example.org');
+test('Copy message copies only the body; pasted headers never reach the handoff',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;assert.equal(to,'one@example.org');
  for(const text of [vm().draft!.body,decodeURIComponent(vm().mailto!.split('&body=')[1])]){assert.doesNotMatch(text,/^\s*(?:To|Subject)\s*:/im);assert.ok(!text.includes(to));assert.ok(!text.includes(subject))}
  await act(async()=>{vm().copyMessage();await flush()});assert.equal(h.copies[0],vm().draft!.body);assert.equal(vm().copied,'message');
- await act(async()=>{vm().copyEmail();await flush()});assert.ok(h.copies[1].startsWith(`To: ${to}\nSubject: ${subject}\n\n`));assert.ok(h.copies[1].endsWith(vm().draft!.body));assert.equal(vm().copied,'full');
  await act(async()=>vm().editDraft('body',`To: ${to}\nSubject: ${subject}\n\nMy own message.`));assert.equal(vm().draftHeaders,true);assert.match(html(vm()),/left out when you open or copy the message/);
  assert.equal(decodeURIComponent(vm().mailto!.split('&body=')[1]),'My own message.');assert.ok(vm().mailto!.startsWith('mailto:one@example.org?subject='));
- await act(async()=>{vm().copyMessage();await flush()});assert.equal(h.copies[2],'My own message.');
- await act(async()=>{vm().copyEmail();await flush()});assert.equal(h.copies[3],`To: ${to}\nSubject: ${subject}\n\nMy own message.`,'full copy never doubles the header lines');
+ await act(async()=>{vm().copyMessage();await flush()});assert.equal(h.copies[1],'My own message.');
 }finally{m.unmount()}});
 
 /** A registry-style purpose of several thousand characters made of distinct sentences, so any dropped or repeated part is detected. */
@@ -223,7 +221,7 @@ test('the intro tour points at the right Treatable controls on a study page and 
   const expectations:[Parameters<typeof guide.show>[0],string,RegExp,RegExp][]=[
    ['appearance','button[aria-label="Treatable settings"]',/Make Treatable look the way you like/,/Popup is a window in the middle of the page/],
    ['understand','.apply-section .section-intro',/Understand this study/,/public study data/],
-   ['brief','.brief-generate button.apply-big',/Generate study brief/,/You choose when to press this button/],
+   ['brief','.brief-generate button.apply-big',/Get my study summary/,/You choose when to press this button/],
    ['personalize','details.apply-local-details > summary',/Personalize your email/,/stays on your device/],
    ['draft','section[aria-labelledby="apply-send"]',/Edit your email draft/,/subject and message/],
    ['send','.apply-actions[data-treatable-guide="send"]',/You send the email, not Treatable/,/Treatable never sends the email/],
@@ -248,10 +246,10 @@ test('the brief status line is plain: study review and question sorting, with no
  try{
   await generate(m);
   const status=renderedText(nodesWith(m,'brief-status')[0]).replace(/\s+/g,' ');
-  assert.ok(status.includes('Study review complete · Questions sorted'),status);
+  assert.ok(status.includes('Study summary ready · Questions sorted'),status);
   assert.doesNotMatch(status,/Agents|Decisions/);
   const failed=html({...m.ref.vm!,result:{...res(m)!,agentStatus:'failed',decisionStatus:'failed'}} as ApplyController).replaceAll('<!-- -->','');
-  assert.ok(failed.includes('Study review unavailable · Question sorting unavailable'));
+  assert.ok(failed.includes('Study summary unavailable · Question sorting unavailable'));
   assert.doesNotMatch(failed.slice(failed.indexOf('brief-status')),/Agents:|Decisions:/);
  }finally{m.unmount()}
 });
@@ -261,8 +259,8 @@ test('with a blank name no bracketed placeholder is copied, linked or scripted, 
  const noPlaceholder=(where:string,text:string)=>{assert.doesNotMatch(text,/[\[\]]/,`${where} contains a bracket`);assert.doesNotMatch(text,/your name/i,where)};
  for(const[where,text]of [['draft',vm().draft!.body],['email-app link',decodeURIComponent(vm().mailto!)],['call script',vm().callScript],['follow-up message',vm().followUpMessage]] as const)noPlaceholder(where,text);
  assert.ok(vm().draft!.body.endsWith('\n\nThank you.'),'the sign-off reads naturally without a name');
- await act(async()=>{vm().copyMessage();await flush()});await act(async()=>{vm().copyEmail();await flush()});await act(async()=>{vm().copyFollowUp();await flush()});
- assert.equal(h.copies.length,3);h.copies.forEach((text,i)=>noPlaceholder(`clipboard ${i}`,text));
+ await act(async()=>{vm().copyMessage();await flush()});await act(async()=>{vm().copyFollowUp();await flush()});
+ assert.equal(h.copies.length,2);h.copies.forEach((text,i)=>noPlaceholder(`clipboard ${i}`,text));
  await act(async()=>{vm().edit('email','');vm().editDraft('body',vm().draft!.body+'\n'.repeat(1)+'More. '.repeat(1500))});assert.equal(vm().handoff?.mode,'copy');await act(async()=>{vm().copyAndOpenEmail();await flush()});noPlaceholder('long-draft clipboard',h.copies.at(-1)!);noPlaceholder('long-draft email-app link',decodeURIComponent(h.opened.at(-1)!));
  await act(async()=>vm().updateDraft());
  const missing=m.renderer.root.findByProps({className:'notice apply-missing'});const shown=renderedText(missing);
@@ -305,7 +303,7 @@ test('before a brief is generated only the Generate button and the standard ques
  const h=harness(),m=mount(h);try{await act(flush);
   const before=html(m.ref.vm!);
   assert.doesNotMatch(before,/What participation could involve|Important unknowns|Two treatments are spaced 4 weeks apart/,'no raw passages or unknowns before generation');
-  assert.match(before,/Generate study brief/);assert.match(before,/Three questions to start with/);
+  assert.match(before,/Get my study summary/);assert.match(before,/The record cannot establish whether you are eligible/,'the eligibility caveat is visible before generation');assert.match(before,/Three questions to start with/);
   await act(async()=>{m.ref.vm!.requestReview();await flush()});
   const after=html(m.ref.vm!);
   assert.match(after,/What participation could involve/);assert.match(after,/Important unknowns/);
@@ -318,9 +316,36 @@ test('before a brief is generated only the Generate button and the standard ques
  }finally{f.unmount()}
 });
 
-test('the overlay moves keyboard focus to the study heading on open, and the heading can take it',async()=>{
+test('a study heading can take script focus, and ApplyView no longer moves focus on its own',async()=>{
  const h=harness(),focused:string[]=[],ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
  let renderer!:TestRenderer.ReactTestRenderer;
  await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(element:any)=>({focus(){focused.push(String(element.props.id))}})})});
- try{await act(flush);assert.deepEqual(focused,['apply-heading']);assert.match(html(ref.vm!),/<h2 id="apply-heading" tabindex="-1">/,'a heading only takes script focus with tabindex -1')}finally{act(()=>renderer.unmount())}
+ try{await act(flush);assert.deepEqual(focused,[],'focus is owned by the overlay, once per connection, not by every mount of this section');assert.match(html(ref.vm!),/<h2 id="apply-heading" tabindex="-1">/)}finally{act(()=>renderer.unmount())}
+});
+
+test('a retry after a failed generation keeps the excerpts and unknowns on screen',async()=>{
+ const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.match(html(m.ref.vm!),/Important unknowns/);
+  await act(async()=>{m.ref.vm!.requestReview()});/* mid-retry the code is cleared; the sections must not vanish */
+  assert.match(html(m.ref.vm!),/Important unknowns/);
+ }finally{m.unmount()}
+});
+
+test('the missing-details list is made of buttons that open Personalize and focus the field',async()=>{
+ const h=harness(),focused:string[]=[],ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
+ let renderer!:TestRenderer.ReactTestRenderer;const dets:any={open:false,querySelector:(q:string)=>({focus(){focused.push(q)}})};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(el:any)=>el.type==='details'&&String(el.props.className).includes('apply-local-details')?dets:{focus(){}}})});
+ try{await act(flush);const fixes=renderer.root.findAllByProps({className:'quiet missing-fix'});assert.ok(fixes.length>=2,'one button per missing item');
+  await act(async()=>fixes[0].props.onClick());assert.equal(dets.open,true);assert.deepEqual(focused,['[data-apply-field="name"]']);
+  await act(async()=>fixes[1].props.onClick());assert.equal(focused.at(-1),'[data-apply-field="phone"]');
+ }finally{act(()=>renderer.unmount())}
+});
+
+test('a failure only claims that questions and the draft still work when they are on screen; the record failure keeps its code in technical details',async()=>{
+ const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  assert.match(html(m.ref.vm!),/Install the Treatable helper, then reload the extension\. Nothing was sent to OpenAI\. Your questions and email draft still work\./);
+  assert.doesNotMatch(html(m.ref.vm!),/Local search/);
+ }finally{m.unmount()}
+ const view=renderToStaticMarkup(React.createElement(ApplyView,{vm:{phase:'ready',candidates:[],selectedIds:[],records:[],activity:[],engine:{provider:'openai',localModel:null},agentBusy:false,recordCode:'RECORD_UNAVAILABLE',patient:{name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}},zipNote:''} as any}));
+ assert.match(view,/The official study record could not be loaded/);assert.doesNotMatch(view,/Your questions and email draft still work/,'no draft exists, so no such claim');
+ assert.match(view,/<details class="brief-how"><summary>Technical details<\/summary><p class="fine">Failure code: <code>RECORD_UNAVAILABLE<\/code>/);
 });

@@ -17,14 +17,16 @@ function view(overrides: Partial<Vm> = {}): Vm {
   return {connected: true, ended: false, busy: false, error: '', fields: {}, catalog: SITE_FILTERS, snapshot, records: [], opacity: .9, collapsed: false, setField() {}, search() {}, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
 }
 let mounted: Array<() => Promise<void>> = [];
-async function mountView(vm: Vm) {
+async function mountView(vm: Vm, extra: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => {root.render(React.createElement(OverlayView, {vm}))});
+  await act(async () => {root.render(React.createElement(OverlayView, {vm, ...extra}))});
   mounted.push(async () => {await act(async () => {root.unmount()}); container.remove()});
-  return {container, rerender: (next: Vm) => act(async () => {root.render(React.createElement(OverlayView, {vm: next}))})};
+  return {container, rerender: (next: Vm, nextExtra: Record<string, unknown> = extra) => act(async () => {root.render(React.createElement(OverlayView, {vm: next, ...nextExtra}))})};
 }
+/** Stands in for the study section: only its heading matters to the focus rules. */
+const studySection = (key = 'study') => React.createElement('h2', {id: 'apply-heading', tabIndex: -1, key}, 'Understand this study');
 const escape = (target: EventTarget = window, init: KeyboardEventInit = {}) => target.dispatchEvent(new (window as any).KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true, ...init}));
 const popup = () => document.querySelector('.swal2-popup') as HTMLElement | null;
 const dialogs = () => document.querySelectorAll('.swal2-popup').length;
@@ -529,4 +531,36 @@ test('production overlay: outside press with nothing typed ends the session at o
   assert.equal(page.hides().length, 0);
   assert.equal(dialogs(), 0);
   assert.ok(sessionEnded());
+});
+
+test('opening a study page in the popup puts focus on the study heading, once', async () => {
+  const study = {apply: studySection()};
+  const page = await mountView(view({}), study);
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({}), {apply: studySection('another-study')});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'moving to another study on the site does not pull focus again');
+});
+
+test('the sidebar and a results page leave the website\'s focus alone', async () => {
+  await mountView(view({displayMode: 'sidebar'}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+  document.body.innerHTML = '';
+  await mountView(view({}));
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+});
+
+test('collapsed, then close: the study section coming back never takes focus from the close question', async () => {
+  const page = await mountView(view({hasUnsavedWork: () => true, collapsed: true}), {apply: undefined});
+  await act(async () => {escape()});
+  await settle();
+  assert.ok(popup(), 'the close question is open');
+  /* Opening the frame to ask mounts the study section again, as the real section does. */
+  await page.rerender(view({hasUnsavedWork: () => true, collapsed: false}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'the heading must not take focus from behind the dialog');
+  assert.ok(popup()!.contains(document.activeElement), `focus stays in the dialog, not ${document.activeElement?.tagName}`);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'Keep working does not send focus to the heading either');
+  assert.equal(counts.closed, 0);
 });

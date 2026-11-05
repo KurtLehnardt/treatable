@@ -236,10 +236,10 @@ export const COPY = {
     skip: 'Skip',
   },
   brief: {
-    title: 'Generate study brief',
+    title: 'Get my study summary',
     body: [
       'You choose when to press this button. It sends only the public text of the study record and a few standard question topics to OpenAI. It does not send your name, contact details or answers.',
-      'The brief lists what was used, under How this was generated.',
+      'The summary lists what was used, under How this was generated.',
     ],
     next: 'Next',
     back: 'Back',
@@ -277,7 +277,7 @@ export const COPY = {
   send: {
     title: 'You send the email, not Treatable',
     body: [
-      'Open draft in my email app hands your message to your own mail program. Copy message puts just the message on your clipboard, and Copy full email also adds the To and Subject lines.',
+      'Open draft in my email app hands your message to your own mail program. Copy message puts just the message on your clipboard.',
       'Treatable never sends the email. You read it and press Send yourself.',
     ],
     next: 'Next',
@@ -287,7 +287,7 @@ export const COPY = {
   done: {
     title: 'You are ready',
     body: [
-      'You can run this tour again with Replay intro whenever you like.',
+      'You can run this tour again with Replay intro in Settings whenever you like.',
       'Treatable gives information, not medical advice. A study team can answer questions about whether a study is right for you.',
     ],
     next: 'Finish',
