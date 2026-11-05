@@ -7,7 +7,8 @@ import {readFileSync} from 'node:fs';
 import {OverlayView} from '../src/overlay-view';
 import {PrivateMatchingView} from '../src/private-match-view';
 import {ScoreBadge} from '../src/score-badge-view';
-import {SiteClient,readActivation,captureSiteActivations,subscribeSiteActivation} from '../src/overlay-port';
+import {SiteClient,readActivation,captureSiteActivations,subscribeSiteActivation,parseSnapshot} from '../src/overlay-port';
+import {RankingSection} from '../src/ranking-view';
 import {useSiteController} from '../src/use-site-controller';
 import type {OverlayViewModel} from '../src/overlay-types';
 const snapshot={generation:'page-1',url:'https://clinicaltrials.gov/search?cond=Fibromyalgia',nctIds:['NCT00000001','NCT00000002'],diagnostic:'Two result cards found.',supported:true};
@@ -23,14 +24,26 @@ test('overlay renders no search form: no replica of the website search, but the 
  for(const gone of ['Condition/disease','Other terms','Intervention/treatment','Location','More filters','Which studies to show','Search ClinicalTrials.gov','Search the live registry','Find studies for you','shared with ClinicalTrials.gov','No OpenAI request is made by this search','five minutes'])assert.ok(!html.includes(gone),gone);
  assert.doesNotMatch(html,/<form|<input|<select|<textarea|<details|Free-text notes|Remember|API demo|Preview the fictional/);
 });
-test('the search help button is the only search control: it appears when the guide offers it and runs the guide',()=>{
+test('the website-filters help is not in the overlay body; the ranking section offers it beside Restore original order',()=>{
  let started=0;const guide:any={canSearchHelp:true,startSearchHelp:()=>started++,active:false};
- const renderer=TestRenderer.create(React.createElement(OverlayView,{vm:view({guide})}));
- const button=renderer.root.findAllByType('button').find(node=>node.children.includes('Show me how to search'))!;
- assert.equal(button.props['data-treatable-guide'],'search-help');button.props.onClick();assert.equal(started,1);renderer.unmount();
- const hidden=renderToStaticMarkup(React.createElement(OverlayView,{vm:view({guide:{...guide,canSearchHelp:false}})}));
- assert.doesNotMatch(hidden,/Show me how to search/);
- assert.doesNotMatch(renderToStaticMarkup(React.createElement(OverlayView,{vm:view()})),/Show me how to search/,'no guide, no button');
+ assert.doesNotMatch(renderToStaticMarkup(React.createElement(OverlayView,{vm:view({guide})})),/Show me how to search|website’s filters/,'the overlay body has no search control');
+ const model:any={aiRanking:'on',connected:true,busy:false,setAiRanking(){},restore(){},again(){},ranking:{phase:'done',applied:true,provider:'none',studies:[{nctId:'NCT00000001',title:'A',percent:80,checks:[]}]}};
+ const renderer=TestRenderer.create(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>started++}}));
+ const row=renderer.root.findAllByProps({className:'button-row'}).find(node=>node.findAllByType('button').some(b=>b.children.includes('Restore original order')))!;
+ const labels=row.findAllByType('button').map(b=>b.children.join(''));assert.deepEqual(labels,['Restore original order','Show me the website’s filters']);
+ row.findAllByType('button')[1].props.onClick();assert.equal(started,1);renderer.unmount();
+ assert.doesNotMatch(renderToStaticMarkup(React.createElement(RankingSection,{vm:model})),/website’s filters/,'offered only when the guide can run');
+ assert.doesNotMatch(renderToStaticMarkup(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}}})).replace(/<button[^>]*>Show me the website’s filters<\/button>/,''),/website’s filters/);
+});
+test('the ranking section keeps the filters help reachable when there is no Restore row',()=>{
+ const html=renderToStaticMarkup(React.createElement(RankingSection,{vm:{aiRanking:'on',connected:true,busy:false,setAiRanking(){},restore(){},again(){},searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}} as any}));
+ assert.match(html,/Show me the website’s filters/);assert.doesNotMatch(html,/Show me how to search|how to search/);
+});
+test('the snapshot parser copies only the fields it validates: removed card-count keys never pass through',()=>{
+ const base={generation:'g',url:'https://clinicaltrials.gov/search?cond=x',nctIds:['NCT00000001'],diagnostic:'',supported:true};
+ const parsed=parseSnapshot({...base,totalCards:'<img src=x>',hiddenCards:-5,unverifiedCards:{a:1},allNctIds:'NOT-AN-ID'});
+ assert.deepEqual(parsed,base);for(const key of ['totalCards','hiddenCards','unverifiedCards','allNctIds'])assert.equal(key in parsed,false,key);
+ assert.equal(parseSnapshot({...base,distanceHiddenCards:2}).distanceHiddenCards,2);assert.throws(()=>parseSnapshot({...base,distanceHiddenCards:-1}));
 });
 test('overlay defaults to the popup display and exposes session display settings',()=>{
  let privateOpen=0,collapsed:any,mode:any,theme:any;
@@ -62,7 +75,7 @@ let vm:OverlayViewModel;
 function Probe(){vm=useSiteController();return React.createElement(OverlayView,{vm})}
 async function mount(){const parent={postMessage(){}},windowEvents=new EventTarget()as any;windowEvents.parent=parent;const documentEvents=new EventTarget()as any;documentEvents.visibilityState='visible';const runtime=new FakeRuntime();Object.defineProperty(globalThis,'window',{configurable:true,value:windowEvents});Object.defineProperty(globalThis,'document',{configurable:true,value:documentEvents});Object.defineProperty(globalThis,'chrome',{configurable:true,value:{runtime}});captureSiteActivations(windowEvents);let renderer!:ReactTestRenderer;await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:()=>({focus(){}})});windowEvents.dispatchEvent(eventFor(parent))});return{runtime,renderer,windowEvents,documentEvents}}
 test('actual overlay hook sends nothing beyond authentication on its own and ends on close and pagehide',async()=>{for(const reason of ['close','pagehide']){const {renderer,runtime,windowEvents}=await mount();assert.equal(vm.connected,true);assert.equal(runtime.ports[0].messages.length,1);assert.equal(runtime.ports[0].messages[0].type,'site.authenticate');assert.ok(!('setField' in vm)&&!('search' in vm)&&!('fields' in vm),'the controller has no search form state or search action');await act(async()=>{if(reason==='close')vm.close();else windowEvents.dispatchEvent(new Event('pagehide'))});assert.equal(vm.connected,false);assert.equal(vm.ended,true);assert.ok(runtime.ports[0].closed);act(()=>renderer.unmount())}});
-test('hiding the tab does not end the overlay session ; only close, pagehide or expiry do',async()=>{const {renderer,runtime,documentEvents}=await mount();assert.equal(vm.connected,true);const port=runtime.ports[0],post=port.postMessage.bind(port);port.postMessage=(v:any)=>{if(v.type==='site.ping'){port.messages.push(structuredClone(v));queueMicrotask(()=>port.emit({id:v.id,ok:true,result:{active:true}}));return}post(v)};await act(async()=>{documentEvents.visibilityState='hidden';documentEvents.dispatchEvent(new Event('visibilitychange'))});assert.equal(vm.connected,true);assert.equal(vm.ended,false);assert.equal(port.closed,false);await act(async()=>{documentEvents.visibilityState='visible';documentEvents.dispatchEvent(new Event('visibilitychange'))});assert.ok(port.messages.some((m:any)=>m.type==='site.ping'),'coming back checks the page at once');assert.equal(vm.connected,true);act(()=>renderer.unmount())});
+test('hiding the tab does not end the overlay session; only close, pagehide or expiry do',async()=>{const {renderer,runtime,documentEvents}=await mount();assert.equal(vm.connected,true);const port=runtime.ports[0],post=port.postMessage.bind(port);port.postMessage=(v:any)=>{if(v.type==='site.ping'){port.messages.push(structuredClone(v));queueMicrotask(()=>port.emit({id:v.id,ok:true,result:{active:true}}));return}post(v)};await act(async()=>{documentEvents.visibilityState='hidden';documentEvents.dispatchEvent(new Event('visibilitychange'))});assert.equal(vm.connected,true);assert.equal(vm.ended,false);assert.equal(port.closed,false);await act(async()=>{documentEvents.visibilityState='visible';documentEvents.dispatchEvent(new Event('visibilitychange'))});assert.ok(port.messages.some((m:any)=>m.type==='site.ping'),'coming back checks the page at once');assert.equal(vm.connected,true);act(()=>renderer.unmount())});
 test('late public record response cannot restore a stale query or ended session',async()=>{const {renderer,runtime}=await mount();const port=runtime.ports[0];port.holdFetch=true;act(()=>vm.fetchRecords());assert.ok(port.held);await act(async()=>{port.emit({type:'site.snapshot',snapshot:{...snapshot,generation:'page-2',nctIds:[]}});port.emit({id:port.held.id,ok:true,result:{records:[{id:'NCT00000001',title:'Late',status:'RECRUITING',conditions:[]}]}})});assert.deepEqual(vm.records,[]);assert.equal(vm.snapshot?.generation,'page-2');act(()=>renderer.unmount())});
 
 test('ending during activation rejects immediately and cannot reactivate from a late ready event',async()=>{const port=new FakePort();port.postMessage=v=>{port.messages.push(v)};const client=new SiteClient({connect:()=>port});const opening=client.authenticate(cap);client.disconnect();await assert.rejects(opening,/ended/);port.emit({type:'site.ready',snapshot});await assert.rejects(()=>client.request('site.snapshot',{}));assert.ok(port.closed)});

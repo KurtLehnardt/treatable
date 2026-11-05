@@ -376,16 +376,20 @@ test('a model choice saved by another Treatable page is kept when this page late
  act(()=>renderer.unmount());
 });
 
-test('an old stored status-hiding choice is ignored: the stored record falls back to defaults and nothing reads it back', async () => {
+test('no build ever persisted a hiding choice: saveUiPrefs writes exactly five keys, and a record carrying hiding keys is not read as preferences', async () => {
+ const written = fakeArea();
+ await saveUiPrefs(written, {...DEFAULT_UI_PREFS});
+ assert.deepEqual(Object.keys(written.store.get(UI_PREFS_KEY) as object).sort(), ['aiRanking', 'displayMode', 'localModel', 'provider', 'theme'], 'the saved record has exactly the five preference keys');
  for (const extra of [{onlyAccepting: true}, {availability: {onlyAccepting: true, includeSoon: false, includeInvitation: false}}, {onlyAccepting: false, includeSoon: true, includeInvitation: true}]) {
   const stored = {...DEFAULT_UI_PREFS, ...extra};
-  assert.equal(parseUiPrefs(stored), undefined, 'a record with hiding keys is not a valid preferences record');
+  assert.equal(parseUiPrefs(stored), undefined, 'the strict parser rejects a record with extra keys');
   assert.deepEqual(await loadUiPrefs(fakeArea({[UI_PREFS_KEY]: stored})), DEFAULTS, JSON.stringify(extra));
  }
  const area = fakeArea({[UI_PREFS_KEY]: {...DEFAULT_UI_PREFS, onlyAccepting: true}, availability: {onlyAccepting: true}});
  await loadUiPrefs(area);
  assert.ok(area.calls.every(call => call === 'get:' + UI_PREFS_KEY), 'only the preferences record is ever read: ' + area.calls.join());
- for (const file of ['site-background.ts', 'site-content.ts', 'site-dom.ts', 'use-site-controller.ts', 'ui-prefs.ts']) {
+ /* The card-hiding path knows no status option. local-distance.ts and the legacy private-match path keep theirs on purpose (they pick which facility counts as nearest) and are removed in a follow-up. */
+ for (const file of ['site-background.ts', 'site-content.ts', 'site-dom.ts', 'use-site-controller.ts', 'ui-prefs.ts', 'overlay-view.tsx', 'overlay-app.tsx']) {
   assert.doesNotMatch(readFileSync(new URL('../src/' + file, import.meta.url), 'utf8'), /onlyAccepting|includeSoon|includeInvitation|hiddenCards/, file + ' no longer knows a status-hiding option');
  }
 });

@@ -42,5 +42,4 @@ export class SiteCardManager{
  private dropSlots(){for(const slot of this.slots)slot.remove();this.slots=[]}
  dispose(){try{if(this.slots.length)this.restore()}catch{this.dropSlots()}this.restoreGeoVisibility();this.cards=[];this.container=null}
  getCards(){return [...this.visibleCards()]}
- getAllCards(){return [...this.cards]}
 }

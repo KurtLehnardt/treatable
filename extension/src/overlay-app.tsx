@@ -25,7 +25,7 @@ function Ranking({vm,guide}:{vm:ReturnType<typeof useSiteController>;guide:Retur
  const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported;
  const{again}=useAiRanking({enabled,url:vm.snapshot?.url,nctIds:vm.snapshot?.nctIds,rank:vm.rankPage});
  const waiting=enabled?undefined:!guide.settled||guide.active?'intro':!vm.snapshot?.supported||!vm.snapshot.nctIds.length?'page':undefined;
- return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again}}/>;
+ return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again,searchHelp:guide.canSearchHelp?guide.startSearchHelp:undefined}}/>;
 }
 /** The primary flow: AI-matched results on results pages, the public-study brief and local drafting. It never mounts the legacy
  * health-sharing form. "Your details" live in a session-only store owned by this frame; ending the session or closing the frame clears them. */

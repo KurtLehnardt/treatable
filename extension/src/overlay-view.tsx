@@ -38,6 +38,17 @@ export function OverlayView({vm, inlineMatching, apply, settings, ranking}: {vm:
    else if (wasCollapsed && alive.current && !latest.current.ended) latest.current.setCollapsed(true);
   } catch {latest.current.close()} finally {confirming.current = false}
  }).current;
+ /* Leaving the study for the website's search page clears this study's drafts, so ask first, with the same rule as Close, when there is typed work. */
+ const requestOpenSearch = useRef(async () => {
+  const host = latest.current;
+  if (confirming.current) return;
+  if (!host.hasUnsavedWork?.()) {host.guide?.openSearch(); return}
+  confirming.current = true;
+  if (host.guide?.active) host.guide.stop();
+  try {
+   if (await confirmDiscard({theme: themeNow.current, title: 'Leave this study and clear what you typed?', text: 'Going to the ClinicalTrials.gov search page ends this study session. The details, drafts and notes you typed here are cleared and cannot be brought back. Nothing is saved.', confirmText: 'Leave and clear'})) latest.current.guide?.openSearch();
+  } catch {/* Stay on the study. */} finally {confirming.current = false}
+ }).current;
  useEffect(() => {alive.current = true; return () => {alive.current = false; closeDiscardDialog()}}, []);
  /* A press on the website outside the popup. Nothing typed: the usual close, at once. Something typed: hide instead, without asking and
   * without clearing anything, so the toolbar button can bring it all back. If the hide is refused, the usual close runs instead, and it
@@ -61,7 +72,7 @@ export function OverlayView({vm, inlineMatching, apply, settings, ranking}: {vm:
   {settingsOpen && <section id="treatable-settings" className="display-settings" aria-label="Treatable display settings"><div className="settings-heading"><h2>Make yourself comfortable.</h2><button type="button" className="quiet" onClick={() => setSettingsOpen(false)}>Done</button></div><div className="settings-grid"><label>Display<select value={displayMode} onChange={event => vm.setDisplayMode?.(event.target.value as typeof displayMode)}><option value="popup">Popup</option><option value="sidebar">Sidebar</option></select></label><label>Theme<select value={theme} onChange={event => vm.setTheme?.(event.target.value as OverlayTheme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div><p>Popup centers the assistant. Clicking the website outside it closes it, or only hides it while you have typed details or a draft; the toolbar button then shows a dot and brings it back. While it is hidden, AI-matched results pause and nothing is sent, and if the website moves to another study or results page, that page’s study drafts start over (your details stay). Sidebar stays beside this website, which narrows to make room when the window is wide enough. Your display, theme and AI-matched results choices are remembered on this device. Searches and health details are never saved.</p>{settings}</section>}
   <div className="session-line"><span className={`connection-dot${vm.connected ? ' connected' : ''}`} aria-hidden="true"/><span role="status">{vm.ended ? 'Session ended' : vm.connected ? 'Connected to this ClinicalTrials.gov tab' : 'Click the Treatable button in the toolbar to start'}</span><span className="scope-label">{vm.study ? 'This study page' : 'Current results page'}</span></div>
   {vm.setAiRanking && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'On: results pages show best matches first, with a match % on each card.' : 'Off: results pages keep the website’s own order.'}</small></span></label></div>}
-  {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.guide?.canSearchHelp&&<div className="guide-help"><button type="button" data-treatable-guide="search-help" onClick={vm.guide.startSearchHelp}>Show me how to search</button><p className="fine">A short walkthrough of two website filters. You tick the boxes yourself.</p></div>}
+  {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button></div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
    {!apply && !ranking && <section className="page-results" aria-labelledby="page-heading"><div className="section-intro"><span className="eyebrow">Work with the website’s results</span><h2 id="page-heading" tabIndex={-1} ref={heading}>On this page</h2><p>Only the visible cards loaded on this results page are included. Other pages are not ranked.</p></div><div className="result-count"><strong>{loadedCount}</strong><span>studies shown on this page</span></div>
     

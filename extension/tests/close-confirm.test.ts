@@ -91,6 +91,43 @@ test('Escape with typed work asks first; Keep working leaves everything as it wa
   assert.equal(document.querySelectorAll('main').length, 1, 'the overlay is still there');
 });
 
+const OTHER = 'Search for other studies on ClinicalTrials.gov';
+const link = () => [...document.querySelectorAll('button')].find(node => node.textContent === OTHER) as HTMLButtonElement | undefined;
+test('study page: the search link goes straight to the website search when nothing was typed', async () => {
+  let opened = 0;
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch: () => {opened++}} as any, hasUnsavedWork: () => false}));
+  assert.ok(link(), 'the link is on the study page');
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.equal(opened, 1);
+  assert.equal(dialogs(), 0);
+});
+
+test('study page: with typed work the search link asks first; Keep working stays, Leave and clear goes', async () => {
+  let opened = 0;
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch: () => {opened++}} as any, hasUnsavedWork: () => true}));
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.equal(opened, 0, 'nothing happens while asking');
+  assert.match(popup()!.textContent!, /Leave this study and clear what you typed\?/);
+  assert.match(popup()!.textContent!, /cannot be brought back/);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(opened, 0, 'Keep working leaves the study as it was');
+  assert.equal(counts.closed, 0);
+  await act(async () => {link()!.click()});
+  await settle();
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(opened, 1, 'confirming goes to the search page');
+  assert.equal(counts.closed, 0, 'it does not close the overlay');
+});
+
+test('the search link is only on study pages', async () => {
+  await mountView(view({guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch() {}} as any}));
+  assert.equal(link(), undefined);
+});
+
 test('Confirm closes and ends the session', async () => {
   await mountView(view({hasUnsavedWork: () => true}));
   await act(async () => {escape()});
