@@ -4,11 +4,10 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {OverlayView} from '../src/overlay-view';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 import {FAILURE_COPY,GENERIC_FAILURE_COPY} from '../src/failures';
 
 function overlay(overrides:Record<string,unknown>={}){
-  const vm:any={connected:true,ended:false,busy:false,error:'',fields:{},catalog:SITE_FILTERS,snapshot:{generation:'g',url:'https://clinicaltrials.gov/search?cond=asthma',nctIds:[],diagnostic:'',supported:true},records:[],opacity:.9,collapsed:false,setField(){},search(){},refresh(){},fetchRecords(){},setOpacity(){},setCollapsed(){},restore(){},openPrivate(){},close(){},...overrides};
+  const vm:any={connected:true,ended:false,busy:false,error:'',snapshot:{generation:'g',url:'https://clinicaltrials.gov/search?cond=asthma',nctIds:[],diagnostic:'',supported:true},records:[],opacity:.9,collapsed:false,setField(){},search(){},refresh(){},fetchRecords(){},setOpacity(){},setCollapsed(){},restore(){},openPrivate(){},close(){},...overrides};
   return renderToStaticMarkup(React.createElement(OverlayView,{vm}));
 }
 

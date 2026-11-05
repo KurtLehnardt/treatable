@@ -16,10 +16,10 @@ function ApplySection({nctId,dirtyRef,engine}:{nctId?:string;dirtyRef:MutableRef
 /** AI-matched results for a results page. Ranking starts on its own once the intro tour is out of the way; see use-ai-ranking.ts. It pauses
  * while the popup is hidden, so nothing is ranked or sent while Treatable looks closed, and resumes for the page then shown when it is back. */
 function Ranking({vm,guide}:{vm:ReturnType<typeof useSiteController>;guide:ReturnType<typeof useGuide>}){
- const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported&&!vm.availability?.loading;
+ const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported;
  const{again}=useAiRanking({enabled,url:vm.snapshot?.url,nctIds:vm.snapshot?.nctIds,rank:vm.rankPage});
  const waiting=enabled?undefined:!guide.settled||guide.active?'intro':!vm.snapshot?.supported||!vm.snapshot.nctIds.length?'page':undefined;
- return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again}}/>;
+ return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again,searchHelp:guide.canSearchHelp?guide.startSearchHelp:undefined}}/>;
 }
 /** The overlay: AI-matched results on results pages, the public-study brief and local drafting. It has no health-sharing form. "Your details" live in a session-only store owned by this frame; ending the session or closing the frame clears them. */
 export function OverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){const vm=useSiteController(initialPrefs);const guide=useGuide(vm.guideHost);const[details]=useState(sessionDetailsStore);const dirty=useRef(false);const[localModels]=useState(()=>new LocalModelsStore());
