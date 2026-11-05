@@ -1,5 +1,5 @@
 /** Validated extension-frame client. Patient fields and email drafts are never accepted by this protocol. */
-import {parseApplyReply,parsePreparedApply,parseApplyResult,parseApplyRecord,parseApplyRequest,parsePublicStudyBrief,parsePreparedStudyBrief,parseStudyBriefResult,parseLocalModelsResult,briefNctIds,PURPOSE_DISPLAY_MAX_CHARS,type PreparedApply,type ApplyResult,type ApplyRecord,type PublicStudyBrief,type PreparedStudyBrief,type StudyBriefResult,type StudyBriefEngine,type LocalModelsResult} from '../shared/apply-contract.mjs';
+import {parseApplyReply,parseApplyRecord,parseApplyRequest,parsePublicStudyBrief,parsePreparedStudyBrief,parseStudyBriefResult,parseLocalModelsResult,briefNctIds,PURPOSE_DISPLAY_MAX_CHARS,type ApplyRecord,type PublicStudyBrief,type PreparedStudyBrief,type StudyBriefResult,type StudyBriefEngine,type LocalModelsResult} from '../shared/apply-contract.mjs';
 import {NativeOperationError,FAILURE_CODE} from './failures';
 import {parseDemoReply,type DemoTrace} from '../shared/demo-contract.mjs';
 export const APPLY_CLIENT_PORT='treatable-apply-v1';
@@ -10,7 +10,7 @@ export interface ApplyRuntime{connect:(options:{name:string})=>ApplyPort}
 export interface StudyCandidate{nctId:string;title?:string}
 /** purposes[i] is the complete official brief summary of records[i], kept for display only and never sent to a model. */
 export interface BriefRecords{records:ApplyRecord[];briefs:PublicStudyBrief[];purposes?:string[]}
-type Pending={resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;kind:'native'|'record'|'briefRecords';allowTrace?:boolean;trace?:(value:DemoTrace)=>void};
+type Pending={resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;kind:'native'|'briefRecords';allowTrace?:boolean;trace?:(value:DemoTrace)=>void};
 const NCT=/^NCT[0-9]{8}$/;
 export class ApplyClient{
  private port?:ApplyPort;private pending=new Map<string,Pending>();nctId?:string;nctIds:string[]=[];candidates:StudyCandidate[]=[];expiresAt?:number;
@@ -33,7 +33,6 @@ export class ApplyClient{
    try{
     if(reply.type==='trace'){if(!item.allowTrace)throw Error();const value=parseDemoReply(reply,id);if(!value.trace)throw Error();item.trace?.(value.trace);return}
     clearTimeout(item.timer);this.pending.delete(id);
-    if(item.kind==='record'){if(reply.type==='record'&&reply.ok===true){item.resolve(parseApplyRecord(reply.record));return}if(reply.ok===false&&typeof reply.code==='string'&&FAILURE_CODE.test(reply.code)){item.reject(new NativeOperationError(reply.code));return}throw Error()}
     if(item.kind==='briefRecords'){
      if(reply.ok===false&&typeof reply.code==='string'&&FAILURE_CODE.test(reply.code)){item.reject(new NativeOperationError(reply.code));return}
      if(reply.type!=='briefRecords'||reply.ok!==true||!Array.isArray(reply.records)||!Array.isArray(reply.briefs))throw Error();
@@ -46,13 +45,9 @@ export class ApplyClient{
   p.onDisconnect.addListener(()=>{clearTimeout(timer);if(this.port===p){this.port=undefined;this.rejectAll();onEnd()}if(!ready)reject(new NativeOperationError('SESSION_ENDED'))});
  })}
  private send(message:Record<string,unknown>,id:string,kind:Pending['kind'],allowTrace=false,trace?:(value:DemoTrace)=>void,timeout=155000){if(!this.port)return Promise.reject(new NativeOperationError('SESSION_ENDED'));return new Promise<any>((resolve,reject)=>{if(this.pending.size>=4){reject(new NativeOperationError('BUSY'));return}const timer=setTimeout(()=>{this.pending.delete(id);reject(new NativeOperationError('NATIVE_TIMEOUT'))},timeout);this.pending.set(id,{resolve,reject,timer,kind,allowTrace,trace});try{this.port!.postMessage(message)}catch{clearTimeout(timer);this.pending.delete(id);reject(new NativeOperationError('SESSION_ENDED'))}})}
- private native(type:string,payload:unknown,trace?:(value:DemoTrace)=>void,timeout?:number){let request;try{request=parseApplyRequest({id:this.newId(),type,payload})}catch{return Promise.reject(new NativeOperationError('INVALID_REQUEST'))}return this.send({kind:'applyNative',request},request.id,'native',type==='executeApply'||type==='executeStudyBrief',trace,timeout)}
+ private native(type:string,payload:unknown,trace?:(value:DemoTrace)=>void,timeout?:number){let request;try{request=parseApplyRequest({id:this.newId(),type,payload})}catch{return Promise.reject(new NativeOperationError('INVALID_REQUEST'))}return this.send({kind:'applyNative',request},request.id,'native',type==='executeStudyBrief',trace,timeout)}
  renew(){if(this.port&&this.expiresAt!==undefined)try{this.port.postMessage({kind:'applyRenew'})}catch{}}
 
- async prepare(nctId:string):Promise<PreparedApply>{const v=parsePreparedApply(await this.native('prepareApply',{nctId}));if(v.nctId!==nctId)throw new NativeOperationError('RESULT_MISMATCH');return v}
- async execute(prepared:PreparedApply):Promise<ApplyResult>{const v=parseApplyResult(await this.native('executeApply',{token:prepared.token,digest:prepared.digest}));if(v.nctId!==prepared.nctId||v.digest!==prepared.digest)throw new NativeOperationError('RESULT_MISMATCH');return v}
- async revoke(){await this.native('revokeApply',{})}
- async record(nctId:string):Promise<ApplyRecord>{const id=this.newId();const v:ApplyRecord=await this.send({kind:'applyRecord',id},id,'record');if(v.nctId!==nctId)throw new NativeOperationError('RECORD_MISMATCH');return v}
  async recordBrief(nctIds:string[]):Promise<BriefRecords>{const ids=briefNctIds(nctIds),id=this.newId(),v:BriefRecords=await this.send({kind:'studyBriefRecord',id,nctIds:ids},id,'briefRecords');this.sameStudies(ids,v.records.map(r=>r.nctId));this.sameStudies(ids,v.briefs.map(b=>b.nctId));return v}
  /** engine undefined means OpenAI (the default). A local engine names only an installed model; the prepared reply must echo it exactly. */
  async prepareBrief(nctIds:string[],engine?:StudyBriefEngine):Promise<PreparedStudyBrief>{const ids=briefNctIds(nctIds),v=parsePreparedStudyBrief(await this.native('prepareStudyBrief',{nctIds:ids,...(engine?{provider:'local',model:engine.model}:{})}));this.sameStudies(ids,v.records.map(r=>r.nctId));this.sameStudies(ids,v.briefs.map(b=>b.nctId));if(JSON.stringify(v.engine??null)!==JSON.stringify(engine?{provider:'local',model:engine.model}:null))throw new NativeOperationError('RESULT_MISMATCH');return v}

@@ -1,34 +1,18 @@
-import {getDemoFixture,decisionsPayload,agentPayload,demoToolResults,SCORING_LEVELS as LEVELS} from '../shared/demo-fixtures.mjs';
-export {decisionsPayload,agentPayload} from '../shared/demo-fixtures.mjs';
-import {QUESTION_TEMPLATES,CAUTION_TEMPLATES,CLEANUP_FAILURE_CODES,exactKeys,isRecord,parseDemoResult} from '../shared/demo-contract.mjs';
+// Agents session loop for the study brief (study-brief.mjs): pinned tool outputs, strict tool-call validation, bounded output and
+// provider-state cleanup. The fictional demo, bundled-catalog and private-matching runners that also used it were removed.
+import {CLEANUP_FAILURE_CODES,exactKeys,isRecord} from '../shared/demo-contract.mjs';
+import {STUDY_BRIEF_TOOL_NAME} from '../shared/apply-contract.mjs';
 import {ApiError} from './transport.mjs';
-import{parseRealResult}from '../shared/real-contract.mjs';
 const providerId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(v);
 export const MAX_TOOL_ARGUMENT_BYTES=4096;
-// Fixed text only: rejected tool arguments are never echoed back to the model, trace or logs.
-export const TOOL_ARGUMENT_ERROR='Rejected: get_public_trial_evidence accepts exactly one argument, nctId, set to one of the NCT IDs supplied for this task. No evidence was returned.';
-// The Agents API types function_call arguments as `unknown`: accept a parsed object or a small JSON string, with exactly the schema's keys.
-export function toolArgumentNctId(raw,allowedIds){let value=raw;if(typeof raw==='string'){if(Buffer.byteLength(raw)>MAX_TOOL_ARGUMENT_BYTES)return undefined;try{value=JSON.parse(raw);}catch{return undefined;}}if(!isRecord(value))return undefined;const keys=Object.keys(value);if(keys.length!==1||keys[0]!=='nctId'||typeof value.nctId!=='string'||!allowedIds.includes(value.nctId))return undefined;return value.nctId;}
 const cleanupFailure=error=>({cleanupCode:CLEANUP_FAILURE_CODES.includes(error?.code)?error.code:'CLEANUP_ERROR',...(Number.isInteger(error?.status)&&error.status>=100&&error.status<=599?{httpStatus:error.status}:{})});
 const FATAL_EVENTS=['error','agent.session.error','environment.failed','agent.session.environment.failed'];
-export function fixtureFor(payload){const fixture=getDemoFixture(payload.fixtureId);const selected=payload.studyIds??fixture.studies.map(x=>x.id);if(selected.some(id=>!fixture.studies.some(s=>s.id===id)))throw new ApiError('INVALID_FIXTURE_STUDIES');return{...fixture,studies:fixture.studies.filter(s=>selected.includes(s.id))};}
-export function scoreValues(raw,fixture){if(!Array.isArray(raw?.answers)||raw.answers.length!==fixture.studies.length)throw new ApiError('INVALID_DECISIONS_OUTPUT');const used=new Set();const scores=raw.answers.map(a=>{if(!a||a.type!=='score'||!fixture.studies.some(s=>s.id===a.name)||used.has(a.name)||!Number.isFinite(a.score)||a.score<0||a.score>3||!Number.isFinite(a.confidence)||a.confidence<0||a.confidence>1||!Array.isArray(a.probabilities)||a.probabilities.length!==4)throw new ApiError('INVALID_DECISIONS_OUTPUT');used.add(a.name);let sum=0,mean=0;const seen=new Set();for(const p of a.probabilities){if(!Number.isInteger(p.value)||p.value<0||p.value>3||seen.has(p.value)||p.label!==LEVELS[p.value].label||!Number.isFinite(p.probability)||p.probability<0||p.probability>1)throw new ApiError('INVALID_DECISIONS_OUTPUT');seen.add(p.value);sum+=p.probability;mean+=p.value*p.probability;}if(Math.abs(sum-1)>0.002||Math.abs(mean-a.score)>0.02)throw new ApiError('INVALID_DECISIONS_OUTPUT');return{nctId:a.name,index:Math.round(a.score/3*100),confidence:a.confidence};});return scores;}
-export function parseScores(raw,fixture,mode){return parseDemoResult({kind:'scoreDemo',fixtureId:fixture.id,mode,scores:scoreValues(raw,fixture)});}
-function parsePlan(text,fixture){if(typeof text!=='string'||Buffer.byteLength(text)>16000)throw new ApiError('INVALID_AGENT_OUTPUT');let v;try{v=JSON.parse(text);}catch{throw new ApiError('INVALID_AGENT_OUTPUT');}if(!exactKeys(v,['comparisons','cautionIds'])||!Array.isArray(v.comparisons)||v.comparisons.length!==fixture.studies.length||new Set(v.comparisons.map(x=>x.nctId)).size!==fixture.studies.length||v.comparisons.some(x=>!fixture.studies.some(s=>s.id===x.nctId))||!Array.isArray(v.cautionIds)||Object.keys(CAUTION_TEMPLATES).some(x=>!v.cautionIds.includes(x)))throw new ApiError('INVALID_AGENT_OUTPUT');return v;}
-export async function runScore(transport,payload,{signal,onTrace=()=>{}}={}){const fixture=fixtureFor(payload);onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',decisionsPayload(fixture),{signal,timeout:25000});const result=parseScores(raw,fixture,transport.mode);onTrace({stage:'decisions.complete'});return result;}
-export async function runAgentContext(transport,fixture,requestBody,toolResults,wrapResult,options){
- const allowedIds=fixture.studies.map(x=>x.id);
- if(!Array.isArray(toolResults)||toolResults.length!==allowedIds.length||toolResults.some(x=>!allowedIds.includes(x?.study?.id)))throw new ApiError('INVALID_TOOL_EVIDENCE');
- const answer=raw=>{const nctId=toolArgumentNctId(raw,allowedIds),evidence=nctId===undefined?undefined:toolResults.find(x=>x.study.id===nctId);return evidence?{key:nctId,output:JSON.stringify(evidence),trace:{nctId}}:undefined;};
- const finish=(text,read)=>{if(fixture.studies.some(x=>!read.has(x.id)))throw new ApiError('INCOMPLETE_AGENT_TURN');return parsePlan(text,fixture);};
- return runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult},options);
-}
-// Shared Agents session loop for every agent path. answer(arguments) maps one function call to a pinned output ({key,output,trace}) or
-// undefined (the fixed failed tool result, never echoed); finish(text,read) validates the completed turn given the keys read in first-read order.
+// answer(arguments) maps one function call to a pinned output ({key,output,trace}) or undefined (the caller's fixed failed tool result,
+// never echoed); finish(text,read) validates the completed turn given the keys read in first-read order. toolName and toolError are required.
 // onToolCall (optional) receives one display record per completed tool call: {tool,accepted:false} for a rejected call (its arguments are never
 // passed on), or {tool,accepted:true,arguments,summary} where arguments are the validated ones from answer() and summary describes the local output.
-export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult,toolError=TOOL_ARGUMENT_ERROR,toolName='get_public_trial_evidence'},{signal,onTrace=()=>{},onToolCall=()=>{}}={}){
- if(!['get_public_trial_evidence','get_public_selected_study'].includes(toolName))throw new ApiError('INVALID_TOOL_CALL');
+export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wrapResult,toolError,toolName},{signal,onTrace=()=>{},onToolCall=()=>{}}={}){
+ if(toolName!==STUDY_BRIEF_TOOL_NAME||typeof toolError!=='string'||!toolError)throw new ApiError('INVALID_TOOL_CALL');
  let sessionId,completed=false,text='',toolCalls=0,cleanup='failed',plan;const handled=new Set(),read=new Set();
  const remember=event=>{const id=event?.session?.id??event?.session_id;if(id!==undefined){if(!providerId(id)||sessionId&&sessionId!==id)throw new ApiError('INVALID_SESSION_ID');if(!sessionId){sessionId=id;onTrace({stage:'agent.session.created',sessionId});}}};
  const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(90000)]):AbortSignal.timeout(90000);
@@ -59,11 +43,3 @@ export async function runPinnedToolAgent(transport,requestBody,{answer,finish,wr
  }
  return wrapResult({mode:transport.mode,...plan,toolCalls,cleanup});
 }
-
-export function runAgent(transport,payload,options){const fixture=fixtureFor(payload);return runAgentContext(transport,fixture,agentPayload(fixture),demoToolResults(fixture),v=>parseDemoResult({kind:'agentDemo',fixtureId:fixture.id,...v}),options);}
-export async function runPreparedScore(transport,prepared,{signal,onTrace=()=>{}}={}){onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',prepared.preview.decisionsRequest,{signal,timeout:25000});const result=parseRealResult({kind:'scoreReal',mode:transport.mode,consentDigest:prepared.consentDigest,scores:scoreValues(raw,prepared.context)});onTrace({stage:'decisions.complete'});return result;}
-export function runPreparedAgent(transport,prepared,options){return runAgentContext(transport,prepared.context,prepared.preview.agentsRequest,prepared.preview.toolResults,v=>parseRealResult({kind:'agentReal',consentDigest:prepared.consentDigest,...v}),options);}
-
-// New path has independent dynamic-ID result validation; legacy contracts remain strict.
-export async function runPreparedLiveScore(transport,prepared,{signal,onTrace=()=>{}}={}){const{parseLiveResult}=await import('../shared/live-analysis-contract.mjs');onTrace({stage:'decisions.request'});const raw=await transport.request('POST','/v1/decisions',prepared.preview.decisionsRequest,{signal,timeout:25000});const result=parseLiveResult({kind:'scoreLive',mode:transport.mode,analysisId:prepared.analysisId,snapshotId:prepared.snapshotId,source:prepared.source,profileKey:prepared.profileKey,consentDigest:prepared.consentDigest,scores:scoreValues(raw,prepared.context)});onTrace({stage:'decisions.complete'});return result;}
-export async function runPreparedLiveAgent(transport,prepared,options){const{parseLiveResult}=await import('../shared/live-analysis-contract.mjs');return runAgentContext(transport,prepared.agentContext,prepared.preview.agentsRequest,prepared.preview.toolResults,v=>parseLiveResult({kind:'agentLive',analysisId:prepared.analysisId,snapshotId:prepared.snapshotId,source:prepared.source,profileKey:prepared.profileKey,consentDigest:prepared.consentDigest,...v}),options);}

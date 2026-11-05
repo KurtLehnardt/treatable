@@ -25,7 +25,6 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  CONSENT_EXPIRED:'The prepared preview expired before sending, so nothing was sent to OpenAI. Prepare and review a fresh preview.',
  INVALID_CONSENT_RECEIPT:'The preview receipt was stale, changed or already used, so nothing was sent to OpenAI. Prepare and review a fresh preview.',
  PREVIEW_TOO_LARGE:'The selected records exceed the preview size limit, so nothing was sent to OpenAI. Choose fewer labels or studies and prepare again.',
- INVALID_FIXTURE_STUDIES:'Only the test sample studies are allowed, so nothing was sent to OpenAI. Reselect the sample and retry.',
  INTERNAL_ERROR:'The helper hit an internal error and returned no result. Retry once; if it repeats, restart Chrome. Local search still works.',
  INCOMPLETE_AGENT_TURN:'The Agents stream ended without a completed, tool-verified answer, so no result is shown. Check the trace for cleanup, then retry.',
  // Help me apply (study page). The local contact plan keeps working when any of these occur.
@@ -61,7 +60,7 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  CLEANUP_ERROR:'The provider session could not be confirmed as deleted. The result, if shown, is still valid; deletion may need a retry later.',
 });
 /** Failures known to happen before any request body reaches the provider. */
-export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_FAILED','LOCAL_OLLAMA_OUTDATED','LOCAL_SESSION_TOO_SHORT','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_NOT_CHOSEN','LOCAL_TIMEOUT','LOCAL_INVALID_OUTPUT','CONFIRMATION_CANCELLED','NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','HELPER_VERSION_MISMATCH','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','INVALID_FIXTURE_STUDIES','APPLY_EXPIRED','INVALID_APPLY_RECEIPT','NOT_STUDY_PAGE','USER_ACTIVATION_REQUIRED','RECORD_UNAVAILABLE','RECORD_MISMATCH','GOV_NETWORK_ERROR','GOV_HTTP_ERROR','GOV_INVALID_RECORD','GOV_ID_MISMATCH','GOV_RECORD_TOO_LARGE']);
+export const NOT_SENT_CODES:ReadonlySet<string>=new Set(['LOCAL_NOT_INSTALLED','LOCAL_RUNTIME_FAILED','LOCAL_MODEL_FAILED','LOCAL_OLLAMA_OUTDATED','LOCAL_SESSION_TOO_SHORT','LOCAL_MODEL_UNAVAILABLE','LOCAL_MODEL_NOT_CHOSEN','LOCAL_TIMEOUT','LOCAL_INVALID_OUTPUT','CONFIRMATION_CANCELLED','NATIVE_HOST_MISSING','NATIVE_HOST_FORBIDDEN','KEY_MISSING','INVALID_REQUEST','HELPER_VERSION_MISMATCH','BUSY','CONSENT_EXPIRED','INVALID_CONSENT_RECEIPT','PREVIEW_TOO_LARGE','APPLY_EXPIRED','INVALID_APPLY_RECEIPT','NOT_STUDY_PAGE','USER_ACTIVATION_REQUIRED','RECORD_UNAVAILABLE','RECORD_MISMATCH','GOV_NETWORK_ERROR','GOV_HTTP_ERROR','GOV_INVALID_RECORD','GOV_ID_MISMATCH','GOV_RECORD_TOO_LARGE']);
 export function failureCopy(code:unknown):string{return typeof code==='string'&&Object.hasOwn(FAILURE_COPY,code)?FAILURE_COPY[code]:GENERIC_FAILURE_COPY}
 /** Chrome reports native-host launch failures only as runtime.lastError text on the native port's disconnect. */
 export function nativeDisconnectCode(message:unknown):'NATIVE_HOST_MISSING'|'NATIVE_HOST_FORBIDDEN'|'NATIVE_HOST_DISCONNECTED'{

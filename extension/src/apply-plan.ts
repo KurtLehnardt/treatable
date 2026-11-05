@@ -4,7 +4,7 @@ import{haversineMiles}from'../../scaffold/lib/eligibility/hardFilters';
 import{siteLocationStatus,validLocalOrigin,type LocalOrigin}from'./local-distance';
 import{dialNumber,isNanpCountry,TEL_HREF,type DialNumber}from'./phone';
 import{YOUR_DETAILS_LIMITS,type YourDetails}from'./your-details';
-import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplyResult,type ApplySite}from'../shared/apply-contract.mjs';
+import{APPLY_FLAG_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_QUESTION_TEMPLATES,type ApplyContact,type ApplyFlagId,type ApplyOfficial,type ApplyPrescreenId,type ApplyQuestionId,type ApplyRecord,type ApplySite}from'../shared/apply-contract.mjs';
 /** Questions used when no generated brief is available. "Based on what I have shared..." (prescreen_fit) is not in this list: it only
  * makes sense once the patient has actually shared something, so defaultQuestionIds adds it back in that case. */
 export const DEFAULT_QUESTION_IDS:readonly ApplyQuestionId[]=Object.freeze(['still_enrolling','visits','costs','next_steps']);
@@ -204,7 +204,7 @@ export function missingInput(patient:ApplyPatient){const out:string[]=[],phone=c
  if(phone&&!phoneDigits(phone))out.push('Check the phone number. Use 7 to 15 digits.');
  if(email&&!validEmail(email))out.push('Check the email address.');return out}
 /** `details` (the session-only "Your details") only fills the local drafts below; it never leaves this function in any other form. */
-export function buildApplyPlan({record,patient,details,origin,siteId,agent,today}:{record:ApplyRecord;patient:ApplyPatient;details?:YourDetails;origin?:LocalOrigin|null;siteId?:string;agent?:Pick<ApplyResult,'nctId'|'questionIds'|'prescreenIds'|'flagIds'>;today:Date}):ApplyPlan{
+export function buildApplyPlan({record,patient,details,origin,siteId,agent,today}:{record:ApplyRecord;patient:ApplyPatient;details?:YourDetails;origin?:LocalOrigin|null;siteId?:string;agent?:{nctId:string;questionIds:ApplyQuestionId[];prescreenIds:ApplyPrescreenId[];flagIds:ApplyFlagId[]};today:Date}):ApplyPlan{
  const useAgent=agent&&agent.nctId===record.nctId?agent:undefined,choice=chooseSite(record,origin,siteId),chain=contactChain(record,choice.site);
  const questionIds=[...(useAgent?.questionIds??defaultQuestionIds(hasSharedInfo(patient,details)))],prescreenIds=[...(useAgent?.prescreenIds??DEFAULT_PRESCREEN_IDS)];
  const flagIds=mergeFlags(deterministicFlags(record,choice.site,today),useAgent?.flagIds??[]);

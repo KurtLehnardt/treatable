@@ -1,6 +1,6 @@
 /** The AI-matched results status the background posts to the overlay. Built by the background and validated again on arrival. */
 import{isReasonId,CHECK_REASONS,type CheckReason,type RankReasonId}from'./rank-merge';
-import{AGE_BANDS}from'../shared/real-contract.mjs';
+import{AGE_BANDS}from'../shared/age-bands.mjs';
 export type RankingPhase='checking'|'preparing'|'confirming'|'scoring'|'done'|'off'|'unavailable';
 /** Why ranking used record checks only, or could not run at all. */
 export type RankingNote='no_condition'|'too_many'|'no_cards'|'declined';

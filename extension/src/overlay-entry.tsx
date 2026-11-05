@@ -3,7 +3,6 @@ import React from 'react';
 import {createRoot} from 'react-dom/client';
 import{OverlayAssistant}from'./overlay-app';
 import './overlay.css';
-import './private-match.css';
 import './apply.css';
 import {captureSiteActivations} from './overlay-port';
 import {loadUiPrefs,uiPrefsArea} from './ui-prefs';
