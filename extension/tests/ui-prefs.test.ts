@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -10,7 +11,6 @@ import {OverlayView} from '../src/overlay-view';
 import {ScoreBadgeClient} from '../src/score-badge-client';
 import {installSiteContent} from '../src/site-content';
 import {captureSiteActivations} from '../src/overlay-port';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 
 const flush = async () => {await new Promise<void>(r => setImmediate(r)); await new Promise<void>(r => setImmediate(r))};
 const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null, aiRanking: 'on'};
@@ -160,7 +160,7 @@ class FakePort {
  emit(v: any) {for (const f of this.listeners) f(v)}
  postMessage(v: any) {
   this.messages.push(structuredClone(v));
-  if (v.type === 'site.authenticate') {queueMicrotask(() => this.emit({type: 'site.ready', snapshot, filters: SITE_FILTERS, search: {}})); return}
+  if (v.type === 'site.authenticate') {queueMicrotask(() => this.emit({type: 'site.ready', snapshot})); return}
   queueMicrotask(() => this.emit({id: v.id, ok: true, result: {}}));
  }
  disconnect() {if (this.closed) return; this.closed = true; for (const f of this.ends) f()}
@@ -285,21 +285,16 @@ test('invalid values and missing storage never break the overlay or write anythi
  act(() => broken.renderer.unmount());
 });
 
-test('End session clears the search but keeps the display preferences, and no search text reaches storage', async () => {
+test('End session keeps the display preferences, and nothing but them reaches storage', async () => {
  const area = fakeArea();
  const session = await mount(area, await loadUiPrefs(area));
  act(() => latest.setTheme('dark'));
- act(() => latest.setField('cond', 'PRIVATE_QUERY_CANARY'));
- await act(async () => latest.search());
- assert.equal(latest.fields.cond, 'PRIVATE_QUERY_CANARY');
  await act(async () => {latest.close(); await flush()});
- assert.deepEqual(latest.fields, {});
  assert.equal(latest.connected, false);
  assert.equal(latest.ended, true);
  assert.equal(latest.theme, 'dark', 'ending the session does not reset the theme');
  assert.deepEqual(area.store.get(UI_PREFS_KEY), {...DEFAULTS, theme: 'dark'});
  assert.deepEqual([...area.store.keys()], [UI_PREFS_KEY]);
- assert.doesNotMatch(JSON.stringify([...area.store]), /PRIVATE_QUERY_CANARY/);
  assert.ok(area.calls.every(call => call === 'set:' + UI_PREFS_KEY || call === 'get:' + UI_PREFS_KEY), area.calls.join());
  assert.ok(!area.calls.some(call => call.startsWith('remove')), 'ending a session never deletes the preferences');
  act(() => session.renderer.unmount());
@@ -379,4 +374,22 @@ test('a model choice saved by another Treatable page is kept when this page late
  act(()=>latest.setTheme('dark'));
  assert.deepEqual(area.store.get(UI_PREFS_KEY),{...other,theme:'dark',aiRanking:'on'},'the other page\'s Local choice is not reverted');
  act(()=>renderer.unmount());
+});
+
+test('no build ever persisted a hiding choice: saveUiPrefs writes exactly five keys, and a record carrying hiding keys is not read as preferences', async () => {
+ const written = fakeArea();
+ await saveUiPrefs(written, {...DEFAULT_UI_PREFS});
+ assert.deepEqual(Object.keys(written.store.get(UI_PREFS_KEY) as object).sort(), ['aiRanking', 'displayMode', 'localModel', 'provider', 'theme'], 'the saved record has exactly the five preference keys');
+ for (const extra of [{onlyAccepting: true}, {availability: {onlyAccepting: true, includeSoon: false, includeInvitation: false}}, {onlyAccepting: false, includeSoon: true, includeInvitation: true}]) {
+  const stored = {...DEFAULT_UI_PREFS, ...extra};
+  assert.equal(parseUiPrefs(stored), undefined, 'the strict parser rejects a record with extra keys');
+  assert.deepEqual(await loadUiPrefs(fakeArea({[UI_PREFS_KEY]: stored})), DEFAULTS, JSON.stringify(extra));
+ }
+ const area = fakeArea({[UI_PREFS_KEY]: {...DEFAULT_UI_PREFS, onlyAccepting: true}, availability: {onlyAccepting: true}});
+ await loadUiPrefs(area);
+ assert.ok(area.calls.every(call => call === 'get:' + UI_PREFS_KEY), 'only the preferences record is ever read: ' + area.calls.join());
+ /* The card-hiding path knows no status option. local-distance.ts and the legacy private-match path keep theirs on purpose (they pick which facility counts as nearest) and are removed in a follow-up. */
+ for (const file of ['site-background.ts', 'site-content.ts', 'site-dom.ts', 'use-site-controller.ts', 'ui-prefs.ts', 'overlay-view.tsx', 'overlay-app.tsx']) {
+  assert.doesNotMatch(readFileSync(new URL('../src/' + file, import.meta.url), 'utf8'), /onlyAccepting|includeSoon|includeInvitation|hiddenCards/, file + ' no longer knows a status-hiding option');
+ }
 });

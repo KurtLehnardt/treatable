@@ -175,3 +175,16 @@ test('settled tells automatic work when the first-run decision is made: at once 
   assert.equal(first.vm.settled, true);
   await first.unmount();
 });
+
+test('openSearch sends exactly one site.openSearch request, only while connected, and touches no stored state', async () => {
+  const t = setup({ url: 'https://clinicaltrials.gov/study/NCT01234567', done: true });
+  await t.mount();
+  await t.act(() => t.vm.openSearch());
+  assert.deepEqual(t.calls, [{ type: 'site.openSearch', payload: {} }]);
+  assert.equal(t.local.data.size, 1, 'nothing new is stored');
+  t.state.connected = false;
+  await t.rerender();
+  await t.act(() => t.vm.openSearch());
+  assert.equal(t.calls.length, 1, 'nothing is sent while disconnected');
+  await t.unmount();
+});

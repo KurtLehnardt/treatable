@@ -4,7 +4,6 @@ import React from 'react';
 import TestRenderer,{act} from 'react-test-renderer';
 import {OverlayAssistant} from '../src/overlay-app';
 import {captureSiteActivations} from '../src/overlay-port';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 import {ONBOARDING_FLAG_KEY} from '../src/guide-state';
 import {ONBOARDING_VERSION} from '../src/guide-steps';
 import {UI_PREFS_KEY,DEFAULT_UI_PREFS} from '../src/ui-prefs';
@@ -26,7 +25,7 @@ function mount({study,prefs=DEFAULT_UI_PREFS}:{study?:string;prefs?:any}={}){
  const win:any=new EventTarget(),doc:any=new EventTarget(),parent={postMessage(){}};win.parent=parent;doc.visibilityState='visible';doc.hidden=false;
  const messages=new Events(),sent:any[]=[],url=study?`https://clinicaltrials.gov/study/${study}`:'https://clinicaltrials.gov/search?cond=Asthma';
  const snapshot={generation:'g1',url,nctIds:study?[]:[A,B],diagnostic:'Two cards',supported:!study};
- const sitePort:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){sent.push(structuredClone(v));if(v.type==='site.authenticate'){queueMicrotask(()=>{messages.emit({type:'site.ready',snapshot,filters:SITE_FILTERS,search:{},...(study?{study:{nctId:study}}:{})});messages.emit({type:'site.availability',options:{onlyAccepting:true,includeSoon:false,includeInvitation:false},loading:false})})}else queueMicrotask(()=>messages.emit({id:v.id,ok:true,result:v.type==='site.aiRank'?{started:true}:{active:true}}))}};
+ const sitePort:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){sent.push(structuredClone(v));if(v.type==='site.authenticate'){queueMicrotask(()=>{messages.emit({type:'site.ready',snapshot,...(study?{study:{nctId:study}}:{})})})}else queueMicrotask(()=>messages.emit({id:v.id,ok:true,result:v.type==='site.aiRank'?{started:true}:{active:true}}))}};
  const applyPort:any={onMessage:new Events(),onDisconnect:new Events(),postMessage(){},disconnect(){}};
  const local={get:async(key:string)=>key===ONBOARDING_FLAG_KEY?{[key]:ONBOARDING_VERSION}:{},set:async()=>{},remove:async()=>{}},storageWrites:any[]=[];
  const runtime={connect:({name}:{name:string})=>{if(name==='treatable.site.overlay.v1')return sitePort;if(name==='treatable-apply-v1')return applyPort;throw Error('unexpected port '+name)},sendMessage:async()=>({ok:true}),getURL:(v:string)=>`chrome-extension://test/${v}`};
@@ -121,6 +120,6 @@ test('a toolbar press that expands a compact popup expands its view too, and mal
   for(const bad of [{type:'site.view',hidden:'no',collapsed:false},{type:'site.view',hidden:false,collapsed:false,extra:1},{type:'site.view',collapsed:false}])await m.emit(bad);
   assert.equal(labelled('Expand search assistant'),1,'malformed reports change nothing');
   await m.emit({type:'site.view',hidden:false,collapsed:false});
-  assert.equal(labelled('Collapse search assistant'),1,'the view agrees with the expanded frame');assert.match(m.shown(),/Search the live registry/);
+  assert.equal(labelled('Collapse search assistant'),1,'the view agrees with the expanded frame');assert.match(m.shown(),/Studies on this page, best matches first/,'the ranking section is visible once expanded');assert.doesNotMatch(m.shown(),/Replay intro/,'Replay intro now lives in Settings, closed here');assert.doesNotMatch(m.shown(),/Search ClinicalTrials\.gov|More filters|Search the live registry/);
  }finally{m.restore()}
 });

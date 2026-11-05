@@ -23,7 +23,7 @@ function Summary({state,again}:{state:RankingState;again:(force:boolean)=>void})
  if(state.applied===false)return <><p role="status" className="notice">The website’s original order is shown.</p><div className="button-row"><button type="button" onClick={()=>again(false)}>Apply the ranking again</button></div></>;
  if(state.failure&&state.failure!=='CONFIRMATION_CANCELLED')return <><p role="status" className="notice">AI scoring did not run, so record checks set the order: studies that clearly do not fit moved to the end. <span className="fine">{failureCopy(state.failure)}</span></p><div className="button-row"><button type="button" onClick={()=>again(true)}>Try AI ranking again</button></div></>;
  if(state.note==='declined')return <><p role="status" className="notice">AI ranking is paused until you allow it. Record checks moved studies that clearly do not fit to the end.</p><div className="button-row"><button type="button" onClick={()=>again(true)}>Review and allow AI ranking</button></div></>;
- if(state.note==='no_condition')return <p role="status" className="notice">Search for a condition, or add condition terms in Settings → Your details, to rank by relevance. Record checks moved studies that clearly do not fit to the end.</p>;
+ if(state.note==='no_condition')return <p role="status" className="notice">Search for a condition on ClinicalTrials.gov, or add condition terms in Settings → Your details, to rank by relevance. Record checks moved studies that clearly do not fit to the end.</p>;
  return <p role="status" className="ranking-summary">{`Ranked ${n} ${n===1?'study':'studies'}: best matches first, studies that clearly do not fit last.`}</p>;
 }
 function Study({study}:{study:RankingStudyView}){
@@ -43,16 +43,18 @@ function HowRanked({state}:{state:RankingState}){
    {s.probabilities&&<ul className="trace-probabilities" aria-label="Probability of each relevance level">{levelShares(s.probabilities).map((share,i)=><li key={i} className="trace-probability"><span>{RANK_LEVELS[i]}</span><span className="trace-bar" aria-hidden="true"><span style={{width:share}}/></span><strong>{share}</strong></li>)}</ul>}</li>)}</ol></>}
  </details>;
 }
-export interface RankingSectionModel{aiRanking:AiRanking;ranking?:RankingState;waiting?:'intro'|'page';connected:boolean;busy:boolean;setAiRanking:(value:AiRanking)=>void;restore:()=>void;again:(force:boolean)=>void}
+export interface RankingSectionModel{aiRanking:AiRanking;ranking?:RankingState;waiting?:'intro'|'page';connected:boolean;busy:boolean;setAiRanking:(value:AiRanking)=>void;restore:()=>void;again:(force:boolean)=>void;searchHelp?:()=>void}
 /** AI-matched results on a ClinicalTrials.gov results page. The cards on the page are reordered and badged by the background. */
 export function RankingSection({vm}:{vm:RankingSectionModel}){
+ const help=vm.searchHelp?<button type="button" className="quiet" data-treatable-guide="search-help" onClick={vm.searchHelp}>Show me the website’s filters</button>:null;
  const state=vm.ranking,busy=!!state&&['checking','preparing','confirming','scoring'].includes(state.phase);
  return <section className="page-results ai-ranking" aria-labelledby="ai-ranking-heading"><div className="section-intro"><span className="eyebrow">AI-matched results</span><h2 id="ai-ranking-heading">Studies on this page, best matches first</h2></div>
   {!vm.connected?<p className="notice">AI-matched results start once Treatable is connected to a ClinicalTrials.gov results page.</p>:vm.aiRanking==='off'?<><p className="notice">AI-matched results are off, so the website keeps its own order and no match percentages are shown.</p><div className="button-row"><button type="button" disabled={!vm.connected} onClick={()=>vm.setAiRanking('on')}>Turn on AI-matched results</button></div></>:<>
    {(busy||!state)&&<Progress state={state} waiting={vm.waiting}/>}
    {state&&!busy&&state.phase!=='off'&&<Summary state={state} again={vm.again}/>}
-   {state?.phase==='done'&&state.applied!==false&&!!state.studies?.length&&<><ol className="ranking-list">{state.studies.map(s=><Study key={s.nctId} study={s}/>)}</ol><div className="button-row"><button type="button" className="quiet" disabled={!vm.connected||vm.busy} onClick={vm.restore}>Restore original order</button></div></>}
+   {state?.phase==='done'&&state.applied!==false&&!!state.studies?.length&&<><ol className="ranking-list">{state.studies.map(s=><Study key={s.nctId} study={s}/>)}</ol><div className="button-row"><button type="button" className="quiet" disabled={!vm.connected||vm.busy} onClick={vm.restore}>Restore original order</button>{help}</div></>}
    {state?.phase==='done'&&<HowRanked state={state}/>}
+   {help&&!(state?.phase==='done'&&state.applied!==false&&!!state.studies?.length)&&<div className="button-row">{help}</div>}
   </>}
  </section>;
 }

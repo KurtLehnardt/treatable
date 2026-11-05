@@ -25,6 +25,8 @@ export interface GuideViewModel {
   /** The search help needs the filters, so it is offered on search pages only. */
   canSearchHelp: boolean;
   startSearchHelp(): void;
+  /** Sends this tab to the ClinicalTrials.gov home page so the person can start a new search. The caller asks first when that would discard typed work. */
+  openSearch(): void;
   replayIntro(): void;
   /** Stops a running intro tour or search help quietly, closing its dialog. Used before another dialog needs the same dialog library. */
   stop(): void;
@@ -116,6 +118,10 @@ export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel 
           if (help) void hostRef.current.layout(help.restoreCollapsed).catch(() => {});
         }
       })();
+    },
+    openSearch() {
+      if (!hostRef.current.connected) return;
+      void hostRef.current.request('site.openSearch', {}).catch(() => {});
     },
     replayIntro() {
       if (!host.connected) return;

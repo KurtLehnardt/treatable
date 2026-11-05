@@ -15,5 +15,7 @@ export function parseLivePacket(v:unknown):LivePacket;
 export function parseLiveRequest(v:unknown):LiveRequest;
 export function parseLiveCatalog(v:unknown):LiveCatalog;
 export function parsePreparedLive(v:unknown):PreparedLive;
+export type FramePreparedLive=Omit<PreparedLive,'token'>;
+export function parseFramePreparedLive(v:unknown):FramePreparedLive;
 export function parseLiveResult(v:unknown):LiveResult;
-export function parseLiveReply(v:unknown,expectedId:string):{id:string;type:'result';ok:boolean;result?:LiveCatalog|PreparedLive|LiveResult;code?:string;error?:string};
+export function parseLiveReply(v:unknown,expectedId:string,frame?:boolean):{id:string;type:'result';ok:boolean;result?:LiveCatalog|PreparedLive|LiveResult;code?:string;error?:string};
