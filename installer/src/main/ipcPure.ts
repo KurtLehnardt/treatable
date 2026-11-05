@@ -943,14 +943,17 @@ export function macStartGrantedCommand(needsBuild: boolean): { command: string; 
 }
 
 /**
- * Whether an HTTP response body is Granted's own page — the app's <title> is
- * "<brand> — federal funding intelligence for everyone". Checked before
- * opening the browser so that some OTHER app already holding port 3000 is
- * never presented as Granted. (Granted's own dev error page doesn't match
- * either — callers word their messages to allow for that.)
+ * Whether an HTTP response body is the installed app's own page. Granted's
+ * <title> is "<brand> — federal funding intelligence for everyone"; an
+ * install made from this repository's macOS scripts (renamed in R-030, see
+ * findMacScript) serves Treatable, whose <title> starts "Treatable —", the
+ * page treatable-tray.sh itself looks for. Checked before opening the browser
+ * so that some OTHER app already holding the port is never presented as the
+ * app. (The app's own dev error page doesn't match either — callers word
+ * their messages to allow for that.)
  */
 export function looksLikeGranted(html: string): boolean {
-  return /federal funding intelligence/i.test(html);
+  return /federal funding intelligence/i.test(html) || /<title>\s*Treatable\s+—/i.test(html);
 }
 
 // ---------------------------------------------------------------------------

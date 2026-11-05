@@ -16,8 +16,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { buildTaskScript, TASK_WINDOW_CLOSED_MESSAGE } from "../ipcPure";
 import {
+  findMacScript,
   getSetupState,
   isProcessAlive,
+  MAC_OPEN_SCRIPTS,
+  MAC_TRAY_SCRIPTS,
   isStatusWindowAlive,
   macScriptPath,
   probeGranted,
@@ -185,6 +188,31 @@ describe("getSetupState / saveApiKeys against a real install folder", () => {
     const state = await getSetupState(join(install.root, "mac-tray-only"), SETTINGS);
     assert.equal(state.trayAvailable, process.platform === "darwin");
     assert.equal(state.appWindowAvailable, false);
+  });
+
+  test("an install made from this repository's macOS scripts (treatable-tray.sh and open-treatable.sh since R-030) counts the same way, on darwin only", async () => {
+    const dir = join(install.root, "mac-treatable", "scaffold");
+    await mkdir(join(dir, "scripts", "macos"), { recursive: true });
+    await writeFile(join(dir, "package.json"), "{}");
+    await writeFile(join(dir, "scripts", "macos", "treatable-tray.sh"), "");
+    await writeFile(join(dir, "scripts", "macos", "open-treatable.sh"), "");
+    const state = await getSetupState(join(install.root, "mac-treatable"), SETTINGS);
+    assert.equal(state.trayAvailable, process.platform === "darwin");
+    assert.equal(state.appWindowAvailable, process.platform === "darwin");
+  });
+
+  test("findMacScript: the install's script under whichever name it has, the newer one when both are there, null when neither is", async () => {
+    const dir = join(install.root, "mac-names", "scaffold");
+    const scripts = join(dir, "scripts", "macos");
+    await mkdir(scripts, { recursive: true });
+    assert.equal(findMacScript(dir, MAC_TRAY_SCRIPTS), null);
+    await writeFile(join(scripts, "granted-tray.sh"), "");
+    assert.equal(findMacScript(dir, MAC_TRAY_SCRIPTS), macScriptPath(dir, "granted-tray.sh"));
+    await writeFile(join(scripts, "treatable-tray.sh"), "");
+    assert.equal(findMacScript(dir, MAC_TRAY_SCRIPTS), macScriptPath(dir, "treatable-tray.sh"));
+    assert.equal(findMacScript(dir, MAC_OPEN_SCRIPTS), null, "the tray script is not the own-window opener");
+    await writeFile(join(scripts, "open-treatable.sh"), "");
+    assert.equal(findMacScript(dir, MAC_OPEN_SCRIPTS), macScriptPath(dir, "open-treatable.sh"));
   });
 
   test("saveOpenIn creates the settings file, round-trips through getSetupState, and keeps other settings", async () => {

@@ -21,9 +21,8 @@ name: scaffold-e2e
 # runs `npm run build` explicitly before `npm run e2e`.
 #
 # Built with no .env.local and no extra env vars, matching ci.yml's hermetic
-# philosophy. The suite is already designed to self-skip its flag-gated cases
-# (interview, sidebar sections, buckets, auto-fill, billing — see
-# playwright.config.ts's header comment) against a plain default build.
+# philosophy: the journeys stub every model and download route and fail any
+# request that leaves the local server (see scaffold/e2e/fixtures.ts).
 
 on:
   schedule:
