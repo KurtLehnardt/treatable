@@ -1,6 +1,7 @@
 name: ci
 
-# Typecheck + unit tests on every PR and every push to main.
+# Typecheck + unit tests on every PR and every push to main or main-preview
+# (the long-lived integration branch the redesign work lands on).
 #
 # Both commands are hermetic: the suite needs no API keys, no .env.local, no
 # network and no database (verified by running it with .env.local removed), so
@@ -24,7 +25,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, main-preview]
 
 permissions:
   contents: read
