@@ -125,6 +125,42 @@ test('study page: with typed work the search link asks first; Keep working stays
   assert.equal(counts.closed, 0, 'it does not close the overlay');
 });
 
+const searchGuide = (openSearch: () => unknown) => ({active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch} as any);
+test('study page: the search link is never usable while the overlay is not connected', async () => {
+  await mountView(view({connected: false, study: {nctId: 'NCT00000001'}, guide: searchGuide(() => {}), hasUnsavedWork: () => false}));
+  /* A disconnected overlay renders only its idle note, so the link is absent; if it were ever rendered it must be disabled. */
+  const l = link();
+  assert.ok(!l || l.disabled);
+  let opened = 0;
+  await mountView(view({connected: false, study: {nctId: 'NCT00000001'}, guide: searchGuide(() => {opened++}), hasUnsavedWork: () => false}));
+  for (const b of document.querySelectorAll('button')) if (b.textContent === OTHER) (b as HTMLButtonElement).click();
+  assert.equal(opened, 0);
+});
+test('study page: the leave confirm names the home page, not the search page', async () => {
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: searchGuide(() => {}), hasUnsavedWork: () => true}));
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.match(popup()!.textContent!, /home page/);
+  assert.doesNotMatch(popup()!.textContent!, /search page/);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+});
+test('study page: if the home page cannot be opened after Leave and clear, a short error is shown', async () => {
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: searchGuide(() => Promise.reject(new Error('nav failed'))), hasUnsavedWork: () => true}));
+  assert.equal(document.querySelector('.search-elsewhere [role="alert"]'), null);
+  await act(async () => {link()!.click()});
+  await settle();
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.match(document.querySelector('.search-elsewhere [role="alert"]')?.textContent ?? '', /Could not open the ClinicalTrials\.gov home page/);
+});
+test('study page: a failed open with nothing typed shows the same error', async () => {
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: searchGuide(() => Promise.reject(new Error('nav failed'))), hasUnsavedWork: () => false}));
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.ok(document.querySelector('.search-elsewhere [role="alert"]'));
+});
+
 test('the search link is only on study pages', async () => {
   await mountView(view({guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch() {}} as any}));
   assert.equal(link(), undefined);

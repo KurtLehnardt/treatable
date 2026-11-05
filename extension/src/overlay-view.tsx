@@ -17,6 +17,7 @@ function SettingsIcon() {return <svg width="20" height="20" viewBox="0 0 24 24" 
 export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewModel & UnsavedWorkHost; apply?: ReactNode; settings?: ReactNode; ranking?: ReactNode}) {
  const [settingsOpen, setSettingsOpen] = useState(false);
  const displayMode = vm.displayMode || 'popup', theme = vm.theme || 'system', resolvedTheme = useResolvedTheme(theme);
+ const [searchError, setSearchError] = useState(false);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
  /* Closing ends the session and clears what was typed. Ask first only when there is something to lose; otherwise close at once. */
@@ -36,14 +37,15 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
   } catch {latest.current.close()} finally {confirming.current = false}
  }).current;
  /* Leaving the study for the website's search page clears this study's drafts, so ask first, with the same rule as Close, when there is typed work. */
+ const goSearch = async () => {setSearchError(false); try {await latest.current.guide?.openSearch()} catch {if (alive.current) setSearchError(true)}};
  const requestOpenSearch = useRef(async () => {
   const host = latest.current;
   if (confirming.current) return;
-  if (!host.hasUnsavedWork?.()) {host.guide?.openSearch(); return}
+  if (!host.hasUnsavedWork?.()) {void goSearch(); return}
   confirming.current = true;
   if (host.guide?.active) host.guide.stop();
   try {
-   if (await confirmDiscard({theme: themeNow.current, title: 'Leave this study and clear what you typed?', text: 'Going to the ClinicalTrials.gov search page ends this study session. The details, drafts and notes you typed here are cleared and cannot be brought back. Nothing is saved.', confirmText: 'Leave and clear'})) latest.current.guide?.openSearch();
+   if (await confirmDiscard({theme: themeNow.current, title: 'Leave this study and clear what you typed?', text: 'Going to the ClinicalTrials.gov home page ends this study session. The details, drafts and notes you typed here are cleared and cannot be brought back. Nothing is saved.', confirmText: 'Leave and clear'})) void goSearch();
   } catch {/* Stay on the study. */} finally {confirming.current = false}
  }).current;
  useEffect(() => {alive.current = true; return () => {alive.current = false; closeDiscardDialog()}}, []);
@@ -84,7 +86,7 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
   {header}
   {settingsPanel}
   {vm.setAiRanking && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label></div>}
-  {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button></div>}
+  {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button>{searchError && <p role="alert" className="notice error">Could not open the ClinicalTrials.gov home page. Try again.</p>}</div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
   </div></>}
  </main>;

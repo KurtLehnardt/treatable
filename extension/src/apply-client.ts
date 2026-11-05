@@ -16,7 +16,7 @@ export class ApplyClient{
  private port?:ApplyPort;private pending=new Map<string,Pending>();nctId?:string;nctIds:string[]=[];candidates:StudyCandidate[]=[];expiresAt?:number;
  constructor(private runtime:ApplyRuntime,private newId:()=>string=()=>crypto.randomUUID()){}
  /** onRenew receives each new session deadline the background grants after renew(). */
- open(onEnd:()=>void,onRenew?:(expiresAt:number)=>void):Promise<string>{const p=this.runtime.connect({name:APPLY_CLIENT_PORT});this.port=p;return new Promise((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{if(!ready){this.disconnect();reject(new NativeOperationError('SESSION_ENDED'))}},5000);
+ open(onEnd:()=>void,onRenew?:(expiresAt:number)=>void,onTitles?:(candidates:StudyCandidate[])=>void):Promise<string>{const p=this.runtime.connect({name:APPLY_CLIENT_PORT});this.port=p;return new Promise((resolve,reject)=>{let ready=false;const timer=setTimeout(()=>{if(!ready){this.disconnect();reject(new NativeOperationError('SESSION_ENDED'))}},5000);
   p.onMessage.addListener((v:any)=>{if(this.port!==p||!v||typeof v!=='object')return;
    if(v.kind==='applyReady'){
     if(ready)return;const ids=Array.isArray(v.nctIds)?v.nctIds:typeof v.nctId==='string'?[v.nctId]:[];
@@ -27,6 +27,7 @@ export class ApplyClient{
     const titles=new Map<string,string>();for(const item of Array.isArray(v.studies)?v.studies:[])if(ids.includes(item?.nctId)&&typeof item.title==='string')titles.set(item.nctId,item.title.slice(0,1000));
     this.candidates=ids.map((nctId:string)=>({nctId,...(titles.has(nctId)?{title:titles.get(nctId)}:{})}));resolve(this.nctId??'');return;
    }
+   if(v.kind==='applyTitles'){if(!ready||!Array.isArray(v.studies))return;const titles=new Map<string,string>();for(const item of v.studies)if(this.nctIds.includes(item?.nctId)&&typeof item.title==='string'&&item.title)titles.set(item.nctId,item.title.slice(0,1000));if(!titles.size)return;this.candidates=this.candidates.map(c=>titles.has(c.nctId)&&!c.title?{...c,title:titles.get(c.nctId)}:c);onTitles?.(this.candidates);return}
    if(v.kind==='applyRenewed'){if(ready&&Number.isFinite(v.expiresAt)&&v.expiresAt>=(this.expiresAt??0)){this.expiresAt=v.expiresAt;onRenew?.(v.expiresAt)}return}
    if(v.kind==='applyEnded'){this.disconnect();onEnd();return}
    const reply=v.reply,id=reply?.id,item=typeof id==='string'?this.pending.get(id):undefined;if(!item)return;

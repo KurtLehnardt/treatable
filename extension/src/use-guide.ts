@@ -26,7 +26,7 @@ export interface GuideViewModel {
   canSearchHelp: boolean;
   startSearchHelp(): void;
   /** Sends this tab to the ClinicalTrials.gov home page so the person can start a new search. The caller asks first when that would discard typed work. */
-  openSearch(): void;
+  openSearch(): void | Promise<void>;
   replayIntro(): void;
   /** Stops a running intro tour or search help quietly, closing its dialog. Used before another dialog needs the same dialog library. */
   stop(): void;
@@ -121,7 +121,8 @@ export function useGuide(host: GuideHost, deps: GuideDeps = {}): GuideViewModel 
     },
     openSearch() {
       if (!hostRef.current.connected) return;
-      void hostRef.current.request('site.openSearch', {}).catch(() => {});
+      // The caller shows the failure; a rejection is its signal.
+      return hostRef.current.request('site.openSearch', {}).then(() => {});
     },
     replayIntro() {
       if (!host.connected) return;
