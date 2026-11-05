@@ -56,13 +56,18 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build variant A (dist/)
+      # The tests read all three outputs: dist/ (the default build, Version B
+      # presentation), dist-a/ (the Version A reference) and dist-b/.
+      - name: Build default (dist/)
         run: npm run build
+
+      - name: Build variant A (dist-a/)
+        run: npm run build:a
 
       - name: Build variant B (dist-b/)
         run: npm run build:b
 
-      # Called directly rather than via `npm test`, whose pretest would rebuild both variants.
+      # Called directly rather than via `npm test`, whose pretest would rebuild all three outputs.
       - name: Extension tests
         run: npx tsx --test tests/*.test.ts
 
@@ -123,6 +128,9 @@ jobs:
           regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA[A-Za-z0-9+/]+={0,2}$''']
           TOML
           # Synthetic test placeholders (sk-test-..., sk-abc..., gsk_Echo..., AbCd... patterns), not real keys.
+          # The 95e3a39 lines repeat the 5f12a09 lines: both commits are "chore: establish clean
+          # Granted source baseline" with the identical tree (41e4aad); 5f12a09 is on codex/treatable-mvp,
+          # where the baseline was triaged, and 95e3a39 is the same commit in main's history.
           cat > "$RUNNER_TEMP/baseline.gitleaksignore" <<'IGNORE'
           050a29391bdc017429437ba5b72287bf5eb503a8:extension/tests/gate.test.ts:generic-api-key:138
           5167bdb4566d5738f8ed47cda3ede06703cc7b7e:extension/tests/gate.test.ts:generic-api-key:17
@@ -144,6 +152,21 @@ jobs:
           5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/cloudClient.test.ts:generic-api-key:152
           5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/cloudModels.test.ts:generic-api-key:183
           5f12a0925b19850db8696aacbd67a86caf157ce1:scaffold/lib/llm/__tests__/keySource.test.ts:generic-api-key:36
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:installer/src/main/__tests__/reportProblem.integration.test.ts:generic-api-key:48
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:installer/src/main/__tests__/reportProblem.integration.test.ts:generic-api-key:51
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/app/api/llm/models/__tests__/handler.test.ts:generic-api-key:49
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/app/api/llm/models/__tests__/handler.test.ts:generic-api-key:55
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/competitors/__tests__/tuning.test.ts:generic-api-key:71
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/issueUrl.test.ts:generic-api-key:136
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:10
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:11
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:12
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:87
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:88
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/errorLog/__tests__/sanitize.test.ts:generic-api-key:94
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/llm/__tests__/cloudClient.test.ts:generic-api-key:152
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/llm/__tests__/cloudModels.test.ts:generic-api-key:183
+          95e3a39128b3621dc347f84e411c9c8bf6f97afc:scaffold/lib/llm/__tests__/keySource.test.ts:generic-api-key:36
           IGNORE
 
       # Every commit reachable from the checked-out ref (on a pull request, the merge commit).

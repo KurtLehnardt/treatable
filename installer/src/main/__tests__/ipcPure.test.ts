@@ -802,6 +802,11 @@ describe("looksLikeGranted", () => {
     assert.equal(looksLikeGranted("<title>Granted — federal funding intelligence for everyone</title>"), true);
     assert.equal(looksLikeGranted("<title>My other dev server</title>"), false);
   });
+
+  test("matches Treatable's <title> too (an install made from this repository's macOS scripts), but not a page that only mentions it", () => {
+    assert.equal(looksLikeGranted("<html><head><title>Treatable — Find a study. Find a next step.</title></head></html>"), true);
+    assert.equal(looksLikeGranted("<title>Notes</title><p>Treatable — a study finder</p>"), false);
+  });
 });
 
 describe("shSingleQuoted", () => {

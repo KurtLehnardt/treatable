@@ -15,7 +15,7 @@
  *
  * Nothing here touches anything real, by the same means every other macOS
  * integration test in this family uses: a throwaway LaunchAgent label
- * (GRANTED_LAUNCH_LABEL) whose plist lives in a temp folder, temp settings and
+ * (TREATABLE_LAUNCH_LABEL) whose plist lives in a temp folder, temp settings and
  * log folders, a temp TMPDIR, no menu-bar helper, a stand-in for `open`, and a
  * port no real Granted uses. The user's own install, LaunchAgents, settings and
  * logs are never reachable from here.
@@ -41,13 +41,16 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(process.cwd(), "..");
 const INSTALL_SCRIPT = join(REPO_ROOT, "install-macos.sh");
 const MACOS_SCRIPTS = join(REPO_ROOT, "scaffold", "scripts", "macos");
+const RUNTIME_MJS = join(REPO_ROOT, "scaffold", "lib", "runtime.mjs");
 const UPDATE_SCRIPT = join(MACOS_SCRIPTS, "update.sh");
 const APP_INSTALL_TS = join(REPO_ROOT, "scaffold", "lib", "appUpdate", "install.ts");
 // Not 3973 (macUninstall), 3975 (macLauncher), 3977 (macTray), 3978
 // (installRefMac) or 3979 (installRef): a real Granted, or another test's fake
 // one, must never be mistaken for this one's.
 const PORT = 3971;
-const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyone</title>";
+// The page the fake server serves: what the macOS scripts look for since
+// R-030 (treatable-tray.sh's probe_server wants "Treatable").
+const TREATABLE_HTML = "<title>Treatable — Find a study. Find a next step.</title>";
 // Stand-in for `next build`: writes the .next/BUILD_ID that every launcher
 // (and installer/src/main/ipcPure.ts's needsProductionBuild) treats as "a
 // production build is present", so the real build-then-start flow is
@@ -112,32 +115,32 @@ test(
     assert.ok(stop > 0, "Granted is stopped");
     assert.ok(marker < stop && dirty < stop, "both refusals are decided before anything is stopped");
     assert.ok(stop < install, "and Granted is stopped before the install step runs");
-    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/granted-installer"/);
+    assert.match(code, /MARKER="\$INSTALL_DIR\/\.git\/treatable-installer"/);
 
-    // Stopping and starting Granted are granted-tray.sh's business, never
+    // Stopping and starting Granted are treatable-tray.sh's business, never
     // reimplemented here (no launchctl of its own).
     assert.match(code, /"\$TRAY_SCRIPT" start --port "\$PORT"/);
-    assert.ok(!code.includes("launchctl"), "the LaunchAgent is granted-tray.sh's business");
+    assert.ok(!code.includes("launchctl"), "the LaunchAgent is treatable-tray.sh's business");
 
     // The rollback: back to the head this run started from, and only called
     // "put back" once the restore's own npm ci succeeded.
     assert.match(code, /PREV_HEAD="\$\(git -C "\$INSTALL_DIR" rev-parse HEAD/);
     assert.match(code, /checkout --quiet "\$PREV_HEAD"/);
-    assert.match(code, /RESTORED=" Granted v\$FROM was put back\."/);
+    assert.match(code, /RESTORED=" Treatable v\$FROM was put back\."/);
     const restore = code.indexOf('"$NPM_BIN" ci --no-audit --no-fund');
-    assert.ok(restore > 0 && restore < code.indexOf('RESTORED=" Granted'), "npm ci runs before it claims the version is back");
+    assert.ok(restore > 0 && restore < code.indexOf('RESTORED=" Treatable'), "npm ci runs before it claims the version is back");
 
     // The status file is the one the app already reads, in the folder the
     // settings file is in — not a new protocol and not a new location.
     assert.match(code, /STATUS_FILE="\$SUPPORT_DIR\/update-status\.json"/);
-    assert.match(code, /GRANTED_SETTINGS_PATH:-\$HOME\/Library\/Application Support\/Granted\/settings\.json/);
+    assert.match(code, /TREATABLE_SETTINGS_PATH:-\$HOME\/Library\/Application Support\/Treatable\/settings\.json/);
     assert.match(code, /"state":"%s","from":%s,"to":%s,"message":%s,"at":"%s"/);
 
     // It runs from a copy of itself, outside the folder it is about to switch
     // over (see the header), and that copy is removed again.
     assert.match(code, /exec \/bin\/bash "\$SELF_COPY" "\$@"/);
-    assert.match(code, /GRANTED_UPDATE_REEXEC/);
-    assert.match(code, /rm -f -- "\$GRANTED_UPDATE_SELF_COPY"/);
+    assert.match(code, /TREATABLE_UPDATE_REEXEC/);
+    assert.match(code, /rm -f -- "\$TREATABLE_UPDATE_SELF_COPY"/);
 
     // The release tag is matched with bash's own `=~`, never a `printf | grep
     // -q` pipeline: `grep -q` exits on its first match, which can SIGPIPE the
@@ -230,7 +233,7 @@ describe(
       );
       writeFileSync(
         join(scaffold, "server.js"),
-        `require("node:http").createServer((q, r) => r.end(${JSON.stringify(GRANTED_HTML)})).listen(Number(process.env.PORT), "127.0.0.1");`,
+        `require("node:http").createServer((q, r) => r.end(${JSON.stringify(TREATABLE_HTML)})).listen(Number(process.env.PORT), "127.0.0.1");`,
       );
       writeFileSync(join(scaffold, "build.js"), FAKE_BUILD);
       // The real repo gitignores the build output; the fake must too, or the
@@ -247,7 +250,7 @@ describe(
 
     /**
      * A stand-in for the GitHub repo, carrying the REAL macOS scripts (so the
-     * install made from it has the real update.sh and granted-tray.sh in it):
+     * install made from it has the real update.sh and treatable-tray.sh in it):
      * v0.1.0, v0.2.0, then main moved on to 0.3.0-dev.
      */
     function makeSource(): string {
@@ -256,6 +259,10 @@ describe(
       for (const f of readdirSync(MACOS_SCRIPTS).filter((f) => f.endsWith(".sh"))) {
         writeFileSync(join(source, "scaffold", "scripts", "macos", f), readFileSync(join(MACOS_SCRIPTS, f), "utf8"));
       }
+      // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts
+      // read the app's default port (APP_PORT) from it when no --port is given.
+      mkdirSync(join(source, "scaffold", "lib"), { recursive: true });
+      writeFileSync(join(source, "scaffold", "lib", "runtime.mjs"), readFileSync(RUNTIME_MJS, "utf8"));
       git(source, "init", "-q", "-b", "main");
       commitVersion(source, "0.1.0", "v0.1.0");
       commitVersion(source, "0.2.0", "v0.2.0");
@@ -278,18 +285,25 @@ describe(
       // A stand-in for `open`, so nothing a test opens reaches a real browser.
       const openCmd = join(base, "fake-open.sh");
       await writeFile(openCmd, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(join(base, "opened.log"))}\n`, { mode: 0o755 });
-      const label = `com.granted.test.${randomUUID()}`;
+      const label = `com.treatable.test.${randomUUID()}`;
       const source = options.source ?? makeSource();
       const env: Record<string, string> = {
-        GRANTED_REPO_URL: source,
-        GRANTED_INSTALL_DIR: "granted",
-        GRANTED_LAUNCH_LABEL: label,
-        GRANTED_LAUNCH_AGENTS_DIR: launchAgentsDir,
-        GRANTED_LOG_DIR: logDir,
-        GRANTED_SETTINGS_PATH: join(supportDir, "settings.json"),
-        GRANTED_MENUBAR_HELPER: "none",
-        GRANTED_APP_BROWSER: "none",
-        GRANTED_OPEN_CMD: openCmd,
+        TREATABLE_REPO_URL: source,
+        TREATABLE_INSTALL_DIR: "granted",
+        TREATABLE_LAUNCH_LABEL: label,
+        TREATABLE_LAUNCH_AGENTS_DIR: launchAgentsDir,
+        TREATABLE_LOG_DIR: logDir,
+        TREATABLE_SETTINGS_PATH: join(supportDir, "settings.json"),
+        TREATABLE_MENUBAR_HELPER: "none",
+        TREATABLE_APP_BROWSER: "none",
+        TREATABLE_OPEN_CMD: openCmd,
+        // install-macos.sh ends by creating the ~/Applications launcher (R-030):
+        // a throwaway folder, a throwaway `defaults` domain, no Dock restart and
+        // no alert, so a test never creates a real launcher or touches the Dock.
+        TREATABLE_APPLICATIONS_DIR: join(base, "Applications"),
+        TREATABLE_DOCK_DOMAIN: join(base, "testdock"),
+        TREATABLE_DOCK_RELOAD_CMD: "none",
+        TREATABLE_LAUNCHER_ALERT: "none",
         // Every temporary file either script makes lands in here, so a test can
         // assert that they were all cleaned up again.
         TMPDIR: tmp,
@@ -305,7 +319,7 @@ describe(
         scaffold: join(installDir, "scaffold"),
         source,
         updateScript: join(installDir, "scaffold", "scripts", "macos", "update.sh"),
-        trayScript: join(installDir, "scaffold", "scripts", "macos", "granted-tray.sh"),
+        trayScript: join(installDir, "scaffold", "scripts", "macos", "treatable-tray.sh"),
         label,
         supportDir,
         logDir,
@@ -331,9 +345,9 @@ describe(
     /** Runs the real install-macos.sh in the box's home; returns its status and console output. */
     async function runInstall(box: Box, ref: string | null, extra: Record<string, string> = {}): Promise<{ state: string | null; message: string | null; output: string }> {
       const status = join(box.root, `install-status-${seq++}.json`);
-      const env: NodeJS.ProcessEnv = { ...process.env, ...box.env, GRANTED_STATUS_FILE: status, GRANTED_PORT: String(PORT), ...extra };
-      if (ref) env["GRANTED_REF"] = ref;
-      else delete env["GRANTED_REF"];
+      const env: NodeJS.ProcessEnv = { ...process.env, ...box.env, TREATABLE_STATUS_FILE: status, TREATABLE_PORT: String(PORT), ...extra };
+      if (ref) env["TREATABLE_REF"] = ref;
+      else delete env["TREATABLE_REF"];
       let output = "";
       try {
         const r = await execFileAsync("bash", [INSTALL_SCRIPT], { cwd: box.home, env, timeout: 240_000 });
@@ -348,7 +362,7 @@ describe(
 
     /**
      * Runs the INSTALLED copy's own update.sh — what Settings → Update starts —
-     * and returns the update-status.json it wrote. GRANTED_INSTALL_SCRIPT points
+     * and returns the update-status.json it wrote. TREATABLE_INSTALL_SCRIPT points
      * it at this repo's install-macos.sh instead of downloading the release's,
      * which is the same override update.ps1's tests use.
      */
@@ -362,7 +376,7 @@ describe(
       try {
         const r = await execFileAsync("/bin/bash", [box.updateScript, "--ref", ref, "--port", String(PORT), ...args], {
           cwd: box.home,
-          env: { ...process.env, ...box.env, GRANTED_INSTALL_SCRIPT: INSTALL_SCRIPT, ...extraEnv },
+          env: { ...process.env, ...box.env, TREATABLE_INSTALL_SCRIPT: INSTALL_SCRIPT, ...extraEnv },
           timeout: 300_000,
         });
         output = r.stdout + r.stderr;
@@ -445,7 +459,7 @@ describe(
         );
         assert.ok(box.agentLoaded(), "and back under its LaunchAgent");
         // Really stopped and started again, not merely still answering: the
-        // server log this run wrote was rotated aside, which granted-tray.sh
+        // server log this run wrote was rotated aside, which treatable-tray.sh
         // only does when it is starting a server that was not there.
         assert.ok(existsSync(join(box.logDir, `server-${PORT}.log.previous`)), "the server that was running really was stopped and started again");
         // The install's own output was kept, and the status timestamp is
@@ -454,7 +468,7 @@ describe(
         assert.match(String(status["at"]), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         // Everything it made outside the install was cleaned up again: the copy
         // of itself, the downloaded install script, the install's status file.
-        const left = readdirSync(box.tmp).filter((f) => f.startsWith("granted-update"));
+        const left = readdirSync(box.tmp).filter((f) => f.startsWith("treatable-update"));
         assert.deepEqual(left, [], `temporary files left behind: ${left.join(", ")}`);
       } finally {
         await stopGranted(box);
@@ -509,9 +523,9 @@ describe(
           // What install-macos.sh's update path does, reduced to the one step
           // this test is about: move the install to the release it was asked
           // for, and report "done" in its own status file.
-          `git -C ${JSON.stringify(box.installDir)} -c advice.detachedHead=false checkout --quiet "refs/tags/$GRANTED_REF"`,
-          `printf 'now at %s\\n' "$GRANTED_REF"`,
-          `printf '{"state":"done","message":""}' > "$GRANTED_STATUS_FILE"`,
+          `git -C ${JSON.stringify(box.installDir)} -c advice.detachedHead=false checkout --quiet "refs/tags/$TREATABLE_REF"`,
+          `printf 'now at %s\\n' "$TREATABLE_REF"`,
+          `printf '{"state":"done","message":""}' > "$TREATABLE_STATUS_FILE"`,
           "",
         ].join("\n"),
         { mode: 0o755 },
@@ -527,12 +541,12 @@ describe(
           ...Array.from({ length: 1200 }, (_, i) => `a completely different updater, line ${i} "`),
         ].join("\n") + "\n";
 
-      const running = update(box, "v0.2.0", ["--no-restart"], { GRANTED_INSTALL_SCRIPT: standIn });
+      const running = update(box, "v0.2.0", ["--no-restart"], { TREATABLE_INSTALL_SCRIPT: standIn });
       await until(async () => existsSync(ready), (there) => there, 120_000);
       assert.ok(existsSync(ready), "the install step is running");
       // It really is running from a copy of itself outside the install: that
       // copy is in the temporary folder at this very moment.
-      const copies = readdirSync(box.tmp).filter((f) => f.startsWith("granted-update."));
+      const copies = readdirSync(box.tmp).filter((f) => f.startsWith("treatable-update."));
       assert.equal(copies.length, 1, `the copy it handed over to: ${readdirSync(box.tmp).join(", ") || "(nothing in TMPDIR)"}`);
       // Truncate and rewrite, which keeps the inode — `cat newcontent >
       // update.sh`, not git's unlink-and-recreate.
@@ -550,7 +564,7 @@ describe(
       // It really was the installed script that was rewritten under it.
       assert.match(readFileSync(box.updateScript, "utf8"), /a completely different updater/);
       // And the copy it ran from removed itself afterwards, as every other run does.
-      assert.deepEqual(readdirSync(box.tmp).filter((f) => f.startsWith("granted-update")), []);
+      assert.deepEqual(readdirSync(box.tmp).filter((f) => f.startsWith("treatable-update")), []);
     });
 
     test("REGRESSION: a failed update puts the previous version back, and says so", async () => {
@@ -584,7 +598,7 @@ describe(
       const { status, output } = await update(box, "v0.2.1");
       try {
         assert.equal(status["state"], "error", `${JSON.stringify(status)}\n${output}`);
-        assert.match(String(status["message"]), /The update to v0\.2\.1 didn't finish: .*Granted v0\.1\.0 was put back\. Details are in /);
+        assert.match(String(status["message"]), /The update to v0\.2\.1 didn't finish: .*Treatable v0\.1\.0 was put back\. Details are in /);
         // The install is the previous release again, whole: the tag it was on,
         // its version, and a working tree with nothing left over.
         assert.equal(versionIn(box), "0.1.0");
@@ -614,7 +628,7 @@ describe(
       try {
         const { status, output } = await update(box, "v0.2.0");
         assert.equal(status["state"], "error", `${JSON.stringify(status)}\n${output}`);
-        assert.match(String(status["message"]), /Granted wasn't updated to v0\.2\.0: it has local changes in /);
+        assert.match(String(status["message"]), /Treatable wasn't updated to v0\.2\.0: it has local changes in /);
         assert.equal(versionIn(box), "0.1.0", "not switched while dirty");
         assert.equal(await probeGranted(`http://127.0.0.1:${PORT}/`, 3000), "granted", "the running Granted wasn't stopped");
         assert.ok(box.agentLoaded(), "and its LaunchAgent is still loaded");
@@ -627,12 +641,12 @@ describe(
 
     test("a folder the installer didn't make is never switched to another release, and nothing is stopped for it", async () => {
       const box = await makeBox();
-      await rm(join(box.installDir, ".git", "granted-installer"), { force: true });
+      await rm(join(box.installDir, ".git", "treatable-installer"), { force: true });
       await startGranted(box);
       try {
         const { status } = await update(box, "v0.2.0");
         assert.equal(status["state"], "error", JSON.stringify(status));
-        assert.match(String(status["message"]), /Granted wasn't updated to v0\.2\.0: this folder wasn't installed by the Granted installer\./);
+        assert.match(String(status["message"]), /Treatable wasn't updated to v0\.2\.0: this folder wasn't installed by the Treatable installer\./);
         assert.equal(versionIn(box), "0.1.0");
         assert.equal(await probeGranted(`http://127.0.0.1:${PORT}/`, 3000), "granted", "someone's own checkout keeps running");
       } finally {
@@ -650,7 +664,7 @@ describe(
       git(source, "checkout", "-q", "main");
       const { status, output } = await update(box, "v0.1.5", ["--no-restart"]);
       assert.equal(status["state"], "error", `${JSON.stringify(status)}\n${output}`);
-      assert.match(String(status["message"]), /Granted wasn't updated to v0\.1\.5: Not changing .* it already has a newer Granted \(0\.2\.0\)\./);
+      assert.match(String(status["message"]), /Treatable wasn't updated to v0\.1\.5: Not changing .* it already has a newer Treatable \(0\.2\.0\)\./);
       // The reason is quoted with the console colour codes taken off.
       assert.ok(!String(status["message"]).includes("\u001b"), "no console colour codes in what the page shows");
       assert.equal(versionIn(box), "0.2.0", "not moved back");
