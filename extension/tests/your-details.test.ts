@@ -113,7 +113,8 @@ test('canary: Generate study brief through the real broker and native helper (fa
   for(const [where,value] of Object.entries(outbound))assert.deepEqual(leaks(value),[],where);
   assert.equal(fetchCalls.length,0);assert.ok(native.sent.length>=2&&host.frames.length>=2&&provider.length>=2,'the checked channels were actually used');
   await act(async()=>vm.saveReminder());assert.deepEqual(leaks(downloads),[],'.ics reminder');
-  await act(async()=>ref.vm!.end());assert.deepEqual(store.get(),BLANK_DETAILS,'End and clear my details wipes Your details');assert.equal(ref.vm!.phase,'ended');
+  /* The study page has no End and clear control any more: closing Treatable ends the session, and the first test in this file shows that wipes Your details. */
+  await act(async()=>{brokerPorts.at(-1).disconnect()});await settle();assert.equal(ref.vm!.phase,'ended','a session end clears the study section');assert.equal(ref.vm!.draft,undefined);assert.equal(ref.vm!.callScript,'');
  }finally{if(renderer)act(()=>renderer!.unmount());try{host?.child.stdin.end()}catch{}host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true})}
 });
 
@@ -132,19 +133,19 @@ test('canary: the in-process test adapter flow keeps details out of every port m
   assert.equal(ref.vm!.result!.mode,'test');assert.match(JSON.stringify(renderer.toJSON()),/Test run\./);assert.doesNotMatch(JSON.stringify(renderer.toJSON()),/test adapter, not a live API call/);
   assert.ok(sent.some(v=>v.request?.type==='executeStudyBrief'));assert.deepEqual(leaks(sent),[]);assert.deepEqual(leaks(ref.vm!.activity),[]);
   assert.deepEqual(leaks(ref.vm!.draft!.body),MARKERS);assert.deepEqual(leaks(ref.vm!.callScript),MARKERS);assert.deepEqual(leaks(ref.vm!.followUpMessage),MARKERS);
-  const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Your call script')&&text.includes('Follow-up message'));
+  await act(async()=>ref.vm!.goStep('email'));const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Your call script')&&text.includes('Follow-up message'),'the email step holds them, under After you send');
  }finally{act(()=>renderer.unmount())}
 });
 
 test('edited call script and follow-up message survive detail changes, flag them as outdated, and reset on request',async()=>{
- const store=sessionDetailsStore(),ref:{vm?:ApplyController}={},r=normalizeApplyRecord(raw(),Date.now()),b=normalizeStudyBrief(raw(),Date.now()),expires=Date.now()+300000;
- const env:ApplyEnv={runtime:{connect:()=>{const p:any={onMessage:new Events(),onDisconnect:new Events(),disconnect(){},postMessage(v:any){if(v.kind==='studyBriefRecord')queueMicrotask(()=>p.onMessage.emit({reply:{id:v.id,type:'briefRecords',ok:true,records:[r],briefs:[b]}}))}};queueMicrotask(()=>p.onMessage.emit({kind:'applyReady',nctId:ID,nctIds:[ID],expiresAt:expires}));return p}},loadZips:async()=>({zips:{}}),userActivated:()=>true,today:()=>new Date(),now:()=>Date.now(),copyText:async()=>{},download:()=>{},openMailto:()=>{}};
+ const store=sessionDetailsStore(),ref:{vm?:ApplyController}={},r=normalizeApplyRecord(raw(),Date.now()),b=normalizeStudyBrief(raw(),Date.now()),expires=Date.now()+300000,ports:any[]=[];
+ const env:ApplyEnv={runtime:{connect:()=>{const p:any={onMessage:new Events(),onDisconnect:new Events(),disconnect(){},postMessage(v:any){if(v.kind==='studyBriefRecord')queueMicrotask(()=>p.onMessage.emit({reply:{id:v.id,type:'briefRecords',ok:true,records:[r],briefs:[b]}}))}};queueMicrotask(()=>p.onMessage.emit({kind:'applyReady',nctId:ID,nctIds:[ID],expiresAt:expires}));ports.push(p);return p}},loadZips:async()=>({zips:{}}),userActivated:()=>true,today:()=>new Date(),now:()=>Date.now(),copyText:async()=>{},download:()=>{},openMailto:()=>{}};
  function Probe(){const vm=useApply(ID,env);ref.vm=vm;return null}
  let renderer!:TestRenderer.ReactTestRenderer;await act(async()=>{renderer=TestRenderer.create(React.createElement(DetailsContext.Provider,{value:store},React.createElement(Probe)))});
  try{await until(()=>ref.vm?.plan,'plan');
   await act(async()=>{ref.vm!.editCallScript('My own script');ref.vm!.editFollowUp('My own follow-up')});
   await act(async()=>store.set({name:NAME}));assert.equal(ref.vm!.callScript,'My own script');assert.equal(ref.vm!.followUpMessage,'My own follow-up');assert.equal(ref.vm!.callScriptOutdated,true);assert.equal(ref.vm!.followUpOutdated,true);
   await act(async()=>{ref.vm!.resetCallScript();ref.vm!.resetFollowUp()});assert.ok(ref.vm!.callScript.includes(NAME));assert.ok(ref.vm!.followUpMessage.includes(NAME));assert.equal(ref.vm!.callScriptEdited,false);
-  await act(async()=>ref.vm!.end());assert.deepEqual(store.get(),BLANK_DETAILS);assert.equal(ref.vm!.callScript,'');assert.equal(ref.vm!.followUpMessage,'');
+  await act(async()=>{ports.at(-1).onMessage.emit({kind:'applyEnded'})});await settle();assert.equal(ref.vm!.phase,'ended');assert.equal(ref.vm!.callScript,'');assert.equal(ref.vm!.followUpMessage,'');
  }finally{act(()=>renderer.unmount())}
 });

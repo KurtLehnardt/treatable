@@ -74,15 +74,16 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  }), [vm.onOutsideClick]);
  useEffect(() => {if (vm.ended) closeDiscardDialog()}, [vm.ended]);
  /* On a study page in the popup, the first open lands on the study heading. It runs once per connection, and only when nothing else owns
-  * focus: the close question or a tour dialog would otherwise lose it to the page behind. Sidebar leaves the website's focus alone. */
+  * focus: the close question or a tour dialog would otherwise lose it to the page behind. Sidebar leaves the website's focus alone.
+  * While the popup is hidden nothing can take focus, so the one landing waits until the toolbar button shows it again. */
  const focusedStudy = useRef(false), hasApply = !!apply;
  useEffect(() => {
   if (!vm.connected) {focusedStudy.current = false; return}
-  if (focusedStudy.current || !hasApply) return;
+  if (focusedStudy.current || !hasApply || vm.hidden) return;
   focusedStudy.current = true;
   if (confirming.current || vm.guide?.active || vm.collapsed || vm.ended || (vm.displayMode || 'popup') !== 'popup') return;
   if (typeof document !== 'undefined' && typeof document.getElementById === 'function') (document.getElementById('apply-heading') as HTMLElement | null)?.focus();
- }, [vm.connected, hasApply]);
+ }, [vm.connected, hasApply, vm.hidden]);
  useEffect(() => {const key = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); if (confirming.current || event.repeat) return; if (settingsOpen) setSettingsOpen(false); else void requestClose()}}; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)}, [settingsOpen]);
  /* Before the toolbar button connects this frame, or after the session ends, one sentence says what to do instead of a form that cannot be used. */
  const idle = !vm.connected || vm.ended;

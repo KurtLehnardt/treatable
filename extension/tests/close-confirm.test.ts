@@ -339,10 +339,11 @@ test('the packaged stylesheet is used, so the frame needs no style element', asy
 
 /* The whole production overlay: typed fields, edited drafts and "Your details" make Escape and Close ask; nothing typed does not. */
 const ID = 'NCT99999990';
-const rawStudy = () => ({protocolSection: {identificationModule: {nctId: ID, briefTitle: 'Synthetic public study for the close confirmation', orgStudyIdInfo: {id: 'SYNTHETIC-ONLY'}}, descriptionModule: {briefSummary: 'A public synthetic fixture.', detailedDescription: 'Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection.'}, designModule: {designInfo: {allocation: 'RANDOMIZED'}}, statusModule: {overallStatus: 'RECRUITING'}, eligibilityModule: {}, contactsLocationsModule: {centralContacts: [{name: 'Study Coordinator', phone: '303-555-0100', email: 'coordinator@example.org'}], locations: [{facility: 'Synthetic Clinic', status: 'RECRUITING', city: 'Example City', state: 'Colorado', country: 'United States', contacts: []}]}}});
+const rawStudy = (id = ID) => ({protocolSection: {identificationModule: {nctId: id, briefTitle: 'Synthetic public study for the close confirmation', orgStudyIdInfo: {id: 'SYNTHETIC-ONLY'}}, descriptionModule: {briefSummary: 'A public synthetic fixture.', detailedDescription: 'Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection.'}, designModule: {designInfo: {allocation: 'RANDOMIZED'}}, statusModule: {overallStatus: 'RECRUITING'}, eligibilityModule: {}, contactsLocationsModule: {centralContacts: [{name: 'Study Coordinator', phone: '303-555-0100', email: 'coordinator@example.org'}], locations: [{facility: 'Synthetic Clinic', status: 'RECRUITING', city: 'Example City', state: 'Colorado', country: 'United States', contacts: []}]}}});
 class Events {listeners: Array<(v?: any) => void> = []; addListener = (f: (v?: any) => void) => {this.listeners.push(f)}; emit = (v?: any) => {for (const f of [...this.listeners]) f(v)}}
-/** `tour: false` marks the first-run intro as already seen (the default); `tour: true` lets it start and show its first dialog. */
-async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
+/** `tour: false` marks the first-run intro as already seen (the default); `tour: true` lets it start and show its first dialog.
+ * `step` is the study step opened after loading, through the step list; the email step (the default) holds the typed fields. */
+async function mountAssistant({tour = false, step = 'Email'}: {tour?: boolean; step?: 'Understand' | 'Contact' | 'Email'} = {}) {
   const {captureSiteActivations} = await import('../src/overlay-port');
   const {OverlayAssistant} = await import('../src/overlay-app');
   const {normalizeApplyRecord, normalizeStudyBrief} = await import('../shared/apply-record.mjs');
@@ -352,15 +353,19 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
     if (v.type === 'site.authenticate') messages.emit({type: 'site.ready', snapshot: {generation: 'g', url: `https://clinicaltrials.gov/study/${ID}`, nctIds: [], diagnostic: '', supported: true}, study: {nctId: ID}});
     else messages.emit({id: v.id, ok: true, result: {active: true}});
   }};
-  const applyPort: any = {onMessage: new Events(), onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {
-    if (v.kind === 'studyBriefRecord') queueMicrotask(() => applyPort.onMessage.emit({reply: {id: v.id, type: 'briefRecords', ok: true, records: [normalizeApplyRecord(rawStudy(), now)], briefs: [normalizeStudyBrief(rawStudy(), now)], purposes: ['A public synthetic fixture.']}}));
-  }};
+  /* One apply port per connection, for the study the website shows at that moment (switchStudy changes it). */
+  let current = ID;
+  const applyPort = () => {const port: any = {onMessage: new Events(), onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {
+    if (v.kind === 'studyBriefRecord') queueMicrotask(() => port.onMessage.emit({reply: {id: v.id, type: 'briefRecords', ok: true, records: [normalizeApplyRecord(rawStudy(v.nctIds[0]), now)], briefs: [normalizeStudyBrief(rawStudy(v.nctIds[0]), now)], purposes: ['A public synthetic fixture.']}}));
+  }}; return port};
   const runtime = {connect: ({name}: {name: string}) => {
     if (name === 'treatable.site.overlay.v1') return sitePort;
-    if (name === 'treatable-apply-v1') {queueMicrotask(() => applyPort.onMessage.emit({kind: 'applyReady', nctId: ID, nctIds: [ID], expiresAt: now + 300000, studies: [{nctId: ID, title: 'Synthetic study'}]})); return applyPort}
+    if (name === 'treatable-apply-v1') {const port = applyPort(), id = current; queueMicrotask(() => port.onMessage.emit({kind: 'applyReady', nctId: id, nctIds: [id], expiresAt: now + 300000, studies: [{nctId: id, title: 'Synthetic study'}]})); return port}
     throw new Error('unexpected port ' + name);
   }, sendMessage: async () => ({ok: true}), getURL: (path: string) => `chrome-extension://test/${path}`};
-  const local = {get: async (key: string) => (tour ? {} : {[key]: 1}), set: async () => {}, remove: async () => {}};
+  /* The stored intro version must be the current one to count as seen; an older one replays the intro. */
+  const {ONBOARDING_VERSION} = await import('../src/guide-steps');
+  const local = {get: async (key: string) => (tour ? {} : {[key]: ONBOARDING_VERSION}), set: async () => {}, remove: async () => {}};
   Object.defineProperty(globalThis, 'chrome', {configurable: true, value: {runtime, storage: {local, session: {get: async () => ({}), set: async () => {}, remove: async () => {}}}}});
   captureSiteActivations(window);
   const container = document.createElement('div');
@@ -374,11 +379,14 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
     window.dispatchEvent(event);
   });
   await act(async () => {await settle(6)});
+  if (step !== 'Understand') await act(async () => {stepButton(step).click()});
   const closes = () => sent.filter(v => v.type === 'site.close').length;
   /* The background relaying a press on the page outside the popup over the authenticated port. */
   const outside = () => act(async () => {messages.emit({type: 'site.outsideClick'}); await settle(2)});
   const hides = () => sent.filter(v => v.type === 'site.hide');
-  return {sent, closes, outside, hides};
+  /* The website moved to another study page in the same tab. */
+  const switchStudy = (id: string) => act(async () => {current = id; messages.emit({type: 'site.study', study: {nctId: id}}); await settle(6)});
+  return {sent, closes, outside, hides, switchStudy};
 }
 async function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = element instanceof window.HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
@@ -387,7 +395,9 @@ async function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: 
     element.dispatchEvent(new window.Event('input', {bubbles: true}));
   });
 }
-const personalizeName = () => document.querySelector('.apply-local-details input') as HTMLInputElement;
+const personalizeName = () => document.querySelector('[data-apply-field="name"]') as HTMLInputElement;
+/** A button in the study step list: Understand, Contact or Email. */
+const stepButton = (label: string) => [...document.querySelectorAll('.study-steps button')].find(node => (node.textContent || '').includes(label)) as HTMLButtonElement;
 const emailDraft = () => document.querySelector('textarea.apply-email') as HTMLTextAreaElement;
 const sessionEnded = () => /Session ended/.test(document.body.textContent || '');
 
@@ -612,6 +622,107 @@ test('opening a study page in the popup puts focus on the study heading, once', 
   (document.activeElement as HTMLElement).blur();
   await page.rerender(view({}), {apply: studySection('another-study')});
   assert.notEqual(document.activeElement?.id, 'apply-heading', 'moving to another study on the site does not pull focus again');
+});
+
+const guideStub = (active: boolean): any => ({active, canSearchHelp: false, replayIntro() {}, startSearchHelp() {}, stop() {}, openSearch() {}});
+test('a tour running when the website moves to a study page keeps focus: the heading does not take it', async () => {
+  const page = await mountView(view({guide: guideStub(true)}));
+  await page.rerender(view({guide: guideStub(true)}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+});
+
+test('a new connection in the same frame lands on the study heading again', async () => {
+  const page = await mountView(view({}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({connected: false}), {apply: undefined});
+  await page.rerender(view({}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+});
+
+test('a hidden popup does not use up the heading focus: it lands once the popup is shown again, and only once', async () => {
+  const page = await mountView(view({hidden: true}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'nothing takes focus while the popup is hidden');
+  await page.rerender(view({hidden: false}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading', 'shown again: the first landing happens now');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({hidden: true}), {apply: studySection()});
+  await page.rerender(view({hidden: false}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'still once per connection');
+});
+
+test('production overlay: the study steps move focus to the new step heading, but never out of the close question', async () => {
+  await mountAssistant({step: 'Understand'});
+  assert.equal(document.activeElement?.id, 'apply-heading', 'the first open lands on the heading');
+  assert.equal(stepButton('Understand').getAttribute('aria-current'), 'step');
+  assert.equal(document.querySelectorAll('.study-steps [aria-current="step"]').length, 1);
+  await act(async () => {stepButton('Contact').click()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  assert.equal(document.activeElement?.textContent, 'Step 2 of 3. Who to contact', 'the heading says where the person is');
+  assert.equal(stepButton('Contact').getAttribute('aria-current'), 'step');
+  await act(async () => {stepButton('Email').click()});
+  assert.equal(document.activeElement?.textContent, 'Step 3 of 3. Write your email');
+  await typeInto(personalizeName(), 'Morgan Example');
+  personalizeName().focus();
+  await act(async () => {escape(personalizeName())});
+  await settle();
+  assert.ok(popup(), 'the close question is open');
+  await act(async () => {stepButton('Understand').click()});
+  assert.ok(popup()!.contains(document.activeElement), `focus stays in the dialog, not ${document.activeElement?.tagName}#${document.activeElement?.id}`);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+});
+
+test('production overlay: Close is the one way to end and clear; the study page has no End and clear, and Settings keeps one Clear my details', async () => {
+  const page = await mountAssistant({step: 'Understand'});
+  const labels = () => [...document.querySelectorAll('button,a')].map(node => (node.textContent || '').trim());
+  for (const step of ['Understand', 'Contact', 'Email']) {
+    await act(async () => {stepButton(step).click()});
+    assert.ok(!labels().some(label => /End and clear/i.test(label)), `${step}: no End and clear control`);
+  }
+  await act(async () => {button('Treatable settings').click()});
+  assert.equal(labels().filter(label => label === 'Clear my details').length, 1, 'one quiet Clear my details, beside the Your details fields');
+  assert.ok([...document.querySelectorAll('button')].find(node => node.textContent === 'Clear my details')!.closest('.your-details'));
+  await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
+  await typeInto(personalizeName(), 'Morgan Example');
+  await act(async () => {button(CLOSE).click()});
+  await settle();
+  assert.ok(popup(), 'Close still asks first while something is typed');
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(page.closes(), 1);
+  assert.ok(sessionEnded());
+});
+
+test('production overlay: a new study on the website starts over at step 1 with an automatic draft', async () => {
+  const page = await mountAssistant();
+  await typeInto(emailDraft(), 'My draft for the first study.');
+  assert.equal(stepButton('Email').getAttribute('aria-current'), 'step');
+  await page.switchStudy('NCT99999991');
+  assert.equal(stepButton('Understand').getAttribute('aria-current'), 'step', 'back at step 1');
+  assert.equal(emailDraft(), null, 'the email step is not on screen');
+  await act(async () => {stepButton('Email').click()});
+  assert.doesNotMatch(emailDraft().value, /My draft for the first study/, 'an automatic draft, not the edited one');
+  assert.match(emailDraft().value, /NCT99999991/);
+});
+
+test('production overlay: the ZIP code and best times are blank after Close and a new connection in the same frame', async () => {
+  const first = await mountAssistant({step: 'Contact'});
+  const zip = () => document.querySelector('[data-apply-field="zip"]') as HTMLInputElement;
+  const best = () => document.querySelector('[data-apply-field="bestTimes"]') as HTMLInputElement;
+  await typeInto(zip(), '84101');
+  await act(async () => {stepButton('Email').click()});
+  await typeInto(best(), 'weekday mornings');
+  await act(async () => {button(CLOSE).click()});
+  await settle();
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(first.closes(), 1);
+  for (const unmount of mounted.splice(0).reverse()) await unmount();
+  await mountAssistant({step: 'Contact'});
+  assert.equal(zip().value, '', 'the ZIP code is blank');
+  await act(async () => {stepButton('Email').click()});
+  assert.equal(best().value, '', 'best times are blank');
 });
 
 test('the sidebar and a results page leave the website\'s focus alone', async () => {

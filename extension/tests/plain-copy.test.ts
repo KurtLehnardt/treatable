@@ -141,3 +141,30 @@ test('one name for the output: no patient-facing "brief" label is left on the st
   const view=readFileSync(new URL('../src/apply-view.tsx',import.meta.url),'utf8');
   for(const old of ['Generate study brief','Generating your study brief','Generate the brief again','Study review complete','Your study brief'])assert.ok(!view.includes(old),old);
 });
+
+test('failure copy is provider-neutral where a local run can hit it, names the current button, and says summary, not brief',()=>{
+  /* CANCELLED can end a local (Ollama) run, where no OpenAI session exists. */
+  assert.doesNotMatch(FAILURE_COPY.CANCELLED,/OpenAI/,'CANCELLED does not mention OpenAI');
+  assert.match(FAILURE_COPY.CANCELLED,/If a session was opened with the AI service, Treatable tries to delete it/);
+  for(const [code,text] of [...Object.entries(FAILURE_COPY),['GENERIC_FAILURE_COPY',GENERIC_FAILURE_COPY]]){
+    assert.doesNotMatch(text,/Prepare again|Choose Prepare/,`${code}: names a button that no longer exists`);
+    assert.doesNotMatch(text,/\bbriefs?\b/i,`${code}: "brief"`);
+  }
+  for(const code of ['APPLY_EXPIRED','INVALID_APPLY_RECEIPT'])assert.match(FAILURE_COPY[code],/Press Get my study summary again\./,code);
+});
+
+test('model settings call the output a study summary for both providers',async()=>{
+  const {ModelProviderSettings}=await import('../src/model-settings');
+  for(const provider of ['openai','local'] as const){
+    const html=renderToStaticMarkup(React.createElement(ModelProviderSettings,{provider,localModel:null,setProvider(){},setLocalModel(){}}));
+    assert.match(html,/<h3 id="model-settings-heading">Study summary model<\/h3>/,provider);
+    assert.doesNotMatch(html.replace(/class="[^"]*"/g,''),/\bbriefs?\b/i,`${provider}: no "brief" wording`);
+  }
+});
+
+test('study page copy: no End and clear, no "Choose for me", and the eligibility line in plain words',()=>{
+  const view=readFileSync(new URL('../src/apply-view.tsx',import.meta.url),'utf8');
+  for(const old of ['End and clear my details','Choose for me','cannot establish','Open draft in my email app','<summary>How this was generated</summary>'])assert.ok(!view.includes(old),old);
+  assert.ok(view.includes('This record cannot tell you whether you qualify or whether the treatment will help.'));
+  assert.ok(view.includes('Nearest site, or the central contact'));
+});
