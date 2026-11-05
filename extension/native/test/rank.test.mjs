@@ -3,7 +3,7 @@ import test,{mock}from'node:test';import assert from'node:assert/strict';import{
 import{PreparedRankStore,runPreparedRank,buildOpenAiRankRequest,openAiRankScores,RANK_BACKENDS,RANK_TERM_RULE}from'../rank.mjs';
 import{normalizeLiveRecord}from'../live-evidence.mjs';import{ApiError}from'../transport.mjs';
 import{parseRankRequest,parsePreparedRank,parseRankProfile,parseRankResult,RANK_LEVELS,RANK_TTL_MS}from'../../shared/rank-contract.mjs';
-import{installHost,writeHook,startHost,readLines}from'./host-harness.mjs';
+import{installHost,writeHook,startHost,readLines,withHost,keyReads,prepareBrief,receipt}from'./host-harness.mjs';
 const ids=['NCT99999910','NCT99999911'];
 const record=(nctId,status='RECRUITING')=>({hasResults:false,protocolSection:{identificationModule:{nctId,briefTitle:`Fictional public study ${nctId}`},statusModule:{overallStatus:status},conditionsModule:{conditions:['Fictional asthma']},descriptionModule:{briefSummary:'Public summary'},eligibilityModule:{eligibilityCriteria:'Public criteria',minimumAge:'18 Years',maximumAge:'65 Years',sex:'ALL',healthyVolunteers:false}}});
 const profile={conditions:['Asthma']},withDetails={...profile,ageBand:'30_44',sex:'female'};
@@ -106,4 +106,24 @@ test('the local provider pins per-study local requests, needs no transport and k
   assert.throws(()=>parseRankResult({...result,scores:[{nctId:ids[0],score:92,reasonId:'condition_match',probabilities:[0,0,0,1]},result.scores[1]]}),'a local result never claims probabilities');
   assert.throws(()=>parseRankResult({...result,provider:'openai',scores:[{nctId:ids[0],failure:'LOCAL_TIMEOUT'},result.scores[1]]}),'an OpenAI result has no per-study failures');
  }finally{store.discard();}
+});
+
+// Ported from the removed bundled-catalog and private-matching stdio suites: receipts are checked before the Keychain is touched, and
+// neither host ever sees a request ID, a receipt or anything the caller added.
+test('stdio: tampered, stale, unprepared and replayed receipts are refused before any key read; request IDs and receipts never reach either host',async()=>{
+ await withHost('treatable-receipt-wire-',{},async(host,installed)=>{
+  const old=(await host.call({id:'RPC_PRIVATE_SENTINEL_prep',type:'prepareRank',payload:{nctIds:ids,profile}})).result;assert.equal(old?.kind,'preparedRank');
+  assert.equal((await host.call({id:'tampered',type:'executeRank',payload:{...receipt(old),notes:'PRIVATE_SENTINEL'}})).code,'INVALID_REQUEST');
+  assert.equal((await host.call({id:'wrong',type:'executeRank',payload:{token:old.token,digest:'0'.repeat(64)}})).code,'CONSENT_EXPIRED','invalid input already discarded the preview');
+  const current=(await host.call({id:'prep2',type:'prepareRank',payload:{nctIds:ids,profile}})).result;assert.equal((await host.call({id:'stale',type:'executeRank',payload:receipt(old)})).code,'INVALID_CONSENT_RECEIPT');
+  assert.equal((await host.call({id:'unprepared',type:'executeStudyBrief',payload:receipt(current)})).code,'APPLY_EXPIRED');assert.equal(await keyReads(installed.reads),0,'no receipt failure reads the key');
+  assert.deepEqual((await readLines(installed.log)).filter(x=>x.host==='api.openai.com'),[]);
+  const scored=await host.call({id:'RPC_PRIVATE_SENTINEL_run',type:'executeRank',payload:receipt(current)});assert.equal(scored.ok,true,scored.code);assert.equal((await host.call({id:'replay',type:'executeRank',payload:receipt(current)})).code,'INVALID_CONSENT_RECEIPT');
+  const brief=await prepareBrief(host,'RPC_PRIVATE_SENTINEL_brief');assert.equal((await host.call({id:'RPC_PRIVATE_SENTINEL_briefRun',type:'executeStudyBrief',payload:receipt(brief)})).ok,true);
+  assert.equal(await keyReads(installed.reads),2,'one key read per accepted send');
+  const wire=await readLines(installed.log),gov=wire.filter(x=>x.host==='clinicaltrials.gov'),provider=wire.filter(x=>x.host==='api.openai.com');
+  for(const call of gov){assert.equal(call.method,'GET');assert.equal(call.auth,false);assert.equal(call.body,undefined);assert.match(call.path,/^\/api\/v2\/studies\/NCT[0-9]{8}$/);}
+  assert.ok(provider.length>=4&&provider.every(x=>x.auth));assert.deepEqual(provider[0].body,current.preview.request);
+  const serialized=JSON.stringify(wire.map(({pid,t,argv,envKeys,...rest})=>rest));for(const forbidden of ['RPC_PRIVATE_SENTINEL','PRIVATE_SENTINEL',old.token,old.digest,current.token,current.digest,brief.token,brief.digest,'sk-test'])assert.ok(!serialized.includes(forbidden),forbidden);
+ });
 });
