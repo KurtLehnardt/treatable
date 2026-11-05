@@ -63,13 +63,14 @@ export async function getSetupState(installDir: string, settingsPath: string): P
     // install too, which is exactly what made startGranted's `background`
     // wrongly route into the win32 tray path on macOS (see ipc.ts).
     // Each platform's own background runner: granted-tray.ps1 on Windows,
-    // granted-tray.sh (LaunchAgent + Swift menu-bar helper) on macOS; and its
-    // own window: open-granted.ps1 on Windows, open-granted.sh (Chrome/Edge
-    // --app=, else a browser tab) on macOS. Shortcuts stay Windows-only for
-    // now regardless of whether the files happen to be on disk.
+    // treatable-tray.sh or granted-tray.sh (LaunchAgent + Swift menu-bar
+    // helper) on macOS; and its own window: open-granted.ps1 on Windows,
+    // open-treatable.sh or open-granted.sh (Chrome/Edge --app=, else a browser
+    // tab) on macOS (see findMacScript). Shortcuts stay Windows-only for now
+    // regardless of whether the files happen to be on disk.
     trayAvailable:
       (process.platform === "win32" && existsSync(windowsScriptPath(scaffoldDir, "granted-tray.ps1"))) ||
-      (process.platform === "darwin" && existsSync(macScriptPath(scaffoldDir, "granted-tray.sh"))),
+      (process.platform === "darwin" && findMacScript(scaffoldDir, MAC_TRAY_SCRIPTS) !== null),
     shortcutsAvailable: process.platform === "win32" && existsSync(windowsScriptPath(scaffoldDir, "shortcuts.ps1")),
     // macOS's counterpart of shortcutsAvailable, gated on the platform for
     // the same reason: scripts/macos/applications-launcher.sh is an ordinary
@@ -78,7 +79,7 @@ export async function getSetupState(installDir: string, settingsPath: string): P
     launcherAvailable: process.platform === "darwin" && existsSync(macScriptPath(scaffoldDir, "applications-launcher.sh")),
     appWindowAvailable:
       (process.platform === "win32" && existsSync(windowsScriptPath(scaffoldDir, "open-granted.ps1"))) ||
-      (process.platform === "darwin" && existsSync(macScriptPath(scaffoldDir, "open-granted.sh"))),
+      (process.platform === "darwin" && findMacScript(scaffoldDir, MAC_OPEN_SCRIPTS) !== null),
     openIn: parseOpenInSetting(await readTextOrNull(settingsPath)),
   };
 }
@@ -118,11 +119,34 @@ export function windowsScriptPath(scaffoldDir: string, name: "granted-tray.ps1" 
  * menu-bar helper) and its own-window opener. `posix.join` for the same reason
  * windowsScriptPath above uses `win32.join`.
  */
-export function macScriptPath(
-  scaffoldDir: string,
-  name: "granted-tray.sh" | "open-granted.sh" | "applications-launcher.sh",
-): string {
+export function macScriptPath(scaffoldDir: string, name: MacScriptName): string {
   return posix.join(scaffoldDir, "scripts", "macos", name);
+}
+
+export type MacScriptName =
+  | "treatable-tray.sh"
+  | "granted-tray.sh"
+  | "open-treatable.sh"
+  | "open-granted.sh"
+  | "applications-launcher.sh";
+
+/**
+ * The names an install's macOS background runner and own-window opener can
+ * have, newest first. R-030 renamed this repository's granted-tray.sh and
+ * open-granted.sh to treatable-tray.sh and open-treatable.sh (same
+ * subcommands, arguments and JSON output); an install made from the Granted
+ * scripts still has the old names.
+ */
+export const MAC_TRAY_SCRIPTS: readonly MacScriptName[] = ["treatable-tray.sh", "granted-tray.sh"];
+export const MAC_OPEN_SCRIPTS: readonly MacScriptName[] = ["open-treatable.sh", "open-granted.sh"];
+
+/** The first of `names` this install's scaffold/scripts/macos has, or null if it has none of them. */
+export function findMacScript(scaffoldDir: string, names: readonly MacScriptName[]): string | null {
+  for (const name of names) {
+    const path = macScriptPath(scaffoldDir, name);
+    if (existsSync(path)) return path;
+  }
+  return null;
 }
 
 /**

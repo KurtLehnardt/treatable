@@ -1,11 +1,11 @@
 /**
  * Integration: the REAL install-macos.sh installing a specific release
- * (GRANTED_REF) from local stand-in repos (GRANTED_REPO_URL), so it runs
+ * (TREATABLE_REF) from local stand-in repos (TREATABLE_REPO_URL), so it runs
  * offline and fast — the macOS mirror of installRef.integration.test.ts.
  * Covers a fresh pinned install, updating an install this script made, and
  * everything an update must NOT do: switch a folder with local changes or
  * one it didn't make, go backwards, break on a re-tagged release. Also
- * covers stop_granted_in, which install-windows.ps1's Stop-GrantedIn has no
+ * covers stop_treatable_in, which install-windows.ps1's Stop-GrantedIn has no
  * exact mac counterpart test for (there is no tray on macOS to stop; this
  * instead spawns a stand-in whose command line, like a real `npm run dev`,
  * mentions this install's own path). Git and Node must already be installed
@@ -30,7 +30,9 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(process.cwd(), "..");
 const INSTALL_SCRIPT = join(REPO_ROOT, "install-macos.sh");
 const PORT = 3978;
-const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyone</title>";
+// The page the fake server serves: what the macOS scripts look for since
+// R-030 (treatable-tray.sh's probe_server wants "Treatable").
+const TREATABLE_HTML = "<title>Treatable — Find a study. Find a next step.</title>";
 // Stand-in for `next build`: writes the .next/BUILD_ID that every launcher
 // (and installer/src/main/ipcPure.ts's needsProductionBuild) treats as "a
 // production build is present", so the real build-then-start flow is
@@ -52,7 +54,7 @@ const git = (cwd: string, ...args: string[]): string =>
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe(
-  "install-macos.sh with GRANTED_REF (a pinned release)",
+  "install-macos.sh with TREATABLE_REF (a pinned release)",
   { skip: (process.platform !== "darwin" || !existsSync(INSTALL_SCRIPT)) && "macOS only, run from installer/" },
   () => {
     let root: string;
@@ -70,7 +72,7 @@ describe(
         join(scaffold, "package-lock.json"),
         JSON.stringify({ name: "granted", version, lockfileVersion: 3, requires: true, packages: { "": { name: "granted", version } } }, null, 2),
       );
-      writeFileSync(join(scaffold, "server.js"), `require("node:http").createServer((q, r) => r.end(${JSON.stringify(GRANTED_HTML)})).listen(Number(process.env.PORT), "127.0.0.1");`);
+      writeFileSync(join(scaffold, "server.js"), `require("node:http").createServer((q, r) => r.end(${JSON.stringify(TREATABLE_HTML)})).listen(Number(process.env.PORT), "127.0.0.1");`);
       writeFileSync(join(scaffold, "build.js"), FAKE_BUILD);
       // The real repo gitignores the build output; the fake must too, or the
       // rollback tests' "nothing left modified" check trips over .next/.
@@ -97,16 +99,16 @@ describe(
       const status = join(root, `status-${seq++}.json`);
       const env: NodeJS.ProcessEnv = {
         ...process.env,
-        GRANTED_REPO_URL: source,
-        GRANTED_INSTALL_DIR: "granted",
-        GRANTED_STATUS_FILE: status,
-        GRANTED_PORT: String(PORT),
+        TREATABLE_REPO_URL: source,
+        TREATABLE_INSTALL_DIR: "granted",
+        TREATABLE_STATUS_FILE: status,
+        TREATABLE_PORT: String(PORT),
         npm_config_audit: "false",
         npm_config_fund: "false",
         ...extra,
       };
-      if (ref) env["GRANTED_REF"] = ref;
-      else delete env["GRANTED_REF"];
+      if (ref) env["TREATABLE_REF"] = ref;
+      else delete env["TREATABLE_REF"];
       let output = "";
       try {
         const r = await execFileAsync("bash", [INSTALL_SCRIPT], { cwd: home, env, timeout: 180_000 });
@@ -142,8 +144,8 @@ describe(
       assert.equal(r.state, "done", r.output);
       assert.equal(versionIn(home), "0.1.0");
       assert.equal(git(join(home, "granted"), "describe", "--tags", "--exact-match"), "v0.1.0");
-      assert.ok(existsSync(join(home, "granted", ".git", "granted-installer")), "marked as made by the installer");
-      assert.match(r.output, /carry on in the Granted installer/, "run by the installer app: no terminal next steps");
+      assert.ok(existsSync(join(home, "granted", ".git", "treatable-installer")), "marked as made by the installer");
+      assert.match(r.output, /carry on in the Treatable installer/, "run by the installer app: no terminal next steps");
       assert.doesNotMatch(r.output, /npm run setup/);
 
       const update = await runInstall(home, source, "v0.2.0");
@@ -160,7 +162,7 @@ describe(
       assert.equal(versionIn(home), "0.2.0", "not switched while dirty");
     });
 
-    test("REGRESSION: never backwards — an install already containing the release, or with newer code, is left alone (GRANTED_ALLOW_DOWNGRADE overrides)", async () => {
+    test("REGRESSION: never backwards — an install already containing the release, or with newer code, is left alone (TREATABLE_ALLOW_DOWNGRADE overrides)", async () => {
       const source = makeSource();
       // Installed from main (the README one-liner): 0.3.0-dev, already past v0.2.0.
       const fromMain = freshHome();
@@ -168,7 +170,7 @@ describe(
       assert.equal(versionIn(fromMain), "0.3.0-dev");
       const r1 = await runInstall(fromMain, source, "v0.2.0");
       assert.equal(r1.state, "done", r1.output);
-      assert.match(r1.output, /already includes Granted v0\.2\.0/);
+      assert.match(r1.output, /already includes Treatable v0\.2\.0/);
       assert.equal(versionIn(fromMain), "0.3.0-dev", "not moved back to v0.2.0");
 
       // At v0.2.0, an older release NOT in its history (a patch on an old
@@ -180,9 +182,9 @@ describe(
       git(source, "checkout", "-q", "main");
       const refused = await runInstall(at020, source, "v0.1.5");
       assert.equal(refused.state, "done", refused.output);
-      assert.match(refused.output, /already has a newer Granted \(0\.2\.0\)/);
+      assert.match(refused.output, /already has a newer Treatable \(0\.2\.0\)/);
       assert.equal(versionIn(at020), "0.2.0");
-      const allowed = await runInstall(at020, source, "v0.1.5", { GRANTED_ALLOW_DOWNGRADE: "1" });
+      const allowed = await runInstall(at020, source, "v0.1.5", { TREATABLE_ALLOW_DOWNGRADE: "1" });
       assert.equal(allowed.state, "done", allowed.output);
       assert.equal(versionIn(at020), "0.1.5");
     });
@@ -215,12 +217,12 @@ describe(
       assert.equal(versionIn(home), "0.2.0");
     });
 
-    test("REGRESSION (review), reproduced live: an absolute GRANTED_INSTALL_DIR (here with a space and an apostrophe, the exact characters flagged) doesn't break the no-backwards-move version check", async () => {
+    test("REGRESSION (review), reproduced live: an absolute TREATABLE_INSTALL_DIR (here with a space and an apostrophe, the exact characters flagged) doesn't break the no-backwards-move version check", async () => {
       // The installed version used to be read via
       // `node -p "require('./${TARGET_DIR}/scaffold/package.json').version"`
       // -- string-interpolated straight into the JS source. require() only
       // treats a leading "./" as a relative file path; splicing an ABSOLUTE
-      // GRANTED_INSTALL_DIR in after one does not produce that, so the call
+      // TREATABLE_INSTALL_DIR in after one does not produce that, so the call
       // threw, was caught, and $HAVE silently came back empty -- at which
       // point the no-backwards-move guard a few lines later never fires at
       // all, letting an older release overwrite newer code with zero
@@ -232,7 +234,7 @@ describe(
       const versionAt = (): string =>
         (JSON.parse(readFileSync(join(absInstallDir, "scaffold", "package.json"), "utf8")) as { version: string }).version;
       const home = freshHome();
-      await runInstall(home, source, "v0.2.0", { GRANTED_INSTALL_DIR: absInstallDir });
+      await runInstall(home, source, "v0.2.0", { TREATABLE_INSTALL_DIR: absInstallDir });
       assert.equal(versionAt(), "0.2.0");
 
       // A genuinely older release, not in v0.2.0's history (same shape as
@@ -241,10 +243,10 @@ describe(
       git(source, "checkout", "-q", "-b", "maint-0.1", "v0.1.0");
       commitVersion(source, "0.1.5", "v0.1.5", "patch.txt");
       git(source, "checkout", "-q", "main");
-      const r = await runInstall(home, source, "v0.1.5", { GRANTED_INSTALL_DIR: absInstallDir });
+      const r = await runInstall(home, source, "v0.1.5", { TREATABLE_INSTALL_DIR: absInstallDir });
       assert.equal(r.state, "done", r.output);
       assert.doesNotMatch(r.output, /Failed at line/, "the ERR trap must not have fired");
-      assert.match(r.output, /already has a newer Granted \(0\.2\.0\)/, "the version check correctly saw 0.2.0, not an empty/unparseable $HAVE");
+      assert.match(r.output, /already has a newer Treatable \(0\.2\.0\)/, "the version check correctly saw 0.2.0, not an empty/unparseable $HAVE");
       assert.equal(versionAt(), "0.2.0", "not silently downgraded");
     });
 
@@ -275,7 +277,7 @@ describe(
       const source = makeSource();
       const home = freshHome();
       await runInstall(home, source, "v0.1.0");
-      // realpathSync, not a plain join: stop_granted_in resolves $dir via
+      // realpathSync, not a plain join: stop_treatable_in resolves $dir via
       // `cd && pwd -P` (symlink-safe, so it can't be fooled by one path
       // into the same directory mismatching another) — on macOS os.tmpdir()
       // itself is one (/var -> /private/var), so the stand-in below must be
@@ -293,8 +295,8 @@ describe(
 
       const r = await runInstall(home, source, "v0.2.0");
       assert.equal(r.state, "done", r.output);
-      assert.match(r.output, /stopped the Granted that was running/);
-      assert.ok(r.output.indexOf("stopped the Granted") < r.output.indexOf("Installing npm dependencies"), "stopped before npm ci");
+      assert.match(r.output, /stopped the Treatable that was running/);
+      assert.ok(r.output.indexOf("stopped the Treatable") < r.output.indexOf("Installing npm dependencies"), "stopped before npm ci");
       // A signal-terminated child reports exitCode: null (NOT a numeric
       // code) with the signal in signalCode instead — exitCode alone would
       // never go non-null here even though it's genuinely gone.
@@ -304,7 +306,7 @@ describe(
       assert.equal(versionIn(home), "0.2.0");
     });
 
-    test("a GRANTED_REF that isn't a release tag is refused before anything is done", async () => {
+    test("a TREATABLE_REF that isn't a release tag is refused before anything is done", async () => {
       const home = freshHome();
       const r = await runInstall(home, makeSource(), "main; rm -rf /tmp/should-never-run");
       assert.equal(r.state, "error");
@@ -317,7 +319,7 @@ describe(
       const home = freshHome();
       const r = await runInstall(home, source, "v0.9.9"); // no such release
       assert.equal(r.state, "error");
-      assert.match(r.message ?? "", /Couldn't check out Granted v0\.9\.9/);
+      assert.match(r.message ?? "", /Couldn't check out Treatable v0\.9\.9/);
       assert.equal(existsSync(join(home, "granted")), false, "the clone it just made is gone");
       const retry = await runInstall(home, source, "v0.1.0");
       assert.equal(retry.state, "done", retry.output);

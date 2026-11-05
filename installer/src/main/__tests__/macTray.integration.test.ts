@@ -1,5 +1,5 @@
 /**
- * Integration: the REAL scaffold/scripts/macos/granted-tray.sh and the REAL
+ * Integration: the REAL scaffold/scripts/macos/treatable-tray.sh and the REAL
  * Swift menu-bar helper — Granted running in the background on macOS — against
  * a fake Granted install whose `npm run build`/`npm run start` are tiny
  * stand-ins (the start one a Node server), so this
@@ -9,9 +9,9 @@
  * tray.integration.test.ts.
  *
  * Everything here runs against a THROWAWAY LaunchAgent label
- * (com.granted.test.<uuid>, via GRANTED_LAUNCH_LABEL) whose plist is written
- * into a temp folder (GRANTED_LAUNCH_AGENTS_DIR), never ~/Library/LaunchAgents
- * and never the real com.granted.server — this must not be able to touch a
+ * (com.treatable.test.<uuid>, via TREATABLE_LAUNCH_LABEL) whose plist is written
+ * into a temp folder (TREATABLE_LAUNCH_AGENTS_DIR), never ~/Library/LaunchAgents
+ * and never the real com.treatable.server — this must not be able to touch a
  * real Granted install, or leave anything registered on the machine running
  * the tests. The teardown boots the label out directly as well as through the
  * script, and the last test asserts it is gone.
@@ -37,17 +37,20 @@ const execFileAsync = promisify(execFile);
 
 // `npm test` runs from installer/; the scripts live in scaffold/.
 const MACOS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "macos");
-const TRAY_SCRIPT = join(MACOS_SCRIPTS, "granted-tray.sh");
-const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-granted.sh");
+const RUNTIME_MJS = resolve(process.cwd(), "..", "scaffold", "lib", "runtime.mjs");
+const TRAY_SCRIPT = join(MACOS_SCRIPTS, "treatable-tray.sh");
+const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-treatable.sh");
 const MENUBAR_PKG = join(MACOS_SCRIPTS, "menubar");
-const HELPER_SOURCE = join(MENUBAR_PKG, "Sources", "GrantedMenuBar", "main.swift");
-const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyone</title>";
+const HELPER_SOURCE = join(MENUBAR_PKG, "Sources", "TreatableMenuBar", "main.swift");
+// The page the fake server serves: what the macOS scripts look for since
+// R-030 (treatable-tray.sh's probe_server wants "Treatable").
+const TREATABLE_HTML = "<title>Treatable — Find a study. Find a next step.</title>";
 const PORT = 3977;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
- * What granted-tray.sh's stop_helper logs when it gives up waiting and SIGKILLs
+ * What treatable-tray.sh's stop_helper logs when it gives up waiting and SIGKILLs
  * the menu-bar helper — the one outward difference between the two ways a stop
  * can finish, since the lock directory and the pid file end up gone either way
  * (the kill branch's own rmdir/rm backstop sees to that). Its absence is what
@@ -56,7 +59,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  */
 const HELPER_KILLED_NOTE = /did not exit within \d+s of SIGTERM/;
 
-/** granted-tray.sh's own log (its `note`s), or "" if it never wrote one. */
+/** treatable-tray.sh's own log (its `note`s), or "" if it never wrote one. */
 function trayLog(root: string): string {
   const path = join(root, "logs", "tray.log");
   return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -125,9 +128,9 @@ function hasSwift(): boolean {
   }
 }
 
-/** The release binary granted-tray.sh runs (and CI builds). */
+/** The release binary treatable-tray.sh runs (and CI builds). */
 function helperBinary(): string {
-  return join(MENUBAR_PKG, ".build", "release", "granted-menubar");
+  return join(MENUBAR_PKG, ".build", "release", "treatable-menubar");
 }
 
 /** Whether this process is in a GUI (Aqua) session, which NSStatusBar needs. */
@@ -142,12 +145,12 @@ function inAquaSession(): boolean {
 interface FakeInstall {
   root: string;
   scaffold: string;
-  /** The real granted-tray.sh, in the place a real install has it. */
+  /** The real treatable-tray.sh, in the place a real install has it. */
   trayScript: string;
-  /** A throwaway LaunchAgent label, never the real com.granted.server. */
+  /** A throwaway LaunchAgent label, never the real com.treatable.server. */
   label: string;
   statusPath: string;
-  /** The pid file granted-tray.sh's own start_helper writes. */
+  /** The pid file treatable-tray.sh's own start_helper writes. */
   helperPidFile: string;
   /** The test-only overrides to run the script (or the helper) with. */
   env: Record<string, string>;
@@ -157,7 +160,7 @@ interface FakeInstall {
 
 interface FakeInstallOptions {
   /**
-   * The menu-bar helper granted-tray.sh should run. "none" (the default) means
+   * The menu-bar helper treatable-tray.sh should run. "none" (the default) means
    * no icon at all: a test must not leave one on anyone's menu bar unless it
    * is specifically testing the helper, and then only for its own duration.
    */
@@ -184,19 +187,23 @@ async function setUpFakeInstall(options: FakeInstallOptions = {}): Promise<FakeI
   const root = realpathSync(await mkdtemp(join(tmpdir(), "granted-mac-tray-it-")));
   const scaffold = join(root, "granted", "scaffold");
   mkdirSync(join(scaffold, "scripts", "macos"), { recursive: true });
+  // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts read
+  // the app's default port (APP_PORT) from it when no --port is given.
+  mkdirSync(join(scaffold, "lib"), { recursive: true });
+  await writeFile(join(scaffold, "lib", "runtime.mjs"), readFileSync(RUNTIME_MJS, "utf8"), "utf8");
   mkdirSync(join(root, "LaunchAgents"), { recursive: true });
-  const trayScript = join(scaffold, "scripts", "macos", "granted-tray.sh");
+  const trayScript = join(scaffold, "scripts", "macos", "treatable-tray.sh");
   await writeFile(trayScript, readFileSync(TRAY_SCRIPT, "utf8"), "utf8");
-  // open-granted.sh beside it, as a real install has: the tray's `open` and
+  // open-treatable.sh beside it, as a real install has: the tray's `open` and
   // the menu's "Open in its own window" both go through it.
-  await writeFile(join(scaffold, "scripts", "macos", "open-granted.sh"), readFileSync(OPEN_SCRIPT, "utf8"), "utf8");
+  await writeFile(join(scaffold, "scripts", "macos", "open-treatable.sh"), readFileSync(OPEN_SCRIPT, "utf8"), "utf8");
   await writeFile(
     join(scaffold, "package.json"),
     JSON.stringify({
       name: "fake-granted",
       private: true,
       // build + start, not dev: the tray builds when there is no current
-      // production build and then starts that build (see granted-tray.sh).
+      // production build and then starts that build (see treatable-tray.sh).
       scripts: { dev: "node fake-dev.js", build: "node fake-build.js", start: "node fake-dev.js" },
     }),
     "utf8",
@@ -218,14 +225,14 @@ async function setUpFakeInstall(options: FakeInstallOptions = {}): Promise<FakeI
       '  process.on("SIGTERM", () => { console.log("fake dev server: exiting in " + stopDelayMs + "ms"); setTimeout(() => process.exit(0), stopDelayMs); });',
       "}",
       'require("node:http")',
-      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(GRANTED_HTML)}); })`,
+      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(TREATABLE_HTML)}); })`,
       '  .listen(port, "127.0.0.1", () => console.log("fake Granted listening on 127.0.0.1:" + port));',
     ].join("\n"),
     "utf8",
   );
   await writeFile(
     join(scaffold, "fake-build.js"),
-    // Stand-in for `next build`: writes the .next/BUILD_ID that granted-tray.sh's
+    // Stand-in for `next build`: writes the .next/BUILD_ID that treatable-tray.sh's
     // needs_build (and its Windows and installer counterparts) treat as "a
     // production build is present", so the real build-then-start flow is
     // exercised without a real Next.js compile.
@@ -237,26 +244,26 @@ async function setUpFakeInstall(options: FakeInstallOptions = {}): Promise<FakeI
     ].join("\n"),
     "utf8",
   );
-  const label = `com.granted.test.${randomUUID()}`;
+  const label = `com.treatable.test.${randomUUID()}`;
   const statusPath = join(root, "status.json");
-  // Where granted-tray.sh's HELPER_PID_FILE lands: next to the settings file,
+  // Where treatable-tray.sh's HELPER_PID_FILE lands: next to the settings file,
   // named for the port.
   const helperPidFile = join(root, "support", `menubar-${PORT}.pid`);
   const domain = `gui/${process.getuid?.() ?? 0}/${label}`;
   const env = {
-    GRANTED_LAUNCH_LABEL: label,
-    GRANTED_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
-    GRANTED_LOG_DIR: join(root, "logs"),
-    GRANTED_SETTINGS_PATH: join(root, "support", "settings.json"),
-    GRANTED_STATUS_FILE: statusPath,
+    TREATABLE_LAUNCH_LABEL: label,
+    TREATABLE_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
+    TREATABLE_LOG_DIR: join(root, "logs"),
+    TREATABLE_SETTINGS_PATH: join(root, "support", "settings.json"),
+    TREATABLE_STATUS_FILE: statusPath,
     // No menu-bar icon unless a test asks for one by running the helper
     // itself: a test must not leave an icon on anyone's menu bar.
-    GRANTED_MENUBAR_HELPER: options.helper ?? "none",
+    TREATABLE_MENUBAR_HELPER: options.helper ?? "none",
     // And never a real app-mode browser window: `open` goes through
-    // open-granted.sh, which would otherwise find the real Chrome or Edge on
+    // open-treatable.sh, which would otherwise find the real Chrome or Edge on
     // the machine running the tests and open a real window at the fake
-    // server. Anything a test does open goes to GRANTED_OPEN_CMD's stand-in.
-    GRANTED_APP_BROWSER: "none",
+    // server. Anything a test does open goes to TREATABLE_OPEN_CMD's stand-in.
+    TREATABLE_APP_BROWSER: "none",
   };
   const agentLoaded = (): boolean => {
     try {
@@ -307,7 +314,7 @@ async function setUpFakeInstall(options: FakeInstallOptions = {}): Promise<FakeI
 // --- file-shape checks (any platform) --------------------------------------
 
 test(
-  "granted-tray.sh's LaunchAgent is never a login item: RunAtLoad false, no KeepAlive",
+  "treatable-tray.sh's LaunchAgent is never a login item: RunAtLoad false, no KeepAlive",
   { skip: !existsSync(TRAY_SCRIPT) && "run from installer/" },
   () => {
     const script = readFileSync(TRAY_SCRIPT, "utf8");
@@ -333,15 +340,15 @@ test(
     assert.equal(macStatusLockPath("/tmp/x.json"), "/tmp/x.json.lock.d");
     assert.match(source, /"pid": ProcessInfo\.processInfo\.processIdentifier/, "and write its pid, as the task scripts do");
     // The Windows tray's menu, item for item.
-    for (const title of ["Open Granted", "Open in its own window", "Show log", "Restart", "Quit Granted"]) {
+    for (const title of ["Open Treatable", "Open in its own window", "Show log", "Restart", "Quit Treatable"]) {
       assert.ok(source.includes(`title: "${title}"`), `the menu must have "${title}", like the Windows tray`);
     }
-    // Where Granted opens is decided in ONE place — open-granted.sh, reached
-    // through granted-tray.sh — so the menu, the installer's checkbox and the
+    // Where Granted opens is decided in ONE place — open-treatable.sh, reached
+    // through treatable-tray.sh — so the menu, the installer's checkbox and the
     // ~/Applications launcher can never disagree. The helper only ever reads
     // the preference for its tick (see openInWindow) and asks the script to
     // change it; it must never find a browser or build an --app= line itself.
-    assert.match(source, /tray\(\["open"\]/, "Open Granted goes through granted-tray.sh");
+    assert.match(source, /tray\(\["open"\]/, "Open Granted goes through treatable-tray.sh");
     assert.match(source, /tray\(\["set-open-in", "--mode", mode\]/, "and so does saving the preference");
     // A string literal starting an --app= argument, not the words in a
     // comment: the helper must never build an app-mode command line itself.
@@ -357,7 +364,7 @@ test(
 // --- the real thing (macOS) ------------------------------------------------
 
 describe(
-  "granted-tray.sh, run for real against a throwaway LaunchAgent label",
+  "treatable-tray.sh, run for real against a throwaway LaunchAgent label",
   { skip: (process.platform !== "darwin" || !existsSync(TRAY_SCRIPT)) && "macOS only, run from installer/" },
   () => {
     let fake: FakeInstall;
@@ -384,7 +391,7 @@ describe(
 
     test("the plist it writes runs this install's npm in this scaffold, with the port and a log in the log folder", async () => {
       const { stdout } = await execFileAsync("/bin/bash", [trayScript, "plist", "--port", String(PORT)], {
-        env: { ...process.env, ...env, GRANTED_NPM: "/usr/local/bin/npm" },
+        env: { ...process.env, ...env, TREATABLE_NPM: "/usr/local/bin/npm" },
       });
       assert.match(stdout, new RegExp(`<key>Label</key>\\s*\\n\\s*<string>${label}</string>`));
       assert.match(stdout, /<string>\/usr\/local\/bin\/npm<\/string>\s*\n\s*<string>run<\/string>\s*\n\s*<string>start<\/string>/);
@@ -400,7 +407,7 @@ describe(
       await execFileAsync("/usr/bin/plutil", ["-lint", plist]);
     });
 
-    test("start: the server runs hidden under the LaunchAgent, answers on the port, and logs to ~/Library/Logs/Granted's stand-in", async () => {
+    test("start: the server runs hidden under the LaunchAgent, answers on the port, and logs to ~/Library/Logs/Treatable's stand-in", async () => {
       assert.equal(existsSync(join(scaffold, ".next", "BUILD_ID")), false, "this install has no production build yet");
       await tray("start");
       assert.ok(agentLoaded(), "the agent is loaded");
@@ -543,8 +550,8 @@ describe(
     let root: string;
 
     before(async () => {
-      root = await mkdtemp(join(tmpdir(), "granted-menubar-it-"));
-      // The real build, exactly as granted-tray.sh and CI run it. Release
+      root = await mkdtemp(join(tmpdir(), "treatable-menubar-it-"));
+      // The real build, exactly as treatable-tray.sh and CI run it. Release
       // mode so this is the very binary that ships, and so the build is
       // shared with the tray script's own first-run build.
       await execFileAsync("swift", ["build", "-c", "release", "--package-path", MENUBAR_PKG], { timeout: 10 * 60_000 });
@@ -554,10 +561,10 @@ describe(
       await rm(root, { recursive: true, force: true, maxRetries: 5 });
     });
 
-    test("swift build produces the binary granted-tray.sh looks for", async () => {
+    test("swift build produces the binary treatable-tray.sh looks for", async () => {
       const { stdout } = await execFileAsync("swift", ["build", "-c", "release", "--package-path", MENUBAR_PKG, "--show-bin-path"]);
-      const binary = join(stdout.trim(), "granted-menubar");
-      assert.ok(existsSync(binary), `${binary} must exist (granted-tray.sh runs .build/release/granted-menubar)`);
+      const binary = join(stdout.trim(), "treatable-menubar");
+      assert.ok(existsSync(binary), `${binary} must exist (treatable-tray.sh runs .build/release/treatable-menubar)`);
       // arm64/x86_64 native, not a script or a wrapper.
       const { stdout: fileType } = await execFileAsync("/usr/bin/file", ["-b", binary]);
       assert.match(fileType, /Mach-O 64-bit executable/);
@@ -568,10 +575,10 @@ describe(
       { skip: !inAquaSession() && "needs a GUI (Aqua) session for NSStatusBar" },
       async () => {
         const { stdout } = await execFileAsync(helperBinary(), [], {
-          env: { ...process.env, GRANTED_MENUBAR_SELF_TEST: "1", GRANTED_PORT: String(PORT), GRANTED_TRAY_SCRIPT: TRAY_SCRIPT },
+          env: { ...process.env, TREATABLE_MENUBAR_SELF_TEST: "1", TREATABLE_PORT: String(PORT), TREATABLE_TRAY_SCRIPT: TRAY_SCRIPT },
           timeout: 60_000,
         });
-        // REGRESSION (found on real hardware): with granted.ico as its
+        // REGRESSION (found on real hardware): with treatable.ico as its
         // template image the status item was created, 34 points wide, and
         // drew NOTHING — an invisible menu bar extra. It must always end up
         // with an image or, failing that, a title.
@@ -587,7 +594,7 @@ describe(
         }));
         assert.deepEqual(
           items.map((i) => i.title),
-          ["Open Granted", "Starting…", "Open in its own window", "Show log", "Restart", "Uninstall Granted…", "Quit Granted"],
+          ["Open Treatable", "Starting…", "Open in its own window", "Show log", "Restart", "Uninstall Treatable…", "Quit Treatable"],
           "the Windows tray's menu, item for item, plus the Uninstall item macOS needs (Windows has Installed apps)",
         );
         for (const item of items) assert.ok(item.a11y.length > 0, `"${item.title}" must have a VoiceOver label`);
@@ -619,10 +626,10 @@ describe(
           const { stdout } = await execFileAsync(helperBinary(), [], {
             env: {
               ...process.env,
-              GRANTED_MENUBAR_SELF_TEST: "1",
-              GRANTED_PORT: String(PORT),
-              GRANTED_TRAY_SCRIPT: TRAY_SCRIPT,
-              GRANTED_SETTINGS_PATH: settings,
+              TREATABLE_MENUBAR_SELF_TEST: "1",
+              TREATABLE_PORT: String(PORT),
+              TREATABLE_TRAY_SCRIPT: TRAY_SCRIPT,
+              TREATABLE_SETTINGS_PATH: settings,
             },
             timeout: 60_000,
           });
@@ -645,11 +652,11 @@ describe(
         const { stdout } = await execFileAsync(helperBinary(), [], {
           env: {
             ...process.env,
-            GRANTED_MENUBAR_SELF_TEST: "1",
-            GRANTED_PORT: String(PORT),
-            GRANTED_STATUS_FILE: statusPath,
-            GRANTED_TRAY_SCRIPT: TRAY_SCRIPT,
-            GRANTED_LOG_FILE: join(root, "server.log"),
+            TREATABLE_MENUBAR_SELF_TEST: "1",
+            TREATABLE_PORT: String(PORT),
+            TREATABLE_STATUS_FILE: statusPath,
+            TREATABLE_TRAY_SCRIPT: TRAY_SCRIPT,
+            TREATABLE_LOG_FILE: join(root, "server.log"),
           },
           timeout: 60_000,
         });
@@ -679,26 +686,26 @@ describe(
   },
   () => {
     let fake: FakeInstall;
-    /** What the menu asked the system to open in a browser TAB (the GRANTED_OPEN_CMD stand-in's log). */
+    /** What the menu asked the system to open in a browser TAB (the TREATABLE_OPEN_CMD stand-in's log). */
     let openedLog: string;
-    /** What it asked an app-mode browser to open in its OWN WINDOW (the GRANTED_APP_BROWSER stand-in's log). */
+    /** What it asked an app-mode browser to open in its OWN WINDOW (the TREATABLE_APP_BROWSER stand-in's log). */
     let appWindowLog: string;
     let helperEnv: Record<string, string>;
 
     /**
      * Chooses one menu item the way a click does — the real NSMenuItem's real
      * action, sent to the real target by AppKit (see the helper's
-     * GRANTED_MENUBAR_SELF_TEST) — and returns what it printed.
+     * TREATABLE_MENUBAR_SELF_TEST) — and returns what it printed.
      */
     const click = async (title: string): Promise<string> => {
       const { stdout } = await execFileAsync(helperBinary(), [], {
-        env: { ...process.env, ...helperEnv, GRANTED_MENUBAR_SELF_TEST: `click:${title}` },
+        env: { ...process.env, ...helperEnv, TREATABLE_MENUBAR_SELF_TEST: `click:${title}` },
         timeout: 4 * 60_000,
       });
       assert.match(stdout, new RegExp(`clicking "${title}"`));
       // Quit ends the process itself (NSApp.terminate), so it never reaches
       // the self test's "finished" line — exiting IS what it claims to do.
-      if (title !== "Quit Granted") assert.match(stdout, new RegExp(`"${title}" done`));
+      if (title !== "Quit Treatable") assert.match(stdout, new RegExp(`"${title}" done`));
       return stdout;
     };
 
@@ -717,18 +724,18 @@ describe(
       // A stand-in for Chrome's app mode, so "its own window" and "a browser
       // tab" are told apart by which log the URL lands in — and so no real
       // Chrome window is ever opened by a test (this replaces
-      // setUpFakeInstall's GRANTED_APP_BROWSER=none for this block only).
+      // setUpFakeInstall's TREATABLE_APP_BROWSER=none for this block only).
       const appBrowserStandIn = join(fake.root, "fake-app-browser.sh");
       await writeFile(appBrowserStandIn, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(appWindowLog)}\n`, { mode: 0o755 });
       helperEnv = {
         ...fake.env,
-        GRANTED_PORT: String(PORT),
-        GRANTED_TRAY_SCRIPT: fake.trayScript,
-        GRANTED_LOG_FILE: join(fake.root, "logs", `server-${PORT}.log`),
-        GRANTED_HELPER_PID_FILE: join(fake.root, "menubar.pid"),
+        TREATABLE_PORT: String(PORT),
+        TREATABLE_TRAY_SCRIPT: fake.trayScript,
+        TREATABLE_LOG_FILE: join(fake.root, "logs", `server-${PORT}.log`),
+        TREATABLE_HELPER_PID_FILE: join(fake.root, "menubar.pid"),
         // Never really open a browser or a log viewer from a test.
-        GRANTED_OPEN_CMD: openStandIn,
-        GRANTED_APP_BROWSER: appBrowserStandIn,
+        TREATABLE_OPEN_CMD: openStandIn,
+        TREATABLE_APP_BROWSER: appBrowserStandIn,
       };
       // A real, running Granted for the menu to act on.
       await execFileAsync("/bin/bash", [fake.trayScript, "start", "--port", String(PORT)], {
@@ -743,24 +750,24 @@ describe(
     });
 
     test("Open Granted opens Granted's URL — in its own window, which is the default", async () => {
-      await click("Open Granted");
+      await click("Open Treatable");
       assert.deepEqual(await until(async () => appWindows(), (l) => l.length > 0, 20_000), [`--app=http://localhost:${PORT}`]);
       assert.deepEqual(opened(), [], "and no browser tab on top of it");
     });
 
     test("Open in its own window saves where Granted opens, and the next Open Granted follows it", async () => {
-      const settings = helperEnv["GRANTED_SETTINGS_PATH"];
+      const settings = helperEnv["TREATABLE_SETTINGS_PATH"];
       // Each click is a fresh helper, which reads the preference as it builds
       // its menu — so this really is "untick it, then tick it again".
       await click("Open in its own window");
       assert.equal(parseOpenInSetting(readFileSync(settings, "utf8")), "browser", "the installer's own parser reads what the menu saved");
-      await click("Open Granted");
+      await click("Open Treatable");
       assert.deepEqual(opened(), [`http://localhost:${PORT}`], "a browser tab now");
       assert.equal(appWindows().length, 1, "and still only the one app window, from the test before");
 
       await click("Open in its own window");
       assert.equal(parseOpenInSetting(readFileSync(settings, "utf8")), "window");
-      await click("Open Granted");
+      await click("Open Treatable");
       assert.deepEqual(await until(async () => appWindows(), (l) => l.length > 1, 20_000), [
         `--app=http://localhost:${PORT}`,
         `--app=http://localhost:${PORT}`,
@@ -784,18 +791,18 @@ describe(
     });
 
     test("Quit Granted stops the server, unloads the LaunchAgent, releases the status lock and removes the pid file", async () => {
-      await writeFile(helperEnv["GRANTED_HELPER_PID_FILE"], "99999", "utf8");
-      await click("Quit Granted");
+      await writeFile(helperEnv["TREATABLE_HELPER_PID_FILE"], "99999", "utf8");
+      await click("Quit Treatable");
       assert.equal(await probeGranted(`http://127.0.0.1:${PORT}/`, 3000), "down", "the server is stopped");
       assert.equal(fake.agentLoaded(), false, "nothing left registered with launchd");
       assert.equal(existsSync(macStatusLockPath(fake.statusPath)), false, "the status lock is released");
-      assert.equal(existsSync(helperEnv["GRANTED_HELPER_PID_FILE"]), false, "and the pid file is gone");
+      assert.equal(existsSync(helperEnv["TREATABLE_HELPER_PID_FILE"]), false, "and the pid file is gone");
     });
   },
 );
 
 describe(
-  "`granted-tray.sh stop` against a live menu-bar helper that is slow to shut down",
+  "`treatable-tray.sh stop` against a live menu-bar helper that is slow to shut down",
   {
     skip:
       (process.platform !== "darwin" || !existsSync(MENUBAR_PKG) || !hasSwift() || !inAquaSession()) &&
@@ -805,12 +812,12 @@ describe(
     /**
      * REGRESSION. This is the one shutdown nothing else here exercises: a plain
      * `stop` (no --server-only) run from OUTSIDE, against a helper started the
-     * real way — granted-tray.sh's own start_helper, `nohup <binary> &`, a real
-     * process with a real pid file, not GRANTED_MENUBAR_HELPER=none and not the
+     * real way — treatable-tray.sh's own start_helper, `nohup <binary> &`, a real
+     * process with a real pid file, not TREATABLE_MENUBAR_HELPER=none and not the
      * self-test.
      *
      * That stop is a two-step shutdown, not one. SIGTERM makes the helper run a
-     * whole `granted-tray.sh stop --server-only` of its own, and only when that
+     * whole `treatable-tray.sh stop --server-only` of its own, and only when that
      * returns does it release its `<status>.lock.d` directory and remove its
      * pid file. stop_helper used to allow 10 seconds for all of it, while the
      * nested stop_server it triggers can take two 15-second waits — so a server
@@ -897,7 +904,7 @@ describe(
 );
 
 describe(
-  "`granted-tray.sh stop` against a menu-bar helper that is genuinely wedged",
+  "`treatable-tray.sh stop` against a menu-bar helper that is genuinely wedged",
   {
     skip: (process.platform !== "darwin" || !existsSync(TRAY_SCRIPT)) && "macOS only, run from installer/",
   },
@@ -932,7 +939,7 @@ describe(
           "# A menu-bar helper that hangs: it takes the status lock as the real one",
           "# does, then ignores SIGTERM for good, so stop_helper has to kill it.",
           "trap '' TERM INT",
-          'mkdir "$GRANTED_STATUS_FILE.lock.d" 2>/dev/null || true',
+          'mkdir "$TREATABLE_STATUS_FILE.lock.d" 2>/dev/null || true',
           // sleep, not `wait`, so SIGKILL on this shell orphans nothing for
           // longer than a second.
           "while :; do sleep 1; done",
@@ -1005,14 +1012,14 @@ describe(
 );
 
 describe(
-  "`granted-tray.sh stop` when the pid file's pid now belongs to something else",
+  "`treatable-tray.sh stop` when the pid file's pid now belongs to something else",
   {
     skip: (process.platform !== "darwin" || !existsSync(TRAY_SCRIPT)) && "macOS only, run from installer/",
   },
   () => {
     /**
-     * REGRESSION. granted-tray.sh's helper_pid() used to accept any live pid in
-     * ~/Library/Application Support/Granted/menubar-<port>.pid. That file
+     * REGRESSION. treatable-tray.sh's helper_pid() used to accept any live pid in
+     * ~/Library/Application Support/Treatable/menubar-<port>.pid. That file
      * outlives a SIGKILL, a force-quit and a power loss — only the Swift side's
      * own graceful quit() removes it — and pids restart low after a reboot, so
      * a collision with an unrelated process is realistic, not theoretical.
@@ -1031,12 +1038,12 @@ describe(
 
     before(async () => {
       // A helper path with the real binary's name, pointing at a file that does
-      // not exist: granted-tray.sh's start_helper finds nothing to run and
+      // not exist: treatable-tray.sh's start_helper finds nothing to run and
       // writes no pid file (so the one below is entirely this test's), while
       // helper_path() still reports the name a real helper would have. No
       // Swift, no GUI session and no menu-bar icon are involved.
       helperDir = realpathSync(await mkdtemp(join(tmpdir(), "granted-pid-reuse-")));
-      fake = await setUpFakeInstall({ helper: join(helperDir, "granted-menubar") });
+      fake = await setUpFakeInstall({ helper: join(helperDir, "treatable-menubar") });
       await execFileAsync("/bin/bash", [fake.trayScript, "start", "--port", String(PORT)], {
         env: { ...process.env, ...fake.env },
         timeout: 180_000,
@@ -1101,7 +1108,7 @@ describe(
      * loop's `polling` flag never cleared, and the menu-bar status label froze
      * permanently with no recovery path.
      *
-     * Driven through the helper's own GRANTED_MENUBAR_RUN_TIMEOUT_TEST hook,
+     * Driven through the helper's own TREATABLE_MENUBAR_RUN_TIMEOUT_TEST hook,
      * which calls the very same run() the polling loop does. Deliberately
      * before NSApplication, so this needs no GUI session and puts no icon on
      * anyone's menu bar.
@@ -1151,7 +1158,7 @@ describe(
       const { stdout } = await execFileAsync(helperBinary(), [], {
         env: {
           ...process.env,
-          GRANTED_MENUBAR_RUN_TIMEOUT_TEST: `${TIMEOUT_SECONDS}:${join(root, "wedge.sh")}`,
+          TREATABLE_MENUBAR_RUN_TIMEOUT_TEST: `${TIMEOUT_SECONDS}:${join(root, "wedge.sh")}`,
           WEDGE_PIDS: pidsFile(),
         },
         // Generous, so a hang fails this assertion rather than the test runner.
@@ -1211,7 +1218,7 @@ describe(
       );
       const startedAt = Date.now();
       const { stdout } = await execFileAsync(helperBinary(), [], {
-        env: { ...process.env, GRANTED_MENUBAR_RUN_TIMEOUT_TEST: `60:${script}` },
+        env: { ...process.env, TREATABLE_MENUBAR_RUN_TIMEOUT_TEST: `60:${script}` },
         timeout: 120_000,
       });
       const elapsed = Date.now() - startedAt;
