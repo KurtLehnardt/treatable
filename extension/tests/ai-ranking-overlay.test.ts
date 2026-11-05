@@ -135,3 +135,17 @@ test('badged is dropped when the page moves to a new snapshot generation: the fu
   assert.match(m.shown(),/Match % is on each card/,'a ranking that arrives for the current generation is badged again');
  }finally{m.restore()}
 });
+
+test('the sharpen link shows while a condition or an age band is missing, and opens Your details',async()=>{
+ const m=mount();try{await m.start();
+  await m.emitRanking({phase:'done',total:2,applied:true,provider:'openai',mode:'live',badged:true,studies:[{nctId:A,title:'Study A',percent:91,reasonId:'strong_match',checks:[],score:91}]} as any);
+  const link=()=>m.root().findAll(n=>n.type==='button'&&text(n.children)==='Add your condition and age for better matches ›');
+  assert.equal(link().length,1,'nothing entered');
+  await act(async()=>link()[0].props.onClick());
+  assert.ok(m.root().findAll(n=>n.props.id==='treatable-settings').length>=1,'Settings opened');
+  const field=(label:RegExp)=>m.root().findAll(n=>['input','textarea','select'].includes(n.type as string)&&n.parent?.type==='label'&&label.test(String([n.parent.props.children].flat()[0])))[0];
+  await act(async()=>field(/illness, condition/).props.onChange({target:{value:'asthma'}}));assert.equal(link().length,1,'a condition alone: age is still missing');
+  await act(async()=>field(/Age band/).props.onChange({target:{value:'45_59'}}));assert.equal(link().length,0,'condition and age: nothing left to add');
+  await act(async()=>field(/illness, condition/).props.onChange({target:{value:''}}));assert.equal(link().length,1,'an age alone: the condition is missing');
+ }finally{m.restore()}
+});
