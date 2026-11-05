@@ -48,3 +48,30 @@ test('ranked cards are reordered and each gets a match ring inside its own card 
   assert.equal(t.command('restore').ok,true);await settle();assert.deepEqual(order(t.env.document),[FIRST,SECOND],'Restore original order');assert.equal(badges(t.env.document).length,0);
  }finally{t.controller.dispose();t.env.teardown()}
 });
+
+test('activating a badge reports whether a frame was made: false for an unknown study id and for a card that left the page',async()=>{
+ const t=await rig();try{
+  const cap='a'.repeat(64);
+  assert.equal(t.controller.activate({purpose:'badge',nctId:'NCT99999999',capability:cap}),false,'not a card on this page');
+  assert.equal(t.controller.activate({purpose:'badge',nctId:'not-an-id',capability:cap}),false);
+  assert.equal(badges(t.env.document).length,0);
+  assert.equal(t.controller.activate({purpose:'badge',nctId:FIRST,capability:cap}),true);
+  const card=Array.from(t.env.document.querySelectorAll('ctg-search-hit-card')).find(c=>c.querySelector('.nct-id')!.textContent===SECOND)!;
+  card.remove();
+  assert.equal(t.controller.activate({purpose:'badge',nctId:SECOND,capability:cap}),false,'a detached card cannot hold a badge');
+  assert.equal(badges(t.env.document).length,1);
+ }finally{t.controller.dispose();t.env.teardown()}
+});
+test('the page replacing the card elements, same ids in the same order, is a page change: the old badges are gone and the snapshot generation moves on',async()=>{
+ const t=await rig();try{
+  const before=t.controller.getSnapshot();
+  for(const nctId of [FIRST,SECOND])t.controller.activate({purpose:'badge',nctId,capability:'a'.repeat(64)});
+  assert.equal(badges(t.env.document).length,2);
+  for(const card of Array.from(t.env.document.querySelectorAll('ctg-search-hit-card'))){const copy=card.cloneNode(true) as Element;copy.querySelectorAll('iframe').forEach(f=>f.remove());card.replaceWith(copy)}
+  assert.deepEqual(order(t.env.document),[FIRST,SECOND],'same ids, same order');
+  t.controller.scan();
+  const after=t.controller.getSnapshot();
+  assert.notEqual(after.generation,before.generation,'the overlay can tell the page changed');assert.deepEqual(after.nctIds,[FIRST,SECOND]);
+  assert.equal(badges(t.env.document).length,0,'frames in the replaced cards are not left behind or counted');
+ }finally{t.controller.dispose();t.env.teardown()}
+});

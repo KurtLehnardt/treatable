@@ -22,39 +22,44 @@ function Summary({state,again}:{state:RankingState;again:(force:boolean)=>void})
  if(state.phase==='unavailable')return <p role="status" className="notice">{state.note==='too_many'?`This page shows ${state.total} studies. Set ClinicalTrials.gov to show 10 studies per page to rank them.`:state.note==='no_cards'?'There are no result cards to rank on this page.':'Ranking could not run on this page. The website keeps its own order.'}</p>;
  if(state.applied===false)return <><p role="status" className="notice">The website’s original order is shown.</p><div className="button-row"><button type="button" onClick={()=>again(false)}>Apply the ranking again</button></div></>;
  if(state.failure)return <><p role="status" className="notice">AI scoring did not run, so record checks set the order: studies that clearly do not fit moved to the end. <span className="fine">{failureCopy(state.failure)}</span></p><div className="button-row"><button type="button" onClick={()=>again(true)}>Try AI ranking again</button></div></>;
- if(state.note==='no_condition')return <p role="status" className="notice">Search for a condition on ClinicalTrials.gov, or add condition terms in Settings → Your details, to rank by relevance. Record checks moved studies that clearly do not fit to the end.</p>;
+ if(state.note==='no_condition')return <p role="status" className="notice">Search for a condition on ClinicalTrials.gov to rank by relevance. Record checks moved studies that clearly do not fit to the end.</p>;
+ if(state.badged===true)return <p role="status" className="ranking-summary">{`Ranked ${n} ${n===1?'study':'studies'}, best matches first. Match % is on each card.`}</p>;
  return <p role="status" className="ranking-summary">{`Ranked ${n} ${n===1?'study':'studies'}: best matches first, studies that clearly do not fit last.`}</p>;
 }
 function Study({study}:{study:RankingStudyView}){
  const extra=study.checks.slice(1).map(c=>REASON_TEXT[c]);
  return <li className={study.checks.length?'is-mismatch':undefined}><span className="rank-percent"><span aria-hidden="true">{study.percent===null?'–':`${study.percent}%`}</span><span className="sr-only">{study.percent===null?'Not scored':`${study.percent}% match`}</span></span><div><a href={trialUrl(`https://clinicaltrials.gov/study/${study.nctId}`)} target="_blank" rel="noopener noreferrer">{study.title||study.nctId}</a><span className="study-id">{study.nctId}</span><span className="rank-reason">{[REASON_TEXT[study.reasonId],...extra].join(' · ')}</span></div></li>;
 }
-/** How the ranking was produced: provider and test or live label, what was sent, the exact request body and each study's score. */
+/** The one "Technical details" disclosure: how the ranking was produced (provider and test or live label), any failure code, what was sent, the exact request body and each study's score. */
 function HowRanked({state}:{state:RankingState}){
  const studies=state.studies??[];
- return <details className="brief-how ranking-how"><summary>How this was ranked</summary>
+ return <details className="brief-how ranking-how"><summary>Technical details</summary>
   <p>{state.provider==='none'||!state.provider?'No AI scoring ran for this page.':!state.mode?'The request below was sent or may have been sent, but no valid scores came back.':state.provider==='local'?'Scored by a local model on this device. Nothing was sent to OpenAI.':state.mode==='test'?'Test run: a mocked adapter produced these scores. Nothing was sent to OpenAI.':'Scored by OpenAI.'}</p>
   {state.failure&&<p className="fine">Failure code: <code>{state.failure}</code></p>}
   <p>Recruiting status, the listed age range and the listed sex were checked inside Treatable from the public records.</p>
   {state.profile&&(state.provider==='local'?<p>{`Given to the local model on this device: condition terms ${state.profile.conditions.join(', ')}, and the public records of these studies. Age band and sex were used only for the record checks.`}</p>:<p>{`Sent for scoring: condition terms ${state.profile.conditions.join(', ')}`}{state.profile.ageBand?`; age band ${ageText(state.profile.ageBand)}`:''}{state.profile.sex?`; sex ${state.profile.sex}`:''}{'; and the public records of these studies.'}</p>)}
-  {state.request&&<details className="trace-body"><summary>{state.provider==='local'?'Local model request body':'Decisions API request body'} <span className="fine">{`(${state.request.bytes} bytes)`}</span></summary>{state.request.truncated&&<p className="notice" role="note">Shortened for display. The request itself was not shortened.</p>}<pre className="trace-json" tabIndex={0} role="region" aria-label="Ranking request body">{state.request.text}</pre></details>}
-  {studies.some(s=>s.score!==undefined)&&<><h4>Scores returned</h4><ol className="trace-decisions">{studies.map(s=><li key={s.nctId} className="trace-decision"><p><span className="study-id">{s.nctId}</span> {s.score===undefined?'Not scored':`Relevance score ${s.score} of 100`}{s.checks.length?` · shown as ${s.percent}% because: ${s.checks.map(c=>REASON_TEXT[c]).join(', ')}`:''}</p>
+  {state.request&&<div className="trace-body"><h3>{state.provider==='local'?'Local model request body':'Decisions API request body'} <span className="fine">{`(${state.request.bytes} bytes)`}</span></h3>{state.request.truncated&&<p className="notice" role="note">Shortened for display. The request itself was not shortened.</p>}<pre className="trace-json" tabIndex={0} role="region" aria-label="Ranking request body">{state.request.text}</pre></div>}
+  {studies.some(s=>s.score!==undefined)&&<><h3>Scores returned</h3><ol className="trace-decisions">{studies.map(s=><li key={s.nctId} className="trace-decision"><p><span className="study-id">{s.nctId}</span> {s.score===undefined?'Not scored':`Relevance score ${s.score} of 100`}{s.checks.length?` · shown as ${s.percent}% because: ${s.checks.map(c=>REASON_TEXT[c]).join(', ')}`:''}</p>
    {s.probabilities&&<ul className="trace-probabilities" aria-label="Probability of each relevance level">{levelShares(s.probabilities).map((share,i)=><li key={i} className="trace-probability"><span>{RANK_LEVELS[i]}</span><span className="trace-bar" aria-hidden="true"><span style={{width:share}}/></span><strong>{share}</strong></li>)}</ul>}</li>)}</ol></>}
  </details>;
 }
-export interface RankingSectionModel{aiRanking:AiRanking;ranking?:RankingState;waiting?:'intro'|'page';connected:boolean;busy:boolean;restore:()=>void;again:(force:boolean)=>void;searchHelp?:()=>void}
+export interface RankingSectionModel{aiRanking:AiRanking;ranking?:RankingState;waiting?:'intro'|'page';connected:boolean;busy:boolean;restore:()=>void;again:(force:boolean)=>void;searchHelp?:()=>void;/** Opens Settings at Your details. Offered only while Your details is empty. */sharpen?:()=>void}
 /** AI-matched results on a ClinicalTrials.gov results page. The cards on the page are reordered and badged by the background. It is
  * turned on only with the switch above it, beside its disclosure, never from here. */
 export function RankingSection({vm}:{vm:RankingSectionModel}){
  const help=vm.searchHelp?<button type="button" className="quiet" data-treatable-guide="search-help" onClick={vm.searchHelp}>Show me the website’s filters</button>:null;
+ const sharpen=vm.sharpen?<button type="button" className="quiet sharpen-link" onClick={vm.sharpen}>Add your condition and age for better matches ›</button>:null;
  const state=vm.ranking,busy=!!state&&['checking','preparing','scoring'].includes(state.phase);
- return <section className="page-results ai-ranking" aria-labelledby="ai-ranking-heading"><div className="section-intro"><span className="eyebrow">AI-matched results</span><h2 id="ai-ranking-heading">Studies on this page, best matches first</h2></div>
-  {!vm.connected?<p className="notice">AI-matched results start once Treatable is connected to a ClinicalTrials.gov results page.</p>:vm.aiRanking!=='on'?<p className="notice">AI-matched results are off, so the website keeps its own order and no match percentages are shown. To sort these studies, turn on the AI-matched results switch above.</p>:<>
+ /* Badges placed on every card carry the percentages and reasons, so the panel keeps one status line; the list is the fallback when they are not (or not known to be) there. */
+ const listed=state?.phase==='done'&&state.applied!==false&&!!state.studies?.length,badged=listed&&state?.badged===true,moved=badged?state!.studies!.filter(s=>s.checks.length):[];
+ return <section className="page-results ai-ranking" aria-labelledby="ai-ranking-heading"><h2 id="ai-ranking-heading" className="sr-only">AI-matched results</h2>
+  {!vm.connected?<p className="notice">AI-matched results start once Treatable is connected to a ClinicalTrials.gov results page.</p>:vm.aiRanking!=='on'?<><p className="notice">AI-matched results are off, so the website keeps its own order and no match percentages are shown. To sort these studies, turn on the AI-matched results switch above.</p>{help&&<div className="button-row">{help}</div>}</>:<>
    {(busy||!state)&&<Progress state={state} waiting={vm.waiting}/>}
    {state&&!busy&&state.phase!=='off'&&<Summary state={state} again={vm.again}/>}
-   {state?.phase==='done'&&state.applied!==false&&!!state.studies?.length&&<><ol className="ranking-list">{state.studies.map(s=><Study key={s.nctId} study={s}/>)}</ol><div className="button-row"><button type="button" className="quiet" disabled={!vm.connected||vm.busy} onClick={vm.restore}>Restore original order</button>{help}</div></>}
+   {listed&&<>{badged?<>{moved.length>0&&<><p className="moved-lead">Moved to the end by record checks:</p><ol className="ranking-list moved-list">{moved.map(s=><Study key={s.nctId} study={s}/>)}</ol></>}<details className="ranking-all"><summary>Show all ranked studies</summary><ol className="ranking-list">{state!.studies!.map(s=><Study key={s.nctId} study={s}/>)}</ol></details></>:<ol className="ranking-list">{state!.studies!.map(s=><Study key={s.nctId} study={s}/>)}</ol>}<div className="button-row"><button type="button" className="quiet" disabled={!vm.connected||vm.busy} onClick={vm.restore}>Show the website’s order</button>{help}</div></>}
+   {help&&!listed&&<div className="button-row">{help}</div>}
+   {sharpen&&state?.phase==='done'&&<p className="sharpen">{sharpen}</p>}
    {state?.phase==='done'&&<HowRanked state={state}/>}
-   {help&&!(state?.phase==='done'&&state.applied!==false&&!!state.studies?.length)&&<div className="button-row">{help}</div>}
   </>}
  </section>;
 }
