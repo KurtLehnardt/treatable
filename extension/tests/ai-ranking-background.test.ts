@@ -21,12 +21,12 @@ function rig({decisions='ok',holdPrepare=false,local={}}:{decisions?:'ok'|'fail'
  let snap:any={generation:'doc-1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[A,B,C],diagnostic:'Three cards',supported:true};
  const api:any={storage:{local:area,session:{get:async(key:string)=>session.has(key)?{[key]:session.get(key)}:{},set:async()=>{},remove:async(key:string)=>{session.delete(key)}},onChanged:changed},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','releaseCards','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}}};
  const rankNative=()=>{const onMessage=new Events(),onDisconnect=new Events();const n:any={onMessage,onDisconnect,disconnected:false,disconnect(){n.disconnected=true},postMessage(m:any){nativeSent.push(structuredClone(m));const answer=()=>{if(n.disconnected)return;if(m.type==='prepareRank')onMessage.emit({id:m.id,type:'result',ok:true,result:{kind:'preparedRank',token:TOKEN,digest:DIGEST,expiresAt:Date.now()+300000,provider:'openai',nctIds:m.payload.nctIds,preview:{profile:m.payload.profile,request:{model:'gpt-6-luna',questions:m.payload.nctIds.map((name:string)=>({type:'score',name}))}}}});else if(m.type==='executeRank')onMessage.emit(decisions==='fail'?{id:m.id,type:'result',ok:false,code:'API_ERROR',error:'fixed'}:{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'test',provider:'openai',digest:DIGEST,scores:[[A,33],[B,100],[C,100]].map(([nctId,score])=>({nctId,score,reasonId:(score as number)>=75?'strong_match':'unclear',probabilities:RANK_LEVELS.map((_,i)=>i===((score as number)>=75?3:1)?1:0)}))}})};if(m.type==='prepareRank'&&holdPrepare)held.push(answer);else setTimeout(answer,1)}};natives.push(n);return n};
- const service=installSiteAssistant(api,{lookupPublicStudy:async(id:string)=>records[id],rankNative});
+ const lookups:string[]=[];const service=installSiteAssistant(api,{lookupPublicStudy:async(id:string)=>{lookups.push(id);return records[id]},rankNative});
  function port(purpose='overlay',nct?:string){const onMessage=new Events(),onDisconnect=new Events(),sent:any[]=[];const p:any={name:`treatable.site.${purpose}.v1`,sender:{id:'test',tab:{id:1,url:snap.url},frameId:purpose==='overlay'?2:5,documentId:purpose+'-document',url:origin+'/'+(purpose==='overlay'?'overlay.html':`score-badge.html?nct=${nct}`)},onMessage,onDisconnect,sent,closed:false,postMessage(v:any){sent.push(structuredClone(v))},disconnect(){p.closed=true;onDisconnect.emit()}};connect.emit(p);return p}
  let request=0;
  const turnOn=(disclosure='openai')=>service.handle(1,{id:`on-${++request}`,type:'site.aiSwitch',payload:{on:true,disclosure}});
  const turnOff=()=>service.handle(1,{id:`off-${++request}`,type:'site.aiSwitch',payload:{on:false}});
- return{api,area,store,session,service,commands,scripts,natives,nativeSent,held,messages,port,turnOn,turnOff,setSnapshot:(s:any)=>{snap=s}};
+ return{lookups,api,area,store,session,service,commands,scripts,natives,nativeSent,held,messages,port,turnOn,turnOff,setSnapshot:(s:any)=>{snap=s}};
 }
 async function connected(h:ReturnType<typeof rig>){await h.service.launch({id:1,url:'https://clinicaltrials.gov/search?cond=Asthma'});const p=h.port();p.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();return p}
 const ranking=(p:any)=>p.sent.filter((v:any)=>v.type==='site.ranking').map((v:any)=>v.state);
@@ -190,4 +190,20 @@ test('site.ping never extends an applied ranking: the applied order lapses five 
  t.mock.timers.setTime(start+4*60*1000);assert.deepEqual((await h.service.handle(1,{id:'alive',type:'site.ping',payload:{generation:'doc-1'}})).result,{active:true});
  t.mock.timers.setTime(start+6*60*1000);await assert.rejects(h.service.handle(1,{id:'expired',type:'site.rank',payload:{generation:'doc-1'}}),'the applied order expired even though the search session was pinged');
  p.disconnect();
+});
+
+test('a title the ranking facts already hold is used without another lookup',async()=>{
+ const h=rig(),p=await connected(h);await h.turnOn();
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{ageBand:'30_44',sex:'male'}}});
+ await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
+ const before=h.lookups.length;assert.ok(before>=3);
+ assert.deepEqual(await h.service.publicStudyTitles([A]),[{nctId:A,title:'Study A'}]);assert.equal(h.lookups.length,before,'no lookup: the title came from the rank facts');
+});
+test('site.openSearch ends the derived ranking: the page is restored and the navigation is requested',async()=>{
+ const h=rig(),p=await connected(h);await h.turnOn();
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{ageBand:'30_44',sex:'male'}}});
+ await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
+ const restores=()=>h.commands.filter(c=>c.type==='restore').length,before=restores(),navs:any[]=[];h.api.tabs.update=async(id:number,v:any)=>{navs.push({id,...v})};
+ await h.service.handle(1,{id:'os',type:'site.openSearch',payload:{}});await flush();
+ assert.equal(restores(),before+1,'the reordered cards are restored when the session ends');assert.deepEqual(navs,[{id:1,url:'https://clinicaltrials.gov/'}]);
 });
