@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
+import {AI_SWITCH_DISCLOSURE,exposedLongEnough,type SwitchExposure} from './ai-switch';
 import {OpenSettingsContext} from './settings-context';
 import {collapsedStatus} from './rank-state';
 function useResolvedTheme(theme: OverlayTheme) {
@@ -18,7 +19,7 @@ function SettingsIcon() {return <svg width="20" height="20" viewBox="0 0 24 24" 
 /** `ranking` is the AI-matched results section for a results page; `apply` is the study brief. */
 export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewModel & UnsavedWorkHost; apply?: ReactNode; settings?: ReactNode; ranking?: ReactNode}) {
  /* The collapsed status line is mounted empty and filled after, so a screen reader announces it. */
- const statusNow = vm.collapsed && !vm.study && vm.aiRanking !== 'off' ? collapsedStatus(vm.ranking) ?? '' : '', [announced, setAnnounced] = useState('');
+ const statusNow = vm.collapsed && !vm.study && vm.aiRanking === 'on' ? collapsedStatus(vm.ranking) ?? '' : '', [announced, setAnnounced] = useState('');
  useEffect(() => setAnnounced(statusNow), [statusNow]);
  const [settingsOpen, setSettingsOpen] = useState(false), [detailsRequest, setDetailsRequest] = useState(0), returnTo = useRef<HTMLElement | null>(null);
  /* "Add your condition and age" opens Settings and lands on Your details, every time, even with Settings already open. */
@@ -30,6 +31,39 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  const [searchError, setSearchError] = useState(false);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
+ /* What a turn-on needs besides the person's own click or key press (see AI_SWITCH_MIN_SHOWN_MS in ai-switch.ts): since when the
+  * browser has reported the whole switch row in view and fully visible, since when the pointer has been inside this frame, and since
+  * when this frame has had focus. Script on the website could otherwise hide, clip, cover or move the frame and line the switch up under
+  * a decoy. Without the browser's visibility check the row is never reported visible, and the switch cannot be turned on. */
+ const showSwitch = !!vm.setAiRanking && !vm.collapsed && vm.connected && !vm.ended;
+ const switchRow = useRef<HTMLDivElement | null>(null), exposure = useRef<SwitchExposure>({});
+ useEffect(() => {
+  exposure.current.shown = undefined;
+  const row = switchRow.current, Observer = (globalThis as any).IntersectionObserver;
+  if (!showSwitch || !row || typeof Observer !== 'function') return;
+  let observer: {observe: (target: unknown) => void; disconnect: () => void} | undefined;
+  try {
+   observer = new Observer((entries: {isVisible?: unknown; isIntersecting?: unknown; intersectionRatio?: unknown; time: number}[]) => {const last = entries[entries.length - 1]; if (!last) return; const whole = last.isVisible === true && last.isIntersecting === true && typeof last.intersectionRatio === 'number' && last.intersectionRatio >= 0.99; exposure.current.shown = whole ? exposure.current.shown ?? last.time : undefined}, {trackVisibility: true, delay: 100, threshold: [0, 0.99, 1]});
+   observer!.observe(row);
+  } catch {return}
+  return () => {observer?.disconnect(); exposure.current.shown = undefined};
+  /* A new disclosure beside the switch (another page changed the model provider) starts the visibility clock again. */
+ }, [showSwitch, vm.provider]);
+ useEffect(() => {
+  const win = (globalThis as any).window, doc = (globalThis as any).document, now = () => (globalThis as any).performance?.now?.() as number;
+  if (typeof win?.addEventListener !== 'function' || typeof doc?.addEventListener !== 'function') return;
+  /* An event time on the same clock as performance.now(); anything else counts as now, so it can never start a clock early. */
+  const at = (stamp: unknown) => {const t = now(); return typeof stamp === 'number' && stamp > 0 && stamp <= t ? stamp : t};
+  if (typeof doc.hasFocus === 'function' && doc.hasFocus()) exposure.current.focus = now();
+  /* Entering or leaving this frame: the related target is outside the document. The pointer clock starts when the browser first reports the pointer inside. */
+  const over = (e: PointerEvent) => {if (!e.relatedTarget && exposure.current.pointer === undefined) exposure.current.pointer = at(e.timeStamp)}, out = (e: PointerEvent) => {if (!e.relatedTarget) exposure.current.pointer = undefined};
+  /* When this frame gets focus from outside (a press on the frame, or script on the website focusing it), the switch is never left holding
+   * it, so a key press meant for the website cannot land on the switch. */
+  const focus = (e: Event) => {if (exposure.current.focus === undefined) exposure.current.focus = at(e.timeStamp); const active = doc.activeElement; if (active && switchRow.current?.contains?.(active)) active.blur?.()}, blur = () => {exposure.current.focus = undefined};
+  doc.addEventListener('pointerover', over, true); doc.addEventListener('pointerout', out, true); win.addEventListener('focus', focus); win.addEventListener('blur', blur);
+  return () => {doc.removeEventListener('pointerover', over, true); doc.removeEventListener('pointerout', out, true); win.removeEventListener('focus', focus); win.removeEventListener('blur', blur)};
+ }, []);
+ const switchShown = () => exposedLongEnough(exposure.current, (globalThis as any).performance?.now?.());
  /* Closing ends the session and clears what was typed. Ask first only when there is something to lose; otherwise close at once. */
  const requestClose = useRef(async () => {
   const host = latest.current;
@@ -94,7 +128,9 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  return <OpenSettingsContext.Provider value={showDetails}><main {...mainAttrs}>
   {header}
   {settingsPanel}
-  {vm.setAiRanking && !vm.collapsed && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label></div>}
+  {/* Turning the switch on is the person's consent, so it is shown only with its disclosure beside it: never while collapsed, where the
+     * compact frame has no room for that line. It is off unless the person turns it on. */}
+  {vm.setAiRanking && !vm.collapsed && <div className="ai-switch-row" ref={switchRow}><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking === 'on'} disabled={vm.ended} aria-busy={vm.aiSwitchBusy || undefined} aria-describedby="ai-switch-disclosure" onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off', event, switchShown())}/><span><strong>AI-matched results</strong><small>{vm.aiRanking === 'on' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label><p id="ai-switch-disclosure" className="ai-disclosure">{AI_SWITCH_DISCLOSURE[vm.provider === 'local' ? 'local' : 'openai']}</p></div>}
   {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button>{searchError && <p role="alert" className="notice error">Could not open the ClinicalTrials.gov home page. Try again.</p>}</div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
   </div></>}

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mergeRanking,recordChecks,detailConditionTerms,rankConditions,searchConditionTerms,REASON_TEXT,MISMATCH_PERCENT_CAP} from '../src/rank-merge';
-import {createRankService,parseRankDetails,type RankHost,type RankConfirmOutcome,type RankConfirmSummary} from '../src/rank-background';
+import {createRankService,parseRankDetails,type RankHost} from '../src/rank-background';
+import {aiRankingFor,type AiConsent} from '../src/ai-switch';
 import {parseRankingState,type RankingState} from '../src/rank-state';
 import {RANK_LEVELS,rankReasonForScore,type RankScore} from '../shared/rank-contract.mjs';
 
@@ -78,51 +79,57 @@ const TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
 function prepared(m:any,provider='openai'){return{id:m.id,type:'result',ok:true,result:{kind:'preparedRank',token:TOKEN,digest:DIGEST,expiresAt:Date.now()+300000,provider,nctIds:m.payload.nctIds,preview:{profile:m.payload.profile,request:{model:'gpt-6-luna',input:[{role:'user',content:[{type:'input_json',data:{profile:m.payload.profile}}]}],questions:m.payload.nctIds.map((name:string)=>({type:'score',name}))}}}}}
 const ranked=(m:any,provider='openai')=>({id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'test',provider,digest:DIGEST,scores:[score(A,33),score(B,100),score(C,67),score(D,67),score(E,0)]}});
 const fail=(m:any,code:string)=>({id:m.id,type:'result',ok:false,code,error:'fixed'});
-function hostFake({reply,confirm='accepted',off=false,lastError,url='https://clinicaltrials.gov/search?cond=Asthma'}:{reply:Reply;confirm?:RankConfirmOutcome;off?:boolean;lastError?:string;url?:string}){
- const native=nativeFake(reply),posts:RankingState[]=[],applied:any[]=[],confirms:RankConfirmSummary[]=[];let consent=false;
- const host:RankHost={snapshot:async()=>({generation:'g1',url,nctIds:[...ids],diagnostic:'',supported:true}),facts:async(id:string)=>{if(!facts[id])throw Error('unavailable');return facts[id]},post:(_tab,state)=>{posts.push(parseRankingState(structuredClone(state))!)},apply:async(_tab,_s,list)=>{applied.push(list.map(r=>r.nctId));return true},confirm:async(_tab,summary)=>{confirms.push(structuredClone(summary));return confirm},prefs:async()=>({displayMode:'popup',theme:'system',provider:'openai',localModel:null,aiRanking:off?'off':'on'}),consent:{has:async()=>consent,grant:async()=>{consent=true},clear:async()=>{consent=false}},connectNative:()=>native.connect(),lastError:()=>lastError};
- return{host,native,posts,applied,confirms,consented:()=>consent,setConsent:(v:boolean)=>{consent=v}};
+/* `consent` is the background's switch record: null (off), or the disclosure it was turned on beside. checks counts consent lookups,
+ * each with what the helper had been sent by then. */
+function hostFake({reply,consent:initial='openai',lastError,url='https://clinicaltrials.gov/search?cond=Asthma'}:{reply:Reply;consent?:AiConsent|null;lastError?:string;url?:string}){
+ const native=nativeFake(reply),posts:RankingState[]=[],applied:any[]=[],checks:{provider:string;sent:string[]}[]=[];let consent:AiConsent|null=initial;
+ const host:RankHost={snapshot:async()=>({generation:'g1',url,nctIds:[...ids],diagnostic:'',supported:true}),facts:async(id:string)=>{if(!facts[id])throw Error('unavailable');return facts[id]},post:(_tab,state)=>{posts.push(parseRankingState(structuredClone(state))!)},apply:async(_tab,_s,list)=>{applied.push(list.map(r=>r.nctId));return true},prefs:async()=>({displayMode:'popup',theme:'system',provider:'openai',localModel:null}),consent:{allows:async provider=>{checks.push({provider,sent:native.sent.map(m=>m.type)});return aiRankingFor(consent,provider)==='on'}},connectNative:()=>native.connect(),lastError:()=>lastError};
+ return{host,native,posts,applied,checks,setConsent:(v:AiConsent|null)=>{consent=v}};
 }
 const until=async(check:()=>boolean,ms=3000)=>{const end=Date.now()+ms;while(!check()){if(Date.now()>end)throw Error('timeout');await new Promise(r=>setTimeout(r,5))}};
 const done=(posts:RankingState[])=>posts.find(p=>['done','off','unavailable'].includes(p.phase));
 const details={ageBand:'30_44' as const,sex:'male' as const,terms:['wheezing']};
 
-test('first OpenAI ranking: nothing is scored before the confirmation; accepting it ranks, applies and records the session confirmation',async()=>{
+test('with the switch on beside the OpenAI disclosure, a ranking prepares, sends with its receipt and applies, with no window and no second question',async()=>{
  const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):m.type==='executeRank'?ranked(m):undefined});const service=createRankService(h.host);
  service.start(1,details);await until(()=>!!done(h.posts));
  assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank']);
- assert.equal(h.confirms.length,1,'the first ranking asks once');assert.deepEqual(h.confirms[0].conditions,['Asthma','wheezing']);assert.equal(h.confirms[0].ageBand,undefined,'age band and sex are not part of what is sent');assert.ok(h.confirms[0].exactPayload.questions,'the exact request body is offered in the confirmation');
- assert.equal(h.consented(),true);
+ assert.deepEqual(h.native.sent[1].payload,{token:TOKEN,digest:DIGEST},'executeRank carries exactly the receipt prepareRank returned');
+ assert.deepEqual(h.checks,[{provider:'openai',sent:[]},{provider:'openai',sent:[]},{provider:'openai',sent:['prepareRank']}],'the switch is checked before anything starts, before prepareRank and again before executeRank');
  const state=done(h.posts)!;assert.equal(state.phase,'done');assert.equal(state.applied,true);assert.equal(state.provider,'openai');assert.equal(state.mode,'test');
  assert.deepEqual(state.studies!.map(s=>[s.nctId,s.percent,s.reasonId]),[[D,67,'possible_match'],[A,33,'unclear'],[B,10,'not_recruiting'],[C,7,'outside_age_range'],[E,0,'sex_mismatch']]);
- assert.deepEqual(h.applied,[[D,A,B,C,E]]);assert.ok(state.request&&state.request.text.includes('gpt-6-luna'),'the request body is available for How this was ranked');
- assert.deepEqual(h.posts.map(p=>p.phase).filter((p,i,a)=>a.indexOf(p)===i),['checking','preparing','confirming','scoring','done']);
- /* A later page in the same browser session ranks without asking. */
+ assert.deepEqual(h.applied,[[D,A,B,C,E]]);assert.ok(state.request&&state.request.text.includes('gpt-6-luna'),'the exact request body is available for How this was ranked');assert.deepEqual(state.profile,{conditions:['Asthma','wheezing']},'what was sent: condition terms only');
+ assert.deepEqual(h.posts.map(p=>p.phase).filter((p,i,a)=>a.indexOf(p)===i),['checking','preparing','scoring','done']);
+ /* A later page ranks on its own while the switch stays on. */
  h.posts.length=0;service.start(1,{...details,terms:['cough']});await until(()=>!!done(h.posts));
- assert.equal(h.confirms.length,1,'no second confirmation');assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank','prepareRank','executeRank']);
+ assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank','prepareRank','executeRank']);
+});
+
+test('no ranking request without consent: with the switch off, or on beside the local model disclosure only, nothing reaches the helper for OpenAI',async()=>{
+ for(const consent of [null,'local'] as const){
+  const h=hostFake({reply:()=>{throw Error('no native call expected')},consent});createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+  assert.equal(done(h.posts)!.phase,'off',String(consent));assert.equal(h.native.sent.length,0,String(consent));assert.equal(h.native.ports.length,0,'no helper connection is even opened');assert.equal(h.applied.length,0,'nothing is applied');
+ }
+});
+
+test('turning the switch off while the helper prepares stops before executeRank: nothing is sent and the helper connection closes',async()=>{
+ let h!:ReturnType<typeof hostFake>;h=hostFake({reply:m=>{if(m.type!=='prepareRank')return ranked(m);h.setConsent(null);return prepared(m)}});
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank'],'no executeRank after the switch went off');assert.equal(done(h.posts)!.phase,'off');
+ assert.equal(h.native.ports[0].disconnected,true,'the helper connection is closed, which discards the prepared receipt');assert.equal(h.applied.length,0);
 });
 
 test('the helper payload holds only condition terms: no name, age band, exact age, sex, ZIP, coordinates or notes',async()=>{
- const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):m.type==='executeRank'?ranked(m):undefined,url:'https://clinicaltrials.gov/search?cond=Asthma&locStr=Boise&lat=43.6&lng=-116.2&distance=50'});h.setConsent(true);
+ const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):m.type==='executeRank'?ranked(m):undefined,url:'https://clinicaltrials.gov/search?cond=Asthma&locStr=Boise&lat=43.6&lng=-116.2&distance=50'});
  createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
  const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.deepEqual(Object.keys(prepare.payload).sort(),['nctIds','profile']);assert.deepEqual(prepare.payload.profile,{conditions:['Asthma','wheezing']},'only condition terms are sent; age band and sex stay on this device');
  assert.doesNotMatch(JSON.stringify(h.native.sent),/Boise|43\.6|116\.2|lat|lng|zip|name|notes|PRIVATE/i);
  assert.throws(()=>parseRankDetails({ageBand:'30_44',name:'Pat Canary'}),'the background refuses any extra detail field');
 });
 
-test('declining keeps the page usable with record checks only and does not ask again until the person chooses to',async()=>{
- const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):undefined,confirm:'declined'});const service=createRankService(h.host);
- service.start(1,details);await until(()=>!!done(h.posts));
- assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank'],'no executeRank without the confirmation');assert.equal(h.consented(),false);
- const state=done(h.posts)!;assert.equal(state.note,'declined');assert.equal(state.applied,true);assert.equal(state.provider,'none','nothing was sent, so How this was ranked names no provider');assert.equal(state.request,undefined);assert.equal(state.profile,undefined);assert.deepEqual(state.studies!.map(s=>s.nctId),[A,D,B,C,E],'known mismatches still move last');
- h.posts.length=0;service.start(1,{...details,terms:['cough']});await until(()=>!!done(h.posts));
- assert.equal(h.confirms.length,1,'an automatic re-run does not reopen the window');assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank'],'and sends nothing to the helper');
- h.posts.length=0;service.start(1,details,true);await until(()=>!!done(h.posts));assert.equal(h.confirms.length,2,'asking again is the person’s explicit choice');
-});
-
 test('a Decisions failure, an outdated helper or a missing helper keeps record-check ordering and says what failed',async()=>{
  for(const[reply,code,lastError]of [[(m:any)=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED'),'RATE_LIMITED'],[(m:any)=>fail(m,'INVALID_REQUEST'),'HELPER_VERSION_MISMATCH'],[()=>'disconnect','NATIVE_HOST_MISSING','Specified native messaging host not found.'],[(m:any)=>m.type==='prepareRank'?prepared(m):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'openai',digest:'b'.repeat(64),scores:[]}},'INVALID_NATIVE_REPLY']] as const){
-  const h=hostFake({reply:reply as Reply,lastError:lastError as string|undefined});h.setConsent(true);createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+  const h=hostFake({reply:reply as Reply,lastError:lastError as string|undefined});createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
   const state=done(h.posts)!;assert.equal(state.phase,'done',code);assert.equal(state.failure,code);assert.equal(state.applied,true,code);assert.equal(state.mode,undefined,code);
   const sent=code==='RATE_LIMITED'||code==='INVALID_NATIVE_REPLY';assert.equal(state.provider,sent?'openai':'none',code);assert.equal(!!state.request,sent,code);
   assert.deepEqual(state.studies!.map(s=>[s.nctId,s.percent]),[[A,null],[D,null],[B,0],[C,0],[E,0]],code);
@@ -130,13 +137,14 @@ test('a Decisions failure, an outdated helper or a missing helper keeps record-c
 });
 
 test('a mismatched result is rejected rather than applied',async()=>{
- const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'openai',digest:'b'.repeat(64),scores:[score(A,10),score(B,10),score(C,10),score(D,10),score(E,10)]}}});h.setConsent(true);
+ const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'openai',digest:'b'.repeat(64),scores:[score(A,10),score(B,10),score(C,10),score(D,10),score(E,10)]}}});
  createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));assert.equal(done(h.posts)!.failure,'RESULT_MISMATCH');assert.ok(done(h.posts)!.studies!.every(s=>s.score===undefined));
 });
 
 test('AI-matched results off: nothing is fetched, sent or applied',async()=>{
- const h=hostFake({reply:()=>{throw Error('no native call expected')},off:true});createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
- assert.equal(done(h.posts)!.phase,'off');assert.equal(h.native.sent.length,0);assert.equal(h.applied.length,0);
+ let fetched=0;const h=hostFake({reply:()=>{throw Error('no native call expected')},consent:null});const facts=h.host.facts;h.host.facts=async id=>{fetched++;return facts(id)};
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ assert.equal(done(h.posts)!.phase,'off');assert.equal(h.native.sent.length,0);assert.equal(h.applied.length,0);assert.equal(fetched,0,'not even the public records are fetched');
 });
 
 test('no condition means record checks only, with nothing sent',async()=>{
@@ -144,42 +152,53 @@ test('no condition means record checks only, with nothing sent',async()=>{
  assert.equal(done(none.posts)!.note,'no_condition');assert.equal(none.native.sent.length,0);assert.equal(done(none.posts)!.applied,true);
 });
 
-test('a newer request supersedes a running one; one that arrives during the confirmation waits for it',async()=>{
- let release!:(v:RankConfirmOutcome)=>void;const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});h.host.confirm=async()=>new Promise(r=>{release=r});
- const service=createRankService(h.host);service.start(1,details);await until(()=>h.posts.some(p=>p.phase==='confirming'));
- assert.deepEqual(service.start(1,{...details,terms:['cough']}),{started:false,queued:true});
- release('accepted');await until(()=>h.posts.filter(p=>p.phase==='done').length===2);
- assert.deepEqual(h.native.sent.filter(m=>m.type==='prepareRank').map(m=>m.payload.profile.conditions),[['Asthma','wheezing'],['Asthma','cough']]);
+test('choosing the local model while an OpenAI ranking is prepared sends nothing to OpenAI: the page is ranked again on this device',async()=>{
+ let provider:'openai'|'local'='openai';
+ const h=hostFake({reply:m=>{if(m.type==='prepareRank'&&!m.payload.provider){provider='local';return prepared(m)}return m.type==='prepareRank'?prepared(m,'local'):ranked(m,'local')}});
+ h.host.prefs=async()=>({displayMode:'popup',theme:'system',provider,localModel:'qwen3.5:9b'});
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ assert.deepEqual(h.native.sent.map(m=>[m.type,m.payload.provider??null]),[['prepareRank',null],['prepareRank','local'],['executeRank',null]],'no executeRank for the OpenAI preparation');
+ assert.equal(h.native.ports[0].disconnected,true,'its helper connection is closed');assert.equal(done(h.posts)!.provider,'local');
+});
+
+test('a newer request supersedes a running one: the older run’s helper connection closes and it never sends',async()=>{
+ let first=true;const h=hostFake({reply:m=>{if(m.type==='prepareRank'&&first){first=false;return undefined}return m.type==='prepareRank'?prepared(m):ranked(m)}});
+ const service=createRankService(h.host);service.start(1,details);await until(()=>h.native.sent.length===1);
+ assert.deepEqual(service.start(1,{...details,terms:['cough']}),{started:true});assert.equal(h.native.ports[0].disconnected,true,'the older run’s helper connection is closed');
+ await until(()=>!!done(h.posts));
+ assert.deepEqual(h.native.sent.map(m=>[m.type,m.payload.profile?.conditions??null]),[['prepareRank',['Asthma','wheezing']],['prepareRank',['Asthma','cough']],['executeRank',null]],'only the newer run executes');
  service.stop(1);assert.equal(service.isRunning(1),false);
 });
 
 test('when the page drops an applied ranking on its own, a cached ranking goes straight back; otherwise the overlay is told',async()=>{
- const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});h.setConsent(true);const service=createRankService(h.host);
+ const h=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});const service=createRankService(h.host);
  service.start(1,details);await until(()=>!!done(h.posts));assert.equal(done(h.posts)!.applied,true);assert.equal(h.applied.length,1);
  const page={generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[...ids],diagnostic:'',supported:true};
  service.lapsed(1,{...page,url:'https://clinicaltrials.gov/search?cond=Other'});await until(()=>true);assert.equal(h.applied.length,1,'a different page never gets the old ranking');
  const posts=h.posts.length;service.lapsed(1,page);await until(()=>h.applied.length===2&&h.posts.length===posts+1);assert.equal(h.posts.at(-1)!.applied,true,'re-applied from memory with no new model call; the overlay is told once so it learns whether every badge is back');
  assert.equal(h.native.sent.filter(m=>m.type==='executeRank').length,1);
- const failing=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED')});failing.setConsent(true);const other=createRankService(failing.host);
+ const failing=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED')});const other=createRankService(failing.host);
  other.start(1,details);await until(()=>!!done(failing.posts));other.lapsed(1,page);const last=failing.posts.at(-1)!;assert.equal(last.applied,false,'without a cached ranking the overlay offers to apply again');
  const count=failing.posts.length;other.lapsed(1,page);assert.equal(failing.posts.length,count,'only once');other.stopAll();other.lapsed(1,page);assert.equal(failing.posts.length,count);
  /* An older cached ranking never comes back over a newer run that failed, and a hidden tab is not re-ranked behind the person's back. */
- let mode:'ok'|'fail'='ok';const both=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):mode==='ok'?ranked(m):fail(m,'RATE_LIMITED')});both.setConsent(true);const svc=createRankService(both.host);
+ let mode:'ok'|'fail'='ok';const both=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):mode==='ok'?ranked(m):fail(m,'RATE_LIMITED')});const svc=createRankService(both.host);
  svc.start(1,details);await until(()=>!!done(both.posts));mode='fail';both.posts.length=0;svc.start(1,{...details,ageBand:'45_59'});await until(()=>!!done(both.posts));
  const applied=both.applied.length;svc.lapsed(1,page);await new Promise(r=>setTimeout(r,10));assert.equal(both.applied.length,applied,'the failed newer run is not replaced by the older ranking');assert.equal(both.posts.at(-1)!.applied,false);
- const hidden=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});hidden.setConsent(true);const hsvc=createRankService(hidden.host);hsvc.start(1,details);await until(()=>!!done(hidden.posts));
+ const hidden=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):ranked(m)});const hsvc=createRankService(hidden.host);hsvc.start(1,details);await until(()=>!!done(hidden.posts));
  hsvc.lapsed(1,page,false);await new Promise(r=>setTimeout(r,10));assert.equal(hidden.applied.length,1,'no re-apply on a hidden tab');assert.equal(hidden.posts.at(-1)!.applied,false);
 });
 
-test('with the local model provider the ranking runs on this device: no confirmation, a model name, unscored studies stay unscored',async()=>{
+test('with the local model provider the ranking runs on this device: no OpenAI consent needed, a model name, unscored studies stay unscored',async()=>{
  const local=(m:any)=>m.type==='prepareRank'?prepared(m,'local'):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'local',digest:DIGEST,scores:[{nctId:A,score:90,reasonId:'condition_match'},{nctId:B,failure:'LOCAL_INVALID_OUTPUT'},{nctId:C,score:40,reasonId:'broad_population'},{nctId:D,score:20,reasonId:'different_condition'},{nctId:E,score:95,reasonId:'condition_match'}]}};
- const h=hostFake({reply:local});h.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b',aiRanking:'on'});
+ /* Turned on beside the local model disclosure: no OpenAI consent exists, and none is needed. */
+ const h=hostFake({reply:local,consent:'local'});h.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:'qwen3.5:9b'});
  createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
- assert.equal(h.confirms.length,0,'nothing leaves the device, so nothing to confirm');
- const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.equal(prepare.payload.provider,'local');assert.equal(prepare.payload.model,'qwen3.5:9b');
+ assert.ok(h.checks.every(c=>c.provider==='local'),'only the local model switch is checked');assert.deepEqual(h.native.sent.map(m=>m.type),['prepareRank','executeRank']);
+ const prepare=h.native.sent.find(m=>m.type==='prepareRank');assert.equal(prepare.payload.provider,'local','the helper is told to keep the ranking on this device');assert.equal(prepare.payload.model,'qwen3.5:9b');
  const state=done(h.posts)!;assert.equal(state.provider,'local');assert.equal(state.failure,undefined);
  assert.deepEqual(state.studies!.map(s=>[s.nctId,s.percent,s.reasonId]),[[A,90,'condition_match'],[D,20,'different_condition'],[E,10,'sex_mismatch'],[C,4,'outside_age_range'],[B,0,'not_recruiting']]);
- const none=hostFake({reply:()=>{throw Error('no native call expected')}});none.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:null,aiRanking:'on'});
+ const off=hostFake({reply:()=>{throw Error('no native call expected')},consent:null});off.host.prefs=h.host.prefs;createRankService(off.host).start(1,details);await until(()=>!!done(off.posts));assert.equal(done(off.posts)!.phase,'off','the local model still needs the switch on');assert.equal(off.native.sent.length,0);
+ const none=hostFake({reply:()=>{throw Error('no native call expected')}});none.host.prefs=async()=>({displayMode:'popup',theme:'system',provider:'local',localModel:null});
  createRankService(none.host).start(1,details);await until(()=>!!done(none.posts));assert.equal(done(none.posts)!.failure,'LOCAL_MODEL_NOT_CHOSEN');assert.equal(none.native.sent.length,0);assert.equal(done(none.posts)!.applied,true);
  const allFailed=hostFake({reply:m=>m.type==='prepareRank'?prepared(m,'local'):{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'live',provider:'local',digest:DIGEST,scores:ids.map(nctId=>({nctId,failure:'LOCAL_NOT_INSTALLED'}))}}});allFailed.host.prefs=h.host.prefs;
  createRankService(allFailed.host).start(1,details);await until(()=>!!done(allFailed.posts));assert.equal(done(allFailed.posts)!.failure,'LOCAL_NOT_INSTALLED');
@@ -187,7 +206,7 @@ test('with the local model provider the ranking runs on this device: no confirma
 
 test('the ranking trace redacts key-shaped text from public records in its display copy',async()=>{
  const KEY='sk-'+'A'.repeat(30);
- const h=hostFake({reply:m=>{if(m.type!=='prepareRank')return ranked(m);const r:any=prepared(m);r.result.preview.request.input[0].content[0].data.note=`Sponsor ref ${KEY}`;return r}});h.setConsent(true);
+ const h=hostFake({reply:m=>{if(m.type!=='prepareRank')return ranked(m);const r:any=prepared(m);r.result.preview.request.input[0].content[0].data.note=`Sponsor ref ${KEY}`;return r}});
  createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
  const state=done(h.posts)!;assert.ok(state.request);assert.doesNotMatch(state.request!.text,new RegExp(KEY));assert.match(state.request!.text,/redacted key-like text/);
 });

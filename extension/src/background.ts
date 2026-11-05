@@ -1,6 +1,11 @@
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
 import {installSiteAssistant,isSitePort,toolbarTitle} from './site-background';
 import {clearLegacyPatientData} from './storage';
+import {limitStorageToExtension} from './ranking-consent';
+// The AI-matched results switch and the preferences live in the extension's local storage area. Content scripts never need it, so they are kept out.
+limitStorageToExtension(chrome);
+// Only this service worker opens native helper connections (site-background.ts for AI-matched results, apply-background.ts for the study
+// brief). scripts/build.mjs refuses any other bundle that names connectNative or sendNativeMessage.
 // Every port belongs to exactly one broker below (site overlay/badge, study page). Any other name, including the retired side-panel and
 // private-matching ports, is disconnected unanswered.
 chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==APPLY_PORT)try{port.disconnect()}catch{}});

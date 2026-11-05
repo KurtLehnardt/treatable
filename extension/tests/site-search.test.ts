@@ -6,9 +6,9 @@ test('the removed in-overlay search messages are rejected, not silently accepted
  assert.throws(()=>parseSiteRequest({id:'abc',type:'site.search',payload:{filters:{cond:'asthma'}}}));
 });
 test('the site request allow-list still carries every message the remaining features send',()=>{
- for(const type of ['site.layout','site.restore','site.close','site.rank','site.ping','site.guide','site.openSearch','site.aiRank','site.aiRankStop','site.hide'])assert.equal(parseSiteRequest({id:'abc',type,payload:{}}).type,type);
+ for(const type of ['site.layout','site.restore','site.close','site.rank','site.ping','site.guide','site.openSearch','site.aiRank','site.aiSwitch','site.hide'])assert.equal(parseSiteRequest({id:'abc',type,payload:{}}).type,type);
  /* The page-matching requests went with the private-matching form: nothing sends them, so they are refused. */
- for(const type of ['site.snapshot','site.fetch','site.openPrivate','site.diagnostics','site.endMatching'])assert.throws(()=>parseSiteRequest({id:'abc',type,payload:{}}),/Invalid site operation/,type);
+ for(const type of ['site.snapshot','site.fetch','site.openPrivate','site.diagnostics','site.endMatching','site.aiRankStop'])assert.throws(()=>parseSiteRequest({id:'abc',type,payload:{}}),/Invalid site operation/,type);
 });
 test('readSiteCondition reads only the website cond parameter and ignores every other filter',()=>{
  assert.equal(readSiteCondition('https://clinicaltrials.gov/search?cond=asthma&term=x&locStr=83702&lat=1&lng=2&aggFilters=status:rec'),'asthma');

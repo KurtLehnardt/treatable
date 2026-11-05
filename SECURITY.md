@@ -59,7 +59,7 @@ In scope:
 - native host, transport, provider client, consent store, installer and Keychain helper (`extension/native/`);
 - build script and CI gate (`extension/scripts/`, `.github/workflows/extension-security.yml`).
 
-Especially interesting: data leaving the extension beyond the documented minimized packets; API key exposure outside the accepted same-user risk; bypassing the notice, exact-payload confirmation, token, digest, TTL or one-use checks; model output reaching the UI as free text; native-host origin or sender spoofing; prompt injection that causes anything beyond the documented enum and template outputs; unexpected network destinations.
+Especially interesting: data leaving the extension beyond the documented minimized packets; API key exposure outside the accepted same-user risk; anything reaching OpenAI while the AI-matched results switch is off, or the switch turning on without the person's own click or key press; reaching the native helper from any extension context other than the background service worker; bypassing the token, digest, TTL or one-use checks; model output reaching the UI as free text; native-host origin or sender spoofing; prompt injection that causes anything beyond the documented enum and template outputs; unexpected network destinations.
 
 Out of scope (documented in [threat model §9](docs/security/THREAT_MODEL.md#9-residual-risks-and-limitations)):
 

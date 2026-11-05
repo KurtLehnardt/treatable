@@ -103,7 +103,7 @@ test('a hidden popup pauses AI-matched results on its tab and the toolbar says i
  h.updates.emit(1,{url:h.snapshot().url+'&page=2'},{id:1,url:h.snapshot().url+'&page=2'});await flush();assert.deepEqual(h.cues.splice(0),CUE_ON,'an in-page navigation keeps it hidden and the cue is set again');
  await h.service.launch({id:1,url:h.snapshot().url});await flush();
  assert.deepEqual(h.cues.splice(0),CUE_OFF,'the cue goes when it is shown');
- assert.deepEqual((await h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}})).result,{started:true,queued:false},'ranking may start again');
+ assert.deepEqual((await h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}})).result,{started:true},'ranking may start again');
  ranker.cancel=cancel;h.p.disconnect()});
 test('the hidden cue is cleared when Treatable closes, the tab closes, the page goes away or leaves the site',async()=>{
  for(const end of ['close','tab removed','port ended','unsupported page'] as const){const h=await authenticated();await flush();h.cues.length=0;await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});await flush();assert.deepEqual(h.cues.splice(0),CUE_ON,end);

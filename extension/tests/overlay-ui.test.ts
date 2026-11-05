@@ -25,7 +25,7 @@ test('overlay renders no search form and no page-matching block: no replica of t
 test('the website-filters help is not in the overlay body; the ranking section offers it beside Show the website’s order',()=>{
  let started=0;const guide:any={canSearchHelp:true,startSearchHelp:()=>started++,active:false};
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(OverlayView,{vm:view({guide})})),/Show me how to search|website’s filters/,'the overlay body has no search control');
- const model:any={aiRanking:'on',connected:true,busy:false,setAiRanking(){},restore(){},again(){},ranking:{phase:'done',applied:true,provider:'none',studies:[{nctId:'NCT00000001',title:'A',percent:80,checks:[]}]}};
+ const model:any={aiRanking:'on',connected:true,busy:false,restore(){},again(){},ranking:{phase:'done',applied:true,provider:'none',studies:[{nctId:'NCT00000001',title:'A',percent:80,checks:[]}]}};
  const renderer=TestRenderer.create(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>started++}}));
  const row=renderer.root.findAllByProps({className:'button-row'}).find(node=>node.findAllByType('button').some(b=>b.children.includes('Show the website’s order')))!;
  const labels=row.findAllByType('button').map(b=>b.children.join(''));assert.deepEqual(labels,['Show the website’s order','Show me the website’s filters']);
@@ -34,7 +34,7 @@ test('the website-filters help is not in the overlay body; the ranking section o
  assert.doesNotMatch(renderToStaticMarkup(React.createElement(RankingSection,{vm:{...model,searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}}})).replace(/<button[^>]*>Show me the website’s filters<\/button>/,''),/website’s filters/);
 });
 test('the ranking section keeps the filters help reachable when there is no Restore row',()=>{
- const html=renderToStaticMarkup(React.createElement(RankingSection,{vm:{aiRanking:'on',connected:true,busy:false,setAiRanking(){},restore(){},again(){},searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}} as any}));
+ const html=renderToStaticMarkup(React.createElement(RankingSection,{vm:{aiRanking:'on',connected:true,busy:false,restore(){},again(){},searchHelp:()=>{},ranking:{phase:'unavailable',note:'too_many',total:12}} as any}));
  assert.match(html,/Show me the website’s filters/);assert.doesNotMatch(html,/Show me how to search|how to search/);
 });
 test('the snapshot parser copies only the fields it validates: removed card-count keys never pass through',()=>{

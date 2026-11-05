@@ -37,13 +37,13 @@ test('badges not placed or not known: the full list is shown and there is no ext
   assert.doesNotMatch(h,/Match % is on each card|ranking-all|moved-list/);
  }
 });
-test('failure, declined and no-condition states: both check reasons stay visible, and badged never hides the failure notice or its retry',()=>{
+test('failure and no-condition states (the removed declined state is refused): both check reasons stay visible, and badged never hides the failure notice or its retry',()=>{
  const base={badged:true,provider:'none',studies:[study(1,null),study(2,0,TWO)]};
  const f=html(done({...base,failure:'API_ERROR'}));
  assert.match(f,/AI scoring did not run, so record checks set the order/);assert.ok(buttons(f).includes('Try AI ranking again'));
  assert.match(f.slice(f.indexOf('moved-list')),/Not recruiting · Outside the listed age range/);
- const d=html(done({...base,note:'declined',failure:'CONFIRMATION_CANCELLED'}));
- assert.match(d,/paused until you allow it/);assert.ok(buttons(d).includes('Review and allow AI ranking'));assert.match(d.slice(d.indexOf('moved-list')),/Outside the listed age range/);
+ /* The browser-session confirmation and its "declined" state were removed: the switch is the consent. A stale declined state is refused. */
+ assert.equal(parseRankingState({phase:'done',note:'declined'}),undefined);assert.equal(parseRankingState({phase:'confirming'}),undefined);
  const n=html(done({...base,note:'no_condition'}));
  assert.match(n,/Search for a condition on ClinicalTrials\.gov to rank by relevance/);assert.doesNotMatch(n,/Settings → Your details/);assert.match(n.slice(n.indexOf('moved-list')),/Outside the listed age range/);
 });
@@ -62,7 +62,7 @@ test('the results section has one visually hidden heading, no eyebrow and no sec
 });
 test('the website-filters help stays reachable when AI-matched results are off',()=>{
  const h=html(undefined,{aiRanking:'off',searchHelp:()=>{}});
- assert.match(h,/Turn on AI-matched results/);assert.match(h,/Show me the website’s filters/);
+ assert.match(h,/turn on the AI-matched results switch above/);assert.doesNotMatch(h,/<button[^>]*>Turn on/,'only the switch, beside its disclosure, turns it on');assert.match(h,/Show me the website’s filters/);
  assert.doesNotMatch(html(undefined,{aiRanking:'off'}),/website’s filters/,'only when the guide can run');
 });
 test('sharpen link: offered only when passed and only once a ranking is done; opens Your details',()=>{
@@ -78,7 +78,6 @@ async function shown(vm:any){let r!:TestRenderer.ReactTestRenderer;await act(asy
 test('collapsed status text, and what the collapsed frame hides',async()=>{
  assert.equal(collapsedStatus(done({badged:true}) as any),'Ranked 2 · top match 91%');
  assert.equal(collapsedStatus({phase:'scoring'}),'Ranking…');
- assert.equal(collapsedStatus({phase:'confirming'}),'Waiting for your answer in the Treatable window');
  assert.equal(collapsedStatus(done({provider:'none',failure:'KEY_MISSING'}) as any),'Ranked 2 · no AI score');
  assert.equal(collapsedStatus(done({applied:false}) as any),undefined);assert.equal(collapsedStatus(undefined),undefined);
  const c=await shown(overlayVm());assert.equal(c.text,'Ranked 2 · top match 91%');assert.equal(c.switchRow,0,'the AI switch row does not clip the 104px frame');
