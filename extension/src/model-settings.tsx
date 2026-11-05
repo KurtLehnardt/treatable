@@ -16,10 +16,10 @@ export function ModelProviderSettings({provider,localModel,setProvider,setLocalM
  // A first choice of Local model starts with the recommended installed model; a saved choice is never replaced.
  useEffect(()=>{if(provider==='local'&&!localModel&&recommendation?.kind==='installed')setLocalModel(recommendation.model)},[provider,localModel,recommendation]);
  return <section className="model-settings" aria-labelledby="model-settings-heading">
-  <h3 id="model-settings-heading">Study brief model</h3>
+  <h3 id="model-settings-heading">Study summary model</h3>
   <label>Model provider<select value={provider} disabled={ended} onChange={event=>setProvider(event.target.value as ModelProvider)}><option value="openai">OpenAI (default)</option><option value="local">Local model (Ollama on this device)</option></select></label>
-  {provider==='openai'?<p className="fine">Study briefs are prepared by OpenAI from the selected public study records only.</p>:<>
-   <p className="fine">Runs on this device through Ollama. Nothing is sent to OpenAI. Quality and speed depend on this computer and the model; a brief can take a minute or two.</p>
+  {provider==='openai'?<p className="fine">Study summaries are prepared by OpenAI from the selected public study records only.</p>:<>
+   <p className="fine">Runs on this device through Ollama. Nothing is sent to OpenAI. Quality and speed depend on this computer and the model; a summary can take a minute or two.</p>
    {state.status==='checking'&&<p role="status">Checking Ollama on this device…</p>}
    {state.status==='unavailable'&&<p role="status">Open a ClinicalTrials.gov study or results page to check the local models on this device.</p>}
    {state.status==='failed'&&<><p role="status" className="notice">{failureCopy(state.code)}</p><details className="brief-how"><summary>Technical details</summary><p className="fine">Failure code: <code>{state.code}</code></p></details></>}

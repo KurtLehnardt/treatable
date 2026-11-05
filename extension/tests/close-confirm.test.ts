@@ -305,8 +305,9 @@ test('the packaged stylesheet is used, so the frame needs no style element', asy
 const ID = 'NCT99999990';
 const rawStudy = () => ({protocolSection: {identificationModule: {nctId: ID, briefTitle: 'Synthetic public study for the close confirmation', orgStudyIdInfo: {id: 'SYNTHETIC-ONLY'}}, descriptionModule: {briefSummary: 'A public synthetic fixture.', detailedDescription: 'Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection.'}, designModule: {designInfo: {allocation: 'RANDOMIZED'}}, statusModule: {overallStatus: 'RECRUITING'}, eligibilityModule: {}, contactsLocationsModule: {centralContacts: [{name: 'Study Coordinator', phone: '303-555-0100', email: 'coordinator@example.org'}], locations: [{facility: 'Synthetic Clinic', status: 'RECRUITING', city: 'Example City', state: 'Colorado', country: 'United States', contacts: []}]}}});
 class Events {listeners: Array<(v?: any) => void> = []; addListener = (f: (v?: any) => void) => {this.listeners.push(f)}; emit = (v?: any) => {for (const f of [...this.listeners]) f(v)}}
-/** `tour: false` marks the first-run intro as already seen (the default); `tour: true` lets it start and show its first dialog. */
-async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
+/** `tour: false` marks the first-run intro as already seen (the default); `tour: true` lets it start and show its first dialog.
+ * `step` is the study step opened after loading, through the step list; the email step (the default) holds the typed fields. */
+async function mountAssistant({tour = false, step = 'Email'}: {tour?: boolean; step?: 'Understand' | 'Contact' | 'Email'} = {}) {
   const {captureSiteActivations} = await import('../src/overlay-port');
   const {OverlayAssistant} = await import('../src/overlay-app');
   const {normalizeApplyRecord, normalizeStudyBrief} = await import('../shared/apply-record.mjs');
@@ -324,7 +325,9 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
     if (name === 'treatable-apply-v1') {queueMicrotask(() => applyPort.onMessage.emit({kind: 'applyReady', nctId: ID, nctIds: [ID], expiresAt: now + 300000, studies: [{nctId: ID, title: 'Synthetic study'}]})); return applyPort}
     throw new Error('unexpected port ' + name);
   }, sendMessage: async () => ({ok: true}), getURL: (path: string) => `chrome-extension://test/${path}`};
-  const local = {get: async (key: string) => (tour ? {} : {[key]: 1}), set: async () => {}, remove: async () => {}};
+  /* The stored intro version must be the current one to count as seen; an older one replays the intro. */
+  const {ONBOARDING_VERSION} = await import('../src/guide-steps');
+  const local = {get: async (key: string) => (tour ? {} : {[key]: ONBOARDING_VERSION}), set: async () => {}, remove: async () => {}};
   Object.defineProperty(globalThis, 'chrome', {configurable: true, value: {runtime, storage: {local, session: {get: async () => ({}), set: async () => {}, remove: async () => {}}}}});
   captureSiteActivations(window);
   const container = document.createElement('div');
@@ -338,6 +341,7 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
     window.dispatchEvent(event);
   });
   await act(async () => {await settle(6)});
+  if (step !== 'Understand') await act(async () => {stepButton(step).click()});
   const closes = () => sent.filter(v => v.type === 'site.close').length;
   /* The background relaying a press on the page outside the popup over the authenticated port. */
   const outside = () => act(async () => {messages.emit({type: 'site.outsideClick'}); await settle(2)});
@@ -351,7 +355,9 @@ async function typeInto(element: HTMLInputElement | HTMLTextAreaElement, value: 
     element.dispatchEvent(new window.Event('input', {bubbles: true}));
   });
 }
-const personalizeName = () => document.querySelector('.apply-local-details input') as HTMLInputElement;
+const personalizeName = () => document.querySelector('[data-apply-field="name"]') as HTMLInputElement;
+/** A button in the study step list: Understand, Contact or Email. */
+const stepButton = (label: string) => [...document.querySelectorAll('.study-steps button')].find(node => (node.textContent || '').includes(label)) as HTMLButtonElement;
 const emailDraft = () => document.querySelector('textarea.apply-email') as HTMLTextAreaElement;
 const sessionEnded = () => /Session ended/.test(document.body.textContent || '');
 
@@ -576,6 +582,76 @@ test('opening a study page in the popup puts focus on the study heading, once', 
   (document.activeElement as HTMLElement).blur();
   await page.rerender(view({}), {apply: studySection('another-study')});
   assert.notEqual(document.activeElement?.id, 'apply-heading', 'moving to another study on the site does not pull focus again');
+});
+
+const guideStub = (active: boolean): any => ({active, canSearchHelp: false, replayIntro() {}, startSearchHelp() {}, stop() {}, openSearch() {}});
+test('a tour running when the website moves to a study page keeps focus: the heading does not take it', async () => {
+  const page = await mountView(view({guide: guideStub(true)}));
+  await page.rerender(view({guide: guideStub(true)}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+});
+
+test('a new connection in the same frame lands on the study heading again', async () => {
+  const page = await mountView(view({}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({connected: false}), {apply: undefined});
+  await page.rerender(view({}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+});
+
+test('a hidden popup does not use up the heading focus: it lands once the popup is shown again, and only once', async () => {
+  const page = await mountView(view({hidden: true}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'nothing takes focus while the popup is hidden');
+  await page.rerender(view({hidden: false}), {apply: studySection()});
+  assert.equal(document.activeElement?.id, 'apply-heading', 'shown again: the first landing happens now');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({hidden: true}), {apply: studySection()});
+  await page.rerender(view({hidden: false}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'still once per connection');
+});
+
+test('production overlay: the study steps move focus to the new step heading, but never out of the close question', async () => {
+  await mountAssistant({step: 'Understand'});
+  assert.equal(document.activeElement?.id, 'apply-heading', 'the first open lands on the heading');
+  assert.equal(stepButton('Understand').getAttribute('aria-current'), 'step');
+  assert.equal(document.querySelectorAll('.study-steps [aria-current="step"]').length, 1);
+  await act(async () => {stepButton('Contact').click()});
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  assert.equal(document.activeElement?.textContent, 'Questions and contact');
+  assert.equal(stepButton('Contact').getAttribute('aria-current'), 'step');
+  await act(async () => {stepButton('Email').click()});
+  assert.equal(document.activeElement?.textContent, 'Write your email');
+  await typeInto(personalizeName(), 'Morgan Example');
+  personalizeName().focus();
+  await act(async () => {escape(personalizeName())});
+  await settle();
+  assert.ok(popup(), 'the close question is open');
+  await act(async () => {stepButton('Understand').click()});
+  assert.ok(popup()!.contains(document.activeElement), `focus stays in the dialog, not ${document.activeElement?.tagName}#${document.activeElement?.id}`);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+});
+
+test('production overlay: Close is the one way to end and clear; the study page has no End and clear, and Settings keeps one Clear my details', async () => {
+  const page = await mountAssistant({step: 'Understand'});
+  const labels = () => [...document.querySelectorAll('button,a')].map(node => (node.textContent || '').trim());
+  for (const step of ['Understand', 'Contact', 'Email']) {
+    await act(async () => {stepButton(step).click()});
+    assert.ok(!labels().some(label => /End and clear/i.test(label)), `${step}: no End and clear control`);
+  }
+  await act(async () => {button('Treatable settings').click()});
+  assert.equal(labels().filter(label => label === 'Clear my details').length, 1, 'one quiet Clear my details, beside the Your details fields');
+  assert.ok([...document.querySelectorAll('button')].find(node => node.textContent === 'Clear my details')!.closest('.your-details'));
+  await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
+  await typeInto(personalizeName(), 'Morgan Example');
+  await act(async () => {button(CLOSE).click()});
+  await settle();
+  assert.ok(popup(), 'Close still asks first while something is typed');
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(page.closes(), 1);
+  assert.ok(sessionEnded());
 });
 
 test('the sidebar and a results page leave the website\'s focus alone', async () => {

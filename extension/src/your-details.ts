@@ -6,8 +6,8 @@
  * the condition text (rank-merge.ts detailConditionTerms: short phrases only, never the name, digit groups or narrative) to the ranking
  * provider; with OpenAI only after the browser-session confirmation. The name and "anything else" are never used for ranking.
  *
- * Storage is session only. The values live in this extension frame's memory and are cleared by the Clear button,
- * "End and clear my details", and when the Treatable session ends or the frame closes. They are never written to
+ * Storage is session only. The values live in this extension frame's memory and are cleared by the "Clear my details"
+ * button, and when the Treatable session ends or the frame closes (Close asks first while anything is typed). They are never written to
  * extension storage, web storage, IndexedDB, files or cookies, and they are never part of any ClinicalTrials.gov, trace, log or
  * URL payload, apart from the mailto/tel handoff the patient starts and the AI-matched results fields described above.
  *

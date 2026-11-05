@@ -1,42 +1,48 @@
 import test from 'node:test';import assert from 'node:assert/strict';import React from 'react';import {renderToStaticMarkup} from 'react-dom/server';import TestRenderer,{act} from 'react-test-renderer';
-import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {OverlayView} from '../src/overlay-view';import {installDom,settle} from './dom-harness';import {DetailsContext,sessionDetailsStore} from '../src/your-details';
+import {ApplyView,probabilityShares} from '../src/apply-view';import {briefTraceFixture} from './apply-fixture';import {traceBody,STUDY_BRIEF_ROUTES} from '../shared/apply-contract.mjs';import {useApply,STUDY_STEPS,type ApplyController,type ApplyEnv,type StudyStep} from '../src/use-apply';import {OverlayAssistant} from '../src/overlay-app';import {captureSiteActivations} from '../src/overlay-port';import {OverlayView} from '../src/overlay-view';import {installDom,settle} from './dom-harness';import {DetailsContext,sessionDetailsStore} from '../src/your-details';
 import {normalizeApplyRecord,normalizeStudyBrief,studyPurposeText,PURPOSE_MAX_EXCERPTS} from '../shared/apply-record.mjs';import type {StudyBriefResult,PreparedStudyBrief} from '../shared/apply-contract.mjs';
 const IDS=['NCT99999990','NCT99999991'],NOW=Date.UTC(2026,9,24,15),EXPIRES=NOW+300000,TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
-let PURPOSE='A synthetic controlled study.',DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.';
-function raw(id:string){return{protocolSection:{identificationModule:{nctId:id,briefTitle:id===IDS[0]?'First synthetic study':'Second synthetic study',orgStudyIdInfo:{id:'SYNTHETIC-ONLY'}},descriptionModule:{briefSummary:PURPOSE,detailedDescription:DETAIL},designModule:{designInfo:{allocation:'RANDOMIZED',maskingInfo:{masking:'SINGLE'}}},statusModule:{overallStatus:'RECRUITING',primaryCompletionDateStruct:{date:'2026-12-31',type:'ESTIMATED'},startDateStruct:{date:'2026-01-01',type:'ACTUAL'}},eligibilityModule:{},contactsLocationsModule:{centralContacts:[{name:'Study coordinator',email:id===IDS[0]?'one@example.org':'two@example.org',phone:'303-555-0100'}],locations:[{facility:'Synthetic Clinic',city:'Example City',state:'Colorado',country:'United States',status:'RECRUITING',contacts:[]}]}}}}
+let SPARSE=false,PURPOSE='A synthetic controlled study.',DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.';
+function raw(id:string){return{protocolSection:{identificationModule:{nctId:id,briefTitle:id===IDS[0]?'First synthetic study':'Second synthetic study',orgStudyIdInfo:{id:'SYNTHETIC-ONLY'}},...(SPARSE?{}:{descriptionModule:{briefSummary:PURPOSE,detailedDescription:DETAIL},designModule:{designInfo:{allocation:'RANDOMIZED',maskingInfo:{masking:'SINGLE'}}}}),statusModule:{overallStatus:'RECRUITING',primaryCompletionDateStruct:{date:'2026-12-31',type:'ESTIMATED'},startDateStruct:{date:'2026-01-01',type:'ACTUAL'}},eligibilityModule:{},contactsLocationsModule:{centralContacts:[{name:'Study coordinator',email:id===IDS[0]?'one@example.org':'two@example.org',phone:'303-555-0100'}],locations:[{facility:'Synthetic Clinic',city:'Example City',state:'Colorado',country:'United States',status:'RECRUITING',contacts:[]}]}}}}
 const records=(ids=IDS)=>ids.map(id=>normalizeApplyRecord(raw(id),NOW));const briefs=(ids=IDS)=>ids.map(id=>normalizeStudyBrief(raw(id),NOW));
 function prepared(ids=IDS):PreparedStudyBrief{return{kind:'preparedStudyBrief',token:TOKEN,digest:DIGEST,expiresAt:EXPIRES,records:records(ids),briefs:briefs(ids)}}
 function result(ids=IDS,trace:{none?:boolean;live?:boolean;cut?:boolean}={}):StudyBriefResult{return{kind:'studyBrief',mode:trace.live?'live':'test',digest:DIGEST,briefs:briefs(ids).map(b=>{const item=b.items.find(i=>i.text==='Two treatments are spaced 4 weeks apart.')!;return{...b,claims:[{id:'claim1',category:'timeline',text:item.text,evidenceIds:[item.id],sourceQuotes:[item.text]}]}}),studyPlans:ids.map(nctId=>({nctId,briefItemIds:briefs([nctId])[0].items.slice(0,1).map(i=>i.id),questionIds:['visits','crossover','costs'],prescreenIds:['diagnosis_details','prior_treatments'],flagIds:[],routes:[{questionId:'visits',route:'ask_coordinator',evidenceIds:[]},{questionId:'crossover',route:'ask_coordinator',evidenceIds:[]},{questionId:'costs',route:'ask_coordinator',evidenceIds:[]}],prioritizedQuestionIds:['visits','crossover','costs']})),agentStatus:'complete',decisionStatus:'complete',failureCodes:[],cleanup:'deleted',toolCalls:ids.length,...(trace.none?{}:{apiTrace:briefTraceFixture(ids,trace.cut?{decisionsRequest:traceBody({questions:Array.from({length:40},(_,i)=>({name:`q${i}`,instructions:'x'.repeat(40)}))},300)}:{})})}}
 const flush=async()=>{for(let i=0;i<20;i++)await new Promise<void>(r=>queueMicrotask(r))};
 class Events{listeners:((v:any)=>void)[]=[];addListener=(f:(v:any)=>void)=>this.listeners.push(f);emit=(v?:any)=>this.listeners.forEach(f=>f(v))}
 class Port{sent:any[]=[];closed=false;onMessage=new Events();onDisconnect=new Events();constructor(private handler:(v:any,p:Port)=>void){queueMicrotask(()=>this.onMessage.emit({kind:'applyReady',nctId:IDS[0],nctIds:IDS,expiresAt:EXPIRES,studies:records().map(r=>({nctId:r.nctId,title:r.title}))}))}postMessage(v:any){this.sent.push(structuredClone(v));this.handler(v,this)}reply(reply:any){queueMicrotask(()=>this.onMessage.emit({reply}))}disconnect(){this.closed=true}}
-function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown;noTrace?:boolean;live?:boolean;cutTrace?:boolean}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true;
- const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});const send=()=>p.reply({id:request.id,type:'result',ok:true,result:result(ids,{none:options.noTrace,live:options.live,cut:options.cutTrace})});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
- const env:ApplyEnv={runtime,loadZips:async()=>({zips:{'84101':{city:'Example',state:'UT',lat:40.7,lon:-111.9}}}),userActivated:()=>active,today:()=>new Date(NOW),now:()=>clock,copyText:value=>{attempts.push(value);if(options.failCopy)return Promise.reject(Error('clipboard denied'));copies.push(value);return Promise.resolve()},download:(name,text,type)=>downloads.push({name,text,type}),openMailto:url=>{opened.push(url)}};return{env,runtime,ports,copies,attempts,opened,downloads,held,heldRecords,setClock:(v:number)=>{clock=v},setActive:(v:boolean)=>{active=v}};
+function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown;noTrace?:boolean;live?:boolean;cutTrace?:boolean;/** Holds every prepare reply after this many. */holdPrepareAfter?:number;/** Extra activity stages streamed before the result. */traces?:string[]}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[],heldPrepare:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true,prepares=0;
+ const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;const send=()=>p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});if(options.holdPrepareAfter!==undefined&&++prepares>options.holdPrepareAfter)heldPrepare.push(send);else send();return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});(options.traces??[]).forEach((stage,i)=>p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:i+2,stage,nctId:ids[0]}}));const send=()=>p.reply({id:request.id,type:'result',ok:true,result:result(ids,{none:options.noTrace,live:options.live,cut:options.cutTrace})});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
+ const env:ApplyEnv={runtime,loadZips:async()=>({zips:{'84101':{city:'Example',state:'UT',lat:40.7,lon:-111.9}}}),userActivated:()=>active,today:()=>new Date(NOW),now:()=>clock,copyText:value=>{attempts.push(value);if(options.failCopy)return Promise.reject(Error('clipboard denied'));copies.push(value);return Promise.resolve()},download:(name,text,type)=>downloads.push({name,text,type}),openMailto:url=>{opened.push(url)}};return{env,runtime,ports,copies,attempts,opened,downloads,held,heldRecords,heldPrepare,setClock:(v:number)=>{clock=v},setActive:(v:boolean)=>{active=v}};
 }
 function mount(h:ReturnType<typeof harness>){const ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})};let renderer!:TestRenderer.ReactTestRenderer;act(()=>{renderer=TestRenderer.create(React.createElement(Probe))});return{ref,renderer,unmount:()=>act(()=>renderer.unmount())}}
 const renderedText=(node:any):string=>typeof node==='string'?node:Array.isArray(node)?node.map(renderedText).join(' '):node?.children?renderedText(node.children):'';
 const html=(vm:ApplyController)=>renderToStaticMarkup(React.createElement(ApplyView,{vm}));
+/** Static markup of one study step for the same controller state. */
+const at=(vm:ApplyController,step:StudyStep)=>html({...vm,step});
+async function toStep(m:ReturnType<typeof mount>,step:StudyStep){await act(async()=>m.ref.vm!.goStep(step))}
+/** True when a rendered node sits inside a closed <details>, so it is not visible until opened. */
+const insideClosedDetails=(node:any)=>{for(let n=node.parent;n;n=n.parent)if(n.type==='details'&&!n.props.open)return true;return false};
 
-test('source-linked brief renders readable participation, unknowns, three questions and editable email without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const text=html(m.ref.vm!);for(const phrase of ['Understand this study','Two treatments are spaced 4 weeks apart.','Read the supporting record text','Important unknowns','Ask the study team','Your email draft','Open draft in my email app','Treatable sends this study’s public record to OpenAI','Nothing you type is included'])assert.ok(text.includes(phrase),phrase);assert.doesNotMatch(text,/Copy full email/,'the records-only copy button is gone');assert.match(text,/textarea/);assert.match(text,/official record/);assert.doesNotMatch(text,/Confirm what you|Review what you will share|Exact API input/);assert.equal(m.ref.vm!.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
+test('source-linked summary renders readable participation, unknowns, three questions and an editable email, each in its own step, without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const vm=m.ref.vm!;
+ const expected:[StudyStep,string[]][]=[['understand',['Understand this study','Treatable sends this study’s public record to OpenAI','Nothing you type is included']],['contact',['Two treatments are spaced 4 weeks apart.','Read the supporting record text','Not in the record','Ask the study team']],['email',['Your email draft','Open in my email app']]];
+ for(const [step,phrases] of expected){const text=at(vm,step);for(const phrase of phrases)assert.ok(text.includes(phrase),`${step}: ${phrase}`)}
+ const all=STUDY_STEPS.map(s=>at(vm,s)).join('');assert.doesNotMatch(all,/Copy full email/,'the records-only copy button is gone');assert.match(at(vm,'email'),/textarea/);assert.match(at(vm,'understand'),/official record/);assert.doesNotMatch(all,/Confirm what you|Review what you will share|Exact API input/);assert.equal(vm.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
 
 test('manual draft survives late public AI completion and local detail edits; private fields never cross the port',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','LOCAL_NAME_CANARY');m.ref.vm!.edit('email','private@example.org');m.ref.vm!.answer('diagnosis_details','LOCAL_HEALTH_CANARY')});await act(async()=>{m.ref.vm!.editDraft('body','My carefully edited message');m.ref.vm!.requestReview();await flush()});assert.equal(h.held.length,1);await act(async()=>{m.ref.vm!.editDraft('body','The final manual draft');m.ref.vm!.edit('name','SECOND_LOCAL_NAME');h.held[0]();await flush()});assert.equal(m.ref.vm!.draft?.body,'The final manual draft');assert.equal(m.ref.vm!.draftOutdated,true);assert.ok(!JSON.stringify(h.ports[0].sent).match(/LOCAL_NAME|LOCAL_HEALTH|private@example|SECOND_LOCAL/));await act(async()=>m.ref.vm!.updateDraft());assert.match(m.ref.vm!.draft!.body,/SECOND_LOCAL_NAME/);assert.match(m.ref.vm!.draft!.body,/LOCAL_HEALTH_CANARY/);await act(async()=>{m.ref.vm!.copyMessage();await flush()});assert.match(h.copies[0],/LOCAL_HEALTH_CANARY/);}finally{m.unmount()}});
 
-test('selected-study drafts stay independent; removal clears only that study draft',async()=>{const h=harness(),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush()});await act(async()=>m.ref.vm!.editDraft('body','FIRST_ONLY'));await act(async()=>m.ref.vm!.viewStudy(IDS[1]));assert.doesNotMatch(m.ref.vm!.draft!.body,/FIRST_ONLY/);await act(async()=>m.ref.vm!.editDraft('body','SECOND_ONLY'));await act(async()=>m.ref.vm!.viewStudy(IDS[0]));assert.equal(m.ref.vm!.draft?.body,'FIRST_ONLY');await act(async()=>{m.ref.vm!.selectStudies([IDS[1]]);await flush()});assert.equal(m.ref.vm!.draft?.body,'SECOND_ONLY');await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush();m.ref.vm!.viewStudy(IDS[0])});assert.doesNotMatch(m.ref.vm!.draft!.body,/FIRST_ONLY|SECOND_ONLY/);}finally{m.unmount()}});
-
-test('drafts that fit the raised limit open directly with separate to, subject and body, plus a note that some apps shorten long links',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;
+test('drafts that fit the raised limit open directly with separate to, subject and body, plus a note that some apps shorten long links',async()=>{const h=harness(),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!;
  const mid='My full message. '.repeat(250);await act(async()=>vm().editDraft('body',mid));
  assert.ok(mid.length>1800&&vm().mailto!.length>2000&&vm().mailto!.length<=8000,'a draft past the old 2,000-character limit now opens directly');assert.equal(vm().handoff?.mode,'link');assert.equal(vm().draftIssue,undefined);
  const url=vm().mailto!,[target,query]=url.slice('mailto:'.length).split('?'),params=Object.fromEntries(query.split('&').map(kv=>{const at=kv.indexOf('=');return[kv.slice(0,at),decodeURIComponent(kv.slice(at+1))]}));
  assert.equal(decodeURIComponent(target),'one@example.org');assert.deepEqual(Object.keys(params),['subject','body']);assert.equal(params.subject,vm().draft!.subject);assert.equal(params.body,mid.replace(/\n/g,'\r\n'));assert.doesNotMatch(params.body,/^\s*(?:To|Subject)\s*:/im);
- const shown=html(vm());assert.match(shown,/Open draft in my email app/);assert.match(shown,/Some email apps, notably Outlook on Windows, may shorten very long links, so check the whole message before you send it\./);assert.doesNotMatch(shown,/Copy message and open email app/);assert.match(shown,/>Copy message</);
+ const shown=html(vm());assert.match(shown,/Open in my email app/);assert.match(shown,/Some email apps, notably Outlook on Windows, may shorten very long links, so check the whole message before you send it\./);assert.doesNotMatch(shown,/Copy message and open email app/);assert.match(shown,/>Copy message</);
  assert.equal(h.attempts.length,0);assert.equal(h.opened.length,0);
 }finally{m.unmount()}});
-test('a draft above the mailto limit shows one combined button; clicking it copies only the message body, then opens mailto with only the recipient and subject',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;
+test('a draft above the mailto limit shows one combined button; clicking it copies only the message body, then opens mailto with only the recipient and subject',async()=>{const h=harness(),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;
  const long='My full message. '.repeat(450),pasted=`To: ${to}\nSubject: ${subject}\n\n${long}`;await act(async()=>vm().editDraft('body',pasted));
  assert.equal(vm().handoff?.mode,'copy');assert.equal(vm().mailto,undefined);assert.equal(vm().draftIssue,undefined,'no too-long message replaces the button');
  const buttons=()=>m.renderer.root.findAllByType('button').map(n=>renderedText(n)),shown=html(vm());
- assert.ok(buttons().includes('Copy message and open email app'));assert.ok(!buttons().includes('Copy message'),'the plain Copy message button is hidden until copying fails');assert.doesNotMatch(shown,/Open draft in my email app|too long/i);assert.doesNotMatch(shown,/notably Outlook/);
+ assert.ok(buttons().includes('Copy message and open email app'));assert.ok(!buttons().includes('Copy message'),'the plain Copy message button is hidden until copying fails');assert.doesNotMatch(shown,/Open in my email app|too long/i);assert.doesNotMatch(shown,/notably Outlook/);
  assert.equal(h.attempts.length,0,'nothing is copied before the click');assert.equal(h.opened.length,0,'nothing is opened before the click');
  act(()=>{m.renderer.root.findAllByType('button').find(n=>renderedText(n)==='Copy message and open email app')!.props.onClick()});
  assert.deepEqual(h.attempts,[long],'the clipboard write starts inside the click, with the message body only (pasted To and Subject lines left out)');assert.equal(h.opened.length,0,'the email app opens only after the copy succeeds');
@@ -47,7 +53,7 @@ test('a draft above the mailto limit shows one combined button; clicking it copi
  await act(async()=>vm().editDraft('body','Short again.'));assert.equal(vm().handoff?.mode,'link');assert.ok(!buttons().includes('Copy message and open email app'));
  act(()=>vm().copyAndOpenEmail());await act(flush);assert.equal(h.attempts.length,1,'the combined action does nothing when the draft opens directly');
 }finally{m.unmount()}});
-test('if the clipboard write fails the email app is not opened and the Copy message button and instructions appear',async()=>{const h=harness({failCopy:true}),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;
+test('if the clipboard write fails the email app is not opened and the Copy message button and instructions appear',async()=>{const h=harness({failCopy:true}),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!;
  await act(async()=>vm().editDraft('body','My full message. '.repeat(450)));const buttons=()=>m.renderer.root.findAllByType('button').map(n=>renderedText(n));
  assert.ok(!buttons().includes('Copy message'));
  act(()=>{m.renderer.root.findAllByType('button').find(n=>renderedText(n)==='Copy message and open email app')!.props.onClick()});await act(flush);
@@ -65,7 +71,7 @@ test('the long-draft handoff keeps typed details local: only the clipboard gets 
 
 test('unavailable helper preserves official facts and local draft, with truthful failure status',async()=>{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal(m.ref.vm!.agentCode,'NATIVE_HOST_MISSING');assert.equal(m.ref.vm!.record?.nctId,IDS[0]);assert.ok(m.ref.vm!.draft?.body);assert.doesNotMatch(html(m.ref.vm!),/Agents: public study review complete/);}finally{m.unmount()}});
 
-test('End rejects late AI output and clears all local fields and drafts',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','PRIVATE_END_CANARY');m.ref.vm!.editDraft('body','PRIVATE_DRAFT_CANARY');m.ref.vm!.requestReview();await flush()});await act(async()=>{m.ref.vm!.end();h.held[0]();await flush()});assert.equal(m.ref.vm!.phase,'ended');assert.equal(m.ref.vm!.patient.name,'');assert.equal(m.ref.vm!.draft,undefined);assert.equal(m.ref.vm!.records.length,0);assert.equal(m.ref.vm!.result,undefined);}finally{m.unmount()}});
+test('a session end rejects late AI output and clears all local fields, drafts and the step',async()=>{const h=harness({holdExecute:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','PRIVATE_END_CANARY');m.ref.vm!.editDraft('body','PRIVATE_DRAFT_CANARY');m.ref.vm!.goStep('email');m.ref.vm!.requestReview();await flush()});await act(async()=>{h.ports[0].onMessage.emit({kind:'applyEnded'});h.held[0]();await flush()});assert.equal(m.ref.vm!.phase,'ended');assert.equal(m.ref.vm!.step,'understand','the step starts over with the session');assert.equal(m.ref.vm!.patient.name,'');assert.equal(m.ref.vm!.draft,undefined);assert.equal(m.ref.vm!.records.length,0);assert.equal(m.ref.vm!.result,undefined);assert.doesNotMatch(renderedText(m.renderer.root),/PRIVATE_END_CANARY|PRIVATE_DRAFT_CANARY/);assert.ok(!m.renderer.root.findAllByType('button').some(n=>/End and clear/.test(renderedText(n))),'no separate End and clear control: closing Treatable covers it');}finally{m.unmount()}});
 
 test('source-ended event and original fixed expiry clear private state without renewing a lease',async(t)=>{t.mock.timers.enable({apis:['setTimeout']});const h=harness(),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.edit('name','EXPIRY_CANARY');m.ref.vm!.editDraft('body','EXPIRING_DRAFT')});assert.equal(m.ref.vm!.expiresAt,EXPIRES);h.setClock(EXPIRES);await act(async()=>{t.mock.timers.tick(300001);await flush()});assert.equal(m.ref.vm!.phase,'ended');assert.equal(m.ref.vm!.draft,undefined);assert.equal(m.ref.vm!.patient.name,'');}finally{m.unmount();t.mock.timers.reset()}});
 
@@ -79,10 +85,12 @@ test('production overlay entry presents the public brief before search, never mo
  try{await act(async()=>{renderer=TestRenderer.create(React.createElement(OverlayAssistant));const e=new Event('message');Object.assign(e,{source:parent,origin:'https://clinicaltrials.gov',data:{type:'treatable.site.activate',purpose:'overlay',capability:'a'.repeat(64)}});win.dispatchEvent(e);await flush()});const text=JSON.stringify(renderer.toJSON());assert.ok(text.includes('Understand this study'));assert.ok(text.indexOf('Understand this study')<text.indexOf('Search for other studies on ClinicalTrials.gov'),'the brief comes first, with one quiet search link after it');assert.doesNotMatch(text,/Search ClinicalTrials\.gov"|More filters/);assert.doesNotMatch(text,/Find my matches|Confirm what you|Review what you will share/);assert.equal(privatePorts,0);assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false);
  await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n)==='Get my study summary')!.props.onClick();await flush()});
  assert.match(renderedText(renderer.root),/Study summary ready/);assert.match(renderedText(renderer.root),/Questions sorted/);
+ const press=async(label:string)=>{await act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n).startsWith(label))!.props.onClick();await flush()})};
+ await press('Next: who to contact');assert.match(renderedText(renderer.root),/Three questions to start with/);await press('Write my email');
  const editor=()=>renderer.root.findAllByType('textarea').find(n=>n.props.className==='apply-email')!;
  await act(async()=>{editor().props.onChange({target:{value:'My reviewed enquiry from the production entry.'}});await flush()});
  assert.equal(editor().props.value,'My reviewed enquiry from the production entry.');
- const handoff=renderer.root.findAllByType('a').find(n=>renderedText(n)==='Open draft in my email app')!;
+ const handoff=renderer.root.findAllByType('a').find(n=>renderedText(n)==='Open in my email app')!;
  assert.ok(handoff);assert.match(handoff.props.href,/^mailto:one@example\.org\?subject=/);assert.equal(decodeURIComponent(handoff.props.href.split('&body=')[1]),'My reviewed enquiry from the production entry.');
  assert.equal(privatePorts,0);assert.doesNotMatch(renderedText(renderer.root),/Session ended|Confirm what you|Review what you will share/);
  }finally{if(renderer)act(()=>renderer.unmount());for(const[key,value]of Object.entries(old))Object.defineProperty(globalThis,key,{configurable:true,value})}
@@ -90,11 +98,17 @@ test('production overlay entry presents the public brief before search, never mo
 
 test('real validated activity frames do not settle the result early or expose provider identifiers',async()=>{const h=harness({holdExecute:true,emitTrace:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal(m.ref.vm!.activity.length,1);assert.equal(m.ref.vm!.activity[0].stage,'agent.tool.request');assert.equal(m.ref.vm!.agentBusy,true);assert.equal(m.ref.vm!.result,undefined);assert.doesNotMatch(JSON.stringify(m.ref.vm!.activity),/PROVIDER_ID_CANARY/);await act(async()=>{h.held[0]();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.match(html(m.ref.vm!),/How this was generated/);assert.match(html(m.ref.vm!),/Reading selected public study evidence/);assert.doesNotMatch(html(m.ref.vm!),/PROVIDER_ID_CANARY/);}finally{m.unmount()}});
 
-test('registry milestone estimates remain separate from a participant visit schedule',async()=>{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);/* The fallback excerpts are the cards (brief-fact) that must not carry registry dates; a generation without claims renders them. */await act(async()=>{m.ref.vm!.requestReview();await flush()});const registry=m.renderer.root.findByProps({className:'brief-registry'});const shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);const facts=m.renderer.root.findAllByProps({className:'brief-fact'});assert.ok(facts.length>0,'the excerpt cards rendered, so the loop below checks something');for(const fact of facts)assert.doesNotMatch(renderedText(fact),/2026-12-31/);}finally{m.unmount()}});
+test('registry milestone estimates remain separate from a participant visit schedule',async()=>{SPARSE=true;try{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);
+ /* A sparse record (no description or design) leaves only registry dates in the timeline, so nothing else can crowd them out of the excerpt cards. A generation without claims renders the excerpts. */
+ await act(async()=>{m.ref.vm!.requestReview();await flush()});await toStep(m,'contact');
+ const registry=m.renderer.root.findByProps({className:'brief-registry'}),shown=renderedText(registry);assert.match(shown,/Registry milestones/);assert.match(shown,/estimated/i);assert.match(shown,/2026-12-31/);
+ assert.equal(m.renderer.root.findAllByProps({className:'brief-fact'}).length,0,'registry dates never become excerpt cards');assert.match(renderedText(m.renderer.root),/No participation schedule or design description was available/);
+ assert.doesNotMatch(renderedText(m.renderer.root.findByProps({'aria-labelledby':'brief-participation'})).replace(shown,''),/2026-12-31|2026-01-01/,'the dates appear only under Registry milestones');
+}finally{m.unmount()}}finally{SPARSE=false}});
 
 test('generating a brief keeps the full locally loaded record instead of the size-capped prepared copy',async()=>{const h=harness({truncatePrepared:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.record?.sites.length,1);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal((m.ref.vm!.result as StudyBriefResult|undefined)?.agentStatus,'complete');assert.equal(m.ref.vm!.record?.sites.length,1);assert.equal(m.ref.vm!.record?.sitesTruncated,false);assert.equal(m.ref.vm!.plan?.site?.facility,'Synthetic Clinic');}finally{m.unmount()}});
 
-test('Copy message copies only the body; pasted headers never reach the handoff',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;assert.equal(to,'one@example.org');
+test('Copy message copies only the body; pasted headers never reach the handoff',async()=>{const h=harness(),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!,to=vm().draft!.to,subject=vm().draft!.subject;assert.equal(to,'one@example.org');
  for(const text of [vm().draft!.body,decodeURIComponent(vm().mailto!.split('&body=')[1])]){assert.doesNotMatch(text,/^\s*(?:To|Subject)\s*:/im);assert.ok(!text.includes(to));assert.ok(!text.includes(subject))}
  await act(async()=>{vm().copyMessage();await flush()});assert.equal(h.copies[0],vm().draft!.body);assert.equal(vm().copied,'message');
  await act(async()=>vm().editDraft('body',`To: ${to}\nSubject: ${subject}\n\nMy own message.`));assert.equal(vm().draftHeaders,true);assert.match(html(vm()),/left out when you open or copy the message/);
@@ -105,7 +119,7 @@ test('Copy message copies only the body; pasted headers never reach the handoff'
 /** A registry-style purpose of several thousand characters made of distinct sentences, so any dropped or repeated part is detected. */
 const longPurpose=(sentences:number)=>Array.from({length:sentences},(_,i)=>`Sentence ${i+1} of the synthetic purpose describes what participants in group ${i%7} will be asked to do.`).join(' ');
 /** The excerpts are shown once a generation has been attempted; a failed one (no helper) leaves the official excerpts as the fallback. */
-async function purposeHtml(purpose:string,options:Parameters<typeof harness>[0]={}){PURPOSE=purpose;const h=harness({...options,failPrepare:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');await act(async()=>{m.ref.vm!.requestReview();await flush()});return{html:html(m.ref.vm!),vm:m.ref.vm!}}finally{m.unmount();PURPOSE='A synthetic controlled study.'}}
+async function purposeHtml(purpose:string,options:Parameters<typeof harness>[0]={}){PURPOSE=purpose;const h=harness({...options,failPrepare:true}),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');await act(async()=>{m.ref.vm!.requestReview();await flush()});return{html:at(m.ref.vm!,'contact'),vm:m.ref.vm!}}finally{m.unmount();PURPOSE='A synthetic controlled study.'}}
 
 test('a 6,000+ character study purpose is shown in full, with no ellipsis, when the brief could not be generated',async()=>{const purpose=longPurpose(65);assert.ok(purpose.length>6000);const{html:page,vm}=await purposeHtml(purpose);assert.ok(page.includes(purpose),'every character of the purpose is on the page');assert.ok(!page.includes('\u2026'),'no ellipsis character');assert.ok(!purpose.endsWith('...'));assert.match(page,/class="brief-scroll"[^>]*role="region"[^>]*aria-label="Study purpose, full text"/);assert.match(page,/tabindex="0"/);assert.equal(vm.purpose,purpose);});
 
@@ -117,9 +131,9 @@ test('a purpose longer than the model payload allows is still displayed whole fr
 
 test('a malformed local purpose list is refused instead of shown',async()=>{for(const purposes of [['one','two'],[7],'text']){const{vm}=await purposeHtml('A synthetic controlled study.',{purposes});assert.equal(vm.record,undefined);assert.equal(vm.recordCode,'INVALID_NATIVE_REPLY');}});
 
-test('a long study description is not shortened either',async()=>{const description=`Participants complete clinic visits every 4 weeks, ${'with assessments of symptoms and function '.repeat(30)}until week 52.`;assert.ok(description.length>1000&&description.length<1400);DETAIL=description;try{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});const page=html(m.ref.vm!);assert.ok(page.includes(description));assert.ok(!page.includes('\u2026'));}finally{m.unmount()}}finally{DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.'}});
+test('a long study description is not shortened either',async()=>{const description=`Participants complete clinic visits every 4 weeks, ${'with assessments of symptoms and function '.repeat(30)}until week 52.`;assert.ok(description.length>1000&&description.length<1400);DETAIL=description;try{const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});const page=at(m.ref.vm!,'contact');assert.ok(page.includes(description));assert.ok(!page.includes('\u2026'));}finally{m.unmount()}}finally{DETAIL='Two treatments are spaced 4 weeks apart. Follow-up visits occur at 3 and 12 months post injection. Randomization is 2:1 between treatment and sham. Control participants can cross over after 3-month follow-up.'}});
 
-// --- API trace under "How this was generated" ---
+// --- API trace under Technical details → "How this was generated" ---
 const hostText=(m:ReturnType<typeof mount>)=>renderedText(m.renderer.root);
 const res=(m:ReturnType<typeof mount>)=>m.ref.vm!.result as StudyBriefResult|undefined;
 const nodesWith=(m:ReturnType<typeof mount>,className:string)=>m.renderer.root.findAllByProps({className});
@@ -192,27 +206,27 @@ test('a result from an older helper without request details explains the reinsta
  }finally{m.unmount()}
 });
 
-test('request details stay in memory only: ending, reselecting studies or a new run clears them, and no header or key text exists',async()=>{
+test('request details stay in memory only: a session end clears them, and no header or key text exists',async()=>{
  const h=harness(),m=mount(h);
  try{
   await generate(m);assert.ok(hostText(m).includes('Agents API request body'));
   const everything=JSON.stringify([res(m),h.ports[0].sent,hostText(m)]);
   assert.doesNotMatch(everything,/Authorization|Bearer|OpenAI-Beta|Content-Type|sk-[A-Za-z0-9_-]{10,}/);
-  await act(async()=>{m.ref.vm!.selectStudies(IDS);await flush()});assert.equal(res(m),undefined);assert.ok(!hostText(m).includes('Agents API request body'));
-  await generate2(m);assert.ok(res(m)?.apiTrace);
-  await act(async()=>{m.ref.vm!.end();await flush()});assert.equal(res(m),undefined);assert.equal(m.ref.vm!.traceCopy,undefined);
+  await generate2(m);assert.ok(res(m)?.apiTrace);await act(async()=>{m.ref.vm!.copyTrace('agents');await flush()});assert.equal(m.ref.vm!.traceCopy?.state,'copied');
+  await act(async()=>{h.ports[0].onMessage.emit({kind:'applyEnded'});await flush()});assert.equal(res(m),undefined);assert.equal(m.ref.vm!.traceCopy,undefined);
   const after=hostText(m);assert.ok(!after.includes('get_public_selected_study')&&!after.includes('Agents API request body'));
  }finally{m.unmount()}
 });
 async function generate2(m:ReturnType<typeof mount>){await act(async()=>{m.ref.vm!.requestReview();await flush()})}
 
 test('the intro tour points at the right Treatable controls on a study page and presses nothing',async()=>{
- const h=harness(),m=mount(h);let markup='';
+ const h=harness(),m=mount(h);const markup:string[]=[];
  try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});
   const view:any={connected:true,ended:false,busy:false,error:'',snapshot:{generation:'g',url:'https://clinicaltrials.gov/study/NCT99999990',nctIds:[],diagnostic:'',supported:false},records:[],collapsed:false,setField(){},search(){},refresh(){},fetchRecords(){},setCollapsed(){},restore(){},openPrivate(){},close(){},guide:{active:false,canSearchHelp:false,startSearchHelp(){},replayIntro(){}}};
-  markup=renderToStaticMarkup(React.createElement(OverlayView,{vm:view,apply:React.createElement(ApplyView,{vm:m.ref.vm!})}));
+  /* The flow is in steps: the summary button is on the first step, the email fields and buttons on the last. Both are on the page here. */
+  for(const step of ['understand','email'] as const)markup.push(renderToStaticMarkup(React.createElement(OverlayView,{vm:view,apply:React.createElement(ApplyView,{vm:{...m.ref.vm!,step}})})));
  }finally{m.unmount()}
- const env=installDom('<!doctype html><html><body><div id="root">'+markup+'</div></body></html>','https://clinicaltrials.gov/study/NCT99999990');
+ const env=installDom('<!doctype html><html><body><div id="root">'+markup[0]+'</div><div id="root-email">'+markup[1]+'</div></body></html>','https://clinicaltrials.gov/study/NCT99999990');
  try{
   const {createPanelGuide}=await import('../src/guide-panel');
   const guide=createPanelGuide(()=>env.document,{mode:'open',css:''});
@@ -222,9 +236,9 @@ test('the intro tour points at the right Treatable controls on a study page and 
    ['appearance','button[aria-label="Treatable settings"]',/Make Treatable look the way you like/,/Popup is a window in the middle of the page/],
    ['understand','.apply-section .section-intro',/Understand this study/,/public study data/],
    ['brief','.brief-generate button.apply-big',/Get my study summary/,/You choose when to press this button/],
-   ['personalize','details.apply-local-details > summary',/Personalize your email/,/stays on your device/],
-   ['draft','section[aria-labelledby="apply-send"]',/Edit your email draft/,/subject and message/],
-   ['send','.apply-actions[data-treatable-guide="send"]',/You send the email, not Treatable/,/Treatable never sends the email/],
+   ['personalize','#root-email #apply-you',/Personalize your email/,/stays on your device/],
+   ['draft','#root-email section[aria-labelledby="apply-send"]',/Edit your email draft/,/subject and message/],
+   ['send','#root-email .apply-actions[data-treatable-guide="send"]',/You send the email, not Treatable/,/Treatable never sends the email/],
   ];
   for(const [id,selector,title,text] of expectations){
    const pending=guide.show(id,{allowBack:true});await settle();
@@ -233,7 +247,9 @@ test('the intro tour points at the right Treatable controls on a study page and 
    assert.match(dialog().querySelector('.swal2-title')!.textContent!,title);assert.match(dialog().querySelector('.swal2-popup')!.textContent!,text);
    (dialog().querySelector('.swal2-confirm') as HTMLButtonElement).click();assert.equal(await pending,'next');
   }
-  assert.equal(env.document.querySelectorAll('[data-treatable-guide="send"]').length,1);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Open draft in my email app|Copy message and open email app/);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Copy message/);
+  for(const name of ['understand','brief'])assert.equal(env.document.querySelectorAll(`#root-email [data-treatable-guide="${name}"]`).length,0,`${name} is only on the first step`);
+  for(const name of ['personalize','draft','send'])assert.equal(env.document.querySelectorAll(`#root [data-treatable-guide="${name}"]`).length,0,`${name} is only on the email step`);
+  assert.equal(env.document.querySelectorAll('[data-treatable-guide="send"]').length,1);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Open in my email app|Copy message and open email app/);assert.match(env.document.querySelector('[data-treatable-guide="send"]')!.textContent!,/Copy message/);
   guide.close();await settle();
   assert.equal(env.document.querySelectorAll('[data-treatable-guide-highlight]').length,0,'closing removes the highlight');
   assert.equal(env.document.querySelector('[data-treatable-guide-host]'),null);
@@ -255,7 +271,7 @@ test('the brief status line is plain: study review and question sorting, with no
 });
 
 /* A blank name: nothing placeholder-like reaches the clipboard, the email-app link or the call script; the missing items are listed above the handoff buttons. */
-test('with a blank name no bracketed placeholder is copied, linked or scripted, and the missing items are listed above the handoff buttons',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;assert.equal(vm().patient.name,'');
+test('with a blank name no bracketed placeholder is copied, linked or scripted, and the missing items are listed above the handoff buttons',async()=>{const h=harness(),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!;assert.equal(vm().patient.name,'');
  const noPlaceholder=(where:string,text:string)=>{assert.doesNotMatch(text,/[\[\]]/,`${where} contains a bracket`);assert.doesNotMatch(text,/your name/i,where)};
  for(const[where,text]of [['draft',vm().draft!.body],['email-app link',decodeURIComponent(vm().mailto!)],['call script',vm().callScript],['follow-up message',vm().followUpMessage]] as const)noPlaceholder(where,text);
  assert.ok(vm().draft!.body.endsWith('\n\nThank you.'),'the sign-off reads naturally without a name');
@@ -265,26 +281,27 @@ test('with a blank name no bracketed placeholder is copied, linked or scripted, 
  await act(async()=>vm().updateDraft());
  const missing=m.renderer.root.findByProps({className:'notice apply-missing'});const shown=renderedText(missing);
  assert.match(shown,/Add your name to sign the email\./);assert.match(shown,/Enter a phone number or an email address so the study team can reach you\./);assert.equal(missing.findAllByType('li').length,2);
- const page=html(vm());assert.ok(page.indexOf('apply-missing')>page.indexOf('Your email draft')&&page.indexOf('apply-missing')<page.indexOf('Open draft in my email app'),'the list sits above the handoff buttons');
+ const page=html(vm());assert.ok(page.indexOf('apply-missing')>page.indexOf('Your email draft')&&page.indexOf('apply-missing')<page.indexOf('Open in my email app'),'the list sits above the handoff buttons');
  await act(async()=>vm().edit('name','Morgan Example'));assert.doesNotMatch(renderedText(m.renderer.root.findByProps({className:'notice apply-missing'})),/name/);assert.equal(m.renderer.root.findByProps({className:'notice apply-missing'}).findAllByType('li').length,1);
  await act(async()=>vm().edit('phone','208 555 0142'));assert.equal(m.renderer.root.findAllByProps({className:'notice apply-missing'}).length,0,'nothing is missing, so no list');assert.doesNotMatch(html(vm()),/apply-missing/);
  await act(async()=>vm().edit('phone','12'));assert.match(renderedText(m.renderer.root.findByProps({className:'notice apply-missing'})),/Check the phone number\. Use 7 to 15 digits\./,'a problem with what was typed is listed too');
 }finally{m.unmount()}});
 
-test('"Personalize your email" is collapsed by default, also while no name is set, and typing does not open it',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!,details=()=>m.renderer.root.findByProps({className:'apply-step apply-local-details'});
- assert.equal(details().props.open,undefined);assert.doesNotMatch(html(vm()),/<details class="apply-step apply-local-details" open/);
+test('"More details" is collapsed by default, also while no name is set, and typing does not open it; name, phone and email are in view',async()=>{const h=harness(),m=mount(h);try{await act(flush);await toStep(m,'email');const vm=()=>m.ref.vm!,more=()=>m.renderer.root.findByProps({className:'apply-more'});
+ assert.equal(more().type,'details');assert.equal(more().props.open,undefined);assert.doesNotMatch(html(vm()),/<details class="apply-more" open/);
+ for(const field of ['name','phone','email'])assert.equal(insideClosedDetails(m.renderer.root.findByProps({'data-apply-field':field})),false,`${field} is visible without opening anything`);
+ assert.ok(insideClosedDetails(m.renderer.root.findAll(n=>n.type==='label'&&/Best times to reach you/.test(renderedText(n)))[0]),'the rest of Personalize is under More details');
  assert.ok(vm().plan!.missing.some(item=>/name/.test(item)),'the missing list still asks for a name, so the email is not sent unsigned');
- await act(async()=>vm().edit('name','M'));assert.equal(details().props.open,undefined,'typing does not pop it open');
+ await act(async()=>vm().edit('name','M'));assert.equal(more().props.open,undefined,'typing does not pop it open');
 }finally{m.unmount()}});
-test('"Personalize your email" stays collapsed when Your details already has a name, and the missing list does not ask for one',async()=>{
+test('with a name in Your details the missing list does not ask for one and the draft is signed with it',async()=>{
  const named=sessionDetailsStore();named.set({name:'Pat Doe'});const h=harness();let ref:{vm?:ApplyController}={},renderer!:TestRenderer.ReactTestRenderer;
  function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
  act(()=>{renderer=TestRenderer.create(React.createElement(DetailsContext.Provider,{value:named},React.createElement(Probe)))});
- try{await act(flush);assert.equal(ref.vm!.phase,'ready');const details=renderer.root.findByProps({className:'apply-step apply-local-details'});assert.equal(details.props.open,undefined,'collapsed when Your details already has a name');
+ try{await act(flush);assert.equal(ref.vm!.phase,'ready');await act(async()=>ref.vm!.goStep('email'));assert.equal(renderer.root.findByProps({className:'apply-more'}).props.open,undefined,'More details stays collapsed');
   assert.deepEqual(ref.vm!.plan!.missing.filter(item=>/name/.test(item)),[],'and the missing list does not ask for it');assert.doesNotMatch(renderedText(renderer.root),/Add your name to sign the email/);
   assert.match(ref.vm!.draft!.body,/My name is Pat Doe\./);
  }finally{act(()=>renderer.unmount())}
- const h2=harness(),m=mount(h2);try{await act(flush);assert.equal(m.renderer.root.findByProps({className:'apply-step apply-local-details'}).props.open,undefined,'a fresh session with no name keeps it collapsed');}finally{m.unmount()}
 });
 
 test('dirty is true only while something typed or edited would be lost: fields, drafts, call scripts and follow-up messages',async()=>{const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;assert.equal(vm().dirty,false,'a fresh session has nothing to lose');
@@ -295,24 +312,26 @@ test('dirty is true only while something typed or edited would be lost: fields, 
  await act(async()=>vm().editDraft('body','My own wording'));assert.equal(vm().dirty,true,'an edited email draft counts');await act(async()=>vm().updateDraft());assert.equal(vm().dirty,false,'resetting the draft discards the edit');
  await act(async()=>vm().editCallScript('My script'));assert.equal(vm().dirty,true);await act(async()=>vm().resetCallScript());assert.equal(vm().dirty,false);
  await act(async()=>vm().editFollowUp('My follow-up'));assert.equal(vm().dirty,true);await act(async()=>vm().resetFollowUp());assert.equal(vm().dirty,false);
- await act(async()=>{vm().selectStudies(IDS);await flush()});await act(async()=>vm().viewStudy(IDS[1]));await act(async()=>vm().edit('name','Second study'));await act(async()=>vm().viewStudy(IDS[0]));assert.equal(vm().dirty,true,'work on another selected study counts');
- await act(async()=>vm().end());assert.equal(vm().dirty,false,'ending the session clears it');
+ await act(async()=>vm().edit('name','Before the end'));assert.equal(vm().dirty,true);
+ await act(async()=>{h.ports[0].onMessage.emit({kind:'applyEnded'});await flush()});assert.equal(vm().dirty,false,'ending the session clears it');
 }finally{m.unmount()}});
 
-test('before a brief is generated only the Generate button and the standard questions show; passages and unknowns appear after',async()=>{
+test('before a summary is generated the first step shows only the button; facts and unknowns appear in the contact step after',async()=>{
  const h=harness(),m=mount(h);try{await act(flush);
-  const before=html(m.ref.vm!);
-  assert.doesNotMatch(before,/What participation could involve|Important unknowns|Two treatments are spaced 4 weeks apart/,'no raw passages or unknowns before generation');
-  assert.match(before,/Get my study summary/);assert.match(before,/The record cannot establish whether you are eligible/,'the eligibility caveat is visible before generation');assert.match(before,/Three questions to start with/);
+  const before=at(m.ref.vm!,'understand'),contactBefore=at(m.ref.vm!,'contact');
+  for(const page of [before,contactBefore])assert.doesNotMatch(page,/What participation could involve|Not in the record|Two treatments are spaced 4 weeks apart/,'no raw passages or unknowns before generation');
+  assert.match(before,/Get my study summary/);assert.match(before,/This record cannot tell you whether you qualify or whether the treatment will help\./,'the eligibility line is visible before generation');
+  assert.doesNotMatch(before,/Three questions to start with|Next: who to contact|Who to contact/,'nothing else before generation');assert.match(contactBefore,/Three questions to start with/);
   await act(async()=>{m.ref.vm!.requestReview();await flush()});
-  const after=html(m.ref.vm!);
-  assert.match(after,/What participation could involve/);assert.match(after,/Important unknowns/);
+  const after=at(m.ref.vm!,'contact');
+  assert.match(after,/What participation could involve/);assert.match(after,/Not in the record/);assert.match(at(m.ref.vm!,'understand'),/This record cannot tell you whether you qualify/,'the line stays with the button');
  }finally{m.unmount()}
  /* A generation that fails leaves the official excerpts as the fallback the failure copy promises. */
- const failed=harness({failPrepare:true}),f=mount(failed);try{await act(flush);assert.doesNotMatch(html(f.ref.vm!),/What participation could involve/);await act(async()=>{f.ref.vm!.requestReview();await flush()});const text=html(f.ref.vm!);assert.match(text,/What participation could involve/);assert.match(text,/Important unknowns/);
-  assert.doesNotMatch(text.replace(/<details class="brief-how">[\s\S]*?<\/details>/,''),/NATIVE_HOST_MISSING/,'the raw code is not in the patient-facing status line');
-  assert.match(text,/<details class="brief-how"><summary>How this was generated<\/summary><p class="fine">Failure code: <code>NATIVE_HOST_MISSING<\/code><\/p>/,'the code stays inside the technical details');
-  assert.doesNotMatch(text,/Local search/);
+ const failed=harness({failPrepare:true}),f=mount(failed);try{await act(flush);assert.doesNotMatch(at(f.ref.vm!,'contact'),/What participation could involve/);await act(async()=>{f.ref.vm!.requestReview();await flush()});const text=at(f.ref.vm!,'contact');assert.match(text,/What participation could involve/);assert.match(text,/Not in the record/);
+  const first=at(f.ref.vm!,'understand');
+  assert.doesNotMatch(first.replace(/<details class="brief-how">[\s\S]*?<\/details>/,''),/NATIVE_HOST_MISSING/,'the raw code is not in the patient-facing status line');
+  assert.match(first,/<details class="brief-how"><summary>Technical details<\/summary><p class="fine">Failure code: <code>NATIVE_HOST_MISSING<\/code><\/p>/,'the code stays inside the technical details');
+  assert.doesNotMatch(first,/Local search/);
  }finally{f.unmount()}
 });
 
@@ -323,19 +342,24 @@ test('a study heading can take script focus, and ApplyView no longer moves focus
  try{await act(flush);assert.deepEqual(focused,[],'focus is owned by the overlay, once per connection, not by every mount of this section');assert.match(html(ref.vm!),/<h2 id="apply-heading" tabindex="-1">/)}finally{act(()=>renderer.unmount())}
 });
 
-test('a retry after a failed generation keeps the excerpts and unknowns on screen',async()=>{
- const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.match(html(m.ref.vm!),/Important unknowns/);
-  await act(async()=>{m.ref.vm!.requestReview()});/* mid-retry the code is cleared; the sections must not vanish */
-  assert.match(html(m.ref.vm!),/Important unknowns/);
+test('a retry after a failed generation keeps the excerpts and unknowns on screen while it runs',async()=>{
+ const h=harness({failPrepare:true,holdPrepareAfter:1}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});await toStep(m,'contact');
+  const unknowns=()=>m.renderer.root.findAllByProps({className:'apply-step brief-unknown'}).length,cards=()=>m.renderer.root.findAllByProps({className:'brief-fact'}).length;
+  assert.equal(unknowns(),1);assert.ok(cards()>0);
+  await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  /* The second reply is held, so the retry is still running with no code and no result. The sections must not vanish meanwhile. */
+  assert.equal(h.heldPrepare.length,1,'the retry reply is held');assert.equal(m.ref.vm!.agentBusy,true);assert.equal(m.ref.vm!.agentCode,undefined);assert.equal(m.ref.vm!.result,undefined);
+  assert.equal(unknowns(),1,'the unknowns stay during the retry');assert.ok(cards()>0,'the excerpts stay during the retry');
+  await act(async()=>{h.heldPrepare[0]();await flush()});assert.equal(m.ref.vm!.agentCode,'NATIVE_HOST_MISSING');assert.equal(m.ref.vm!.agentBusy,false);
  }finally{m.unmount()}
 });
 
-test('the missing-details list is made of buttons that open Personalize and focus the field',async()=>{
+test('the missing-details list is made of buttons that move to the field that fixes each item',async()=>{
  const h=harness(),focused:string[]=[],ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
- let renderer!:TestRenderer.ReactTestRenderer;const dets:any={open:false,querySelector:(q:string)=>({focus(){focused.push(q)}})};
- await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(el:any)=>el.type==='details'&&String(el.props.className).includes('apply-local-details')?dets:{focus(){}}})});
- try{await act(flush);const fixes=renderer.root.findAllByProps({className:'quiet missing-fix'});assert.ok(fixes.length>=2,'one button per missing item');
-  await act(async()=>fixes[0].props.onClick());assert.equal(dets.open,true);assert.deepEqual(focused,['[data-apply-field="name"]']);
+ let renderer!:TestRenderer.ReactTestRenderer;const fields:any={querySelector:(q:string)=>({focus(){focused.push(q)}})};
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(el:any)=>el.type==='section'&&String(el.props.className).includes('apply-local-details')?fields:{focus(){}}})});
+ try{await act(flush);await act(async()=>ref.vm!.goStep('email'));const fixes=renderer.root.findAllByProps({className:'quiet missing-fix'});assert.ok(fixes.length>=2,'one button per missing item');
+  await act(async()=>fixes[0].props.onClick());assert.deepEqual(focused,['[data-apply-field="name"]']);
   await act(async()=>fixes[1].props.onClick());assert.equal(focused.at(-1),'[data-apply-field="phone"]');
  }finally{act(()=>renderer.unmount())}
 });
@@ -348,4 +372,94 @@ test('a failure only claims that questions and the draft still work when they ar
  const view=renderToStaticMarkup(React.createElement(ApplyView,{vm:{phase:'ready',candidates:[],selectedIds:[],records:[],activity:[],engine:{provider:'openai',localModel:null},agentBusy:false,recordCode:'RECORD_UNAVAILABLE',patient:{name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}},zipNote:''} as any}));
  assert.match(view,/The official study record could not be loaded/);assert.doesNotMatch(view,/Your questions and email draft still work/,'no draft exists, so no such claim');
  assert.match(view,/<details class="brief-how"><summary>Technical details<\/summary><p class="fine">Failure code: <code>RECORD_UNAVAILABLE<\/code>/);
+});
+
+// --- The study page in three steps: Understand, Contact, Email ---
+const SEND_ACTION=/^(Open in my email app|Copy message and open email app|Copy message|Call the listed contact|Call|Copy number|Copy follow-up message|Download follow-up reminder)$/;
+/** Labels of the buttons and links a person can see without opening a disclosure. */
+const visibleControls=(root:any):string[]=>root.findAll((n:any)=>(n.type==='button'||n.type==='a')&&!insideClosedDetails(n)).map((n:any)=>renderedText(n).replace(/\s+/g,' ').trim());
+
+test('each step renders only its own content',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);const vm=m.ref.vm!;
+  const own:Record<StudyStep,RegExp[]>={understand:[/data-treatable-guide="brief"/,/Get the study summary again/,/Open the official record/,/Next: who to contact/],contact:[/Three questions to start with/,/Who to contact/,/What participation could involve/,/Write my email/],email:[/Personalize your email/,/class="apply-email"/,/Open in my email app/,/After you send/]};
+  for(const step of STUDY_STEPS){const page=at(vm,step);for(const other of STUDY_STEPS)for(const marker of own[other]){if(other===step)assert.match(page,marker,`${step} step shows ${marker}`);else assert.doesNotMatch(page,marker,`${step} step hides ${marker}`)}}
+  assert.equal(new Set(STUDY_STEPS.map(s=>/<h2 id="apply-heading"[^>]*>([^<]*)</.exec(at(vm,s))![1])).size,3,'each step has its own heading');
+ }finally{m.unmount()}
+});
+
+test('Next and the step list move back and forth; the current step is marked, and earlier steps keep a one-line summary',async()=>{
+ const h=harness(),m=mount(h);try{await act(flush);const root=m.renderer.root,vm=()=>m.ref.vm!;
+  const list=()=>root.findByProps({className:'study-steps'}),stepButtons=()=>list().findAllByType('button');
+  const current=()=>stepButtons().filter(b=>b.props['aria-current']==='step').map(b=>renderedText(b));
+  const press=(label:string)=>act(async()=>{root.findAllByType('button').find(n=>renderedText(n).startsWith(label))!.props.onClick();await flush()});
+  assert.equal(list().type,'ol','the step list is a list');assert.equal(stepButtons().length,3,'every step is a keyboard-reachable button');
+  assert.equal(vm().step,'understand');assert.equal(current().length,1);assert.match(current()[0],/Understand/);
+  assert.ok(!root.findAllByType('button').some(n=>renderedText(n).startsWith('Next: who to contact')),'no Next before a summary exists');
+  await act(async()=>stepButtons()[1].props.onClick());assert.equal(vm().step,'contact','the step list goes straight to step 2 without generating');assert.match(renderedText(stepButtons()[0]),/Done:\s+Standard questions/);
+  await act(async()=>stepButtons()[0].props.onClick());assert.equal(vm().step,'understand');
+  await act(async()=>{vm().requestReview();await flush()});await press('Next: who to contact');assert.equal(vm().step,'contact');assert.equal(current().length,1);assert.match(current()[0],/Contact/);
+  assert.match(renderedText(stepButtons()[0]),/Done:\s+Summary ready/,'the finished step collapses to a one-line summary');
+  await press('Write my email');assert.equal(vm().step,'email');assert.match(renderedText(stepButtons()[1]),/Done:\s+Study coordinator/);assert.match(current()[0],/Email/);
+  await act(async()=>stepButtons()[1].props.onClick());assert.equal(vm().step,'contact','back to step 2');
+  await act(async()=>stepButtons()[0].props.onClick());assert.equal(vm().step,'understand','back to step 1');
+  assert.doesNotMatch(renderedText(stepButtons()[0]),/Done:/,'the step on screen carries no summary');
+ }finally{m.unmount()}
+});
+
+test('the email step shows at most two send actions; After you send holds the call, script, follow-up and reminder',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);await toStep(m,'email');const root=m.renderer.root;
+  const sends=()=>visibleControls(root).filter(t=>SEND_ACTION.test(t));
+  assert.deepEqual(sends(),['Open in my email app','Copy message'],'one primary and one secondary');
+  assert.equal(root.findAll(n=>(n.type==='button'||n.type==='a')&&String(n.props.className).includes('primary')&&!insideClosedDetails(n)).length,1,'one primary action');
+  const after=root.findByProps({className:'apply-step apply-after'});assert.equal(after.type,'details');assert.equal(after.props.open,undefined,'collapsed until opened');
+  const inside=renderedText(after);for(const part of ['After you send','Call the listed contact','Numbers to call','Your call script','Follow-up message','Copy follow-up message','Download follow-up reminder'])assert.ok(inside.includes(part),part);
+  assert.match(renderedText(root),/You press Send yourself\./);
+  await act(async()=>m.ref.vm!.editDraft('body','My full message. '.repeat(450)));assert.deepEqual(sends(),['Copy message and open email app'],'a long draft has the combined button only');
+ }finally{m.unmount()}
+ const failing=harness({failCopy:true}),f=mount(failing);try{await act(flush);await toStep(f,'email');await act(async()=>f.ref.vm!.editDraft('body','My full message. '.repeat(450)));act(()=>f.ref.vm!.copyAndOpenEmail());await act(flush);
+  assert.deepEqual(visibleControls(f.renderer.root).filter(t=>SEND_ACTION.test(t)),['Copy message and open email app','Copy message'],'after a failed copy: still two');
+ }finally{f.unmount()}
+});
+
+test('a step change from the study section moves focus to the new step heading; mounting and a change from elsewhere do not',async()=>{
+ const h=harness(),focused:string[]=[],ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})}
+ let renderer!:TestRenderer.ReactTestRenderer;
+ /* The heading is one element whose text follows the step, so each focus call records the text it has at that moment. */
+ await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(el:any)=>({focus(){focused.push(`${el.props.id}:${renderedText(renderer.root.findByProps({id:el.props.id}))}`)}})})});
+ try{await act(flush);assert.deepEqual(focused,[],'nothing is focused on mount');
+  const press=(label:string)=>act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n).includes(label))!.props.onClick();await flush()});
+  await press('Contact');assert.deepEqual(focused,['apply-heading:Questions and contact']);
+  await press('Write my email');assert.equal(focused.at(-1),'apply-heading:Write your email');
+  await press('Understand');assert.equal(focused.at(-1),'apply-heading:Understand this study');assert.equal(focused.length,3);
+  await act(async()=>ref.vm!.goStep('email'));assert.equal(ref.vm!.step,'email');assert.equal(focused.length,3,'a change not started from the section leaves focus alone');
+ }finally{act(()=>renderer.unmount())}
+});
+
+test('Technical details is the one place for failure codes and the generation record, at the bottom of the study section',async()=>{
+ const h=harness({failPrepare:true}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  for(const step of STUDY_STEPS){const page=at(m.ref.vm!,step),start=page.indexOf('<details class="brief-how">');
+   assert.equal((page.match(/<details class="brief-how">/g)??[]).length,1,`${step}: one disclosure`);assert.doesNotMatch(page,/<summary>How this was generated<\/summary>/,`${step}: no separate generation disclosure`);
+   assert.match(page.slice(start),/^<details class="brief-how"><summary>Technical details<\/summary>[\s\S]*<h4>How this was generated<\/h4>[\s\S]*<\/details><\/section>$/,`${step}: it closes the section`);
+   assert.equal(page.slice(0,start).includes('NATIVE_HOST_MISSING'),false,`${step}: no code before it`)}
+ }finally{m.unmount()}
+ const view=renderToStaticMarkup(React.createElement(ApplyView,{vm:{phase:'ready',step:'contact',candidates:[],selectedIds:[],records:[],activity:[],engine:{provider:'openai',localModel:null},agentBusy:false,recordCode:'RECORD_UNAVAILABLE',agentCode:'NATIVE_HOST_MISSING',patient:{name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}},zipNote:''} as any}));
+ assert.match(view,/<summary>Technical details<\/summary><p class="fine">Failure codes: <code>RECORD_UNAVAILABLE<\/code>, <code>NATIVE_HOST_MISSING<\/code><\/p>/,'record and model failures share it');assert.equal((view.match(/<details/g)??[]).length,1);
+});
+
+test('test-mode trace wording: a mocked run never claims OpenAI deleted a session; a live run says it did',async()=>{
+ const mocked=harness({traces:['agent.cleanup.deleted']}),a=mount(mocked);
+ try{await generate(a);const text=hostText(a);assert.equal(res(a)?.mode,'test');assert.ok(a.ref.vm!.activity.some(e=>e.stage==='agent.cleanup.deleted'),'the cleanup event arrived');
+  assert.match(text,/The mocked session was deleted/);assert.doesNotMatch(text,/OpenAI confirmed it deleted the session/);
+  assert.match(text,/Test run\.\s+A mocked adapter produced this result; nothing below was sent to OpenAI\./);assert.match(text,/the request bodies the helper built for a mocked adapter/);
+ }finally{a.unmount()}
+ const live=harness({traces:['agent.cleanup.deleted'],live:true}),b=mount(live);
+ try{await generate(b);const text=hostText(b);assert.match(text,/OpenAI confirmed it deleted the session/);assert.doesNotMatch(text,/mocked/i)}finally{b.unmount()}
+});
+
+test('the old clear path is gone from the study page, and copy says summary, not brief',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);
+  for(const step of STUDY_STEPS){const page=at(m.ref.vm!,step);assert.doesNotMatch(page,/End and clear my details/,step);assert.doesNotMatch(page.replace(/(?:class|aria-labelledby|id|data-treatable-guide)="[^"]*"/g,''),/\bbrief\b/i,`${step}: no "brief" wording`)}
+  assert.match(at(m.ref.vm!,'understand'),/This record cannot tell you whether you qualify or whether the treatment will help\./);
+  assert.doesNotMatch(STUDY_STEPS.map(s=>at(m.ref.vm!,s)).join(''),/establish|Choose for me/);
+ }finally{m.unmount()}
 });

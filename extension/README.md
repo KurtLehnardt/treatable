@@ -10,18 +10,21 @@ The standalone prototype on localhost:5556 and the native/mobile app work are se
 
 ## How it works
 
-1. **Search or open a study.** Use the overlay's search form or ClinicalTrials.gov's own controls, then open a study page. On a results page, AI-matched results reorders the cards (see [Decisions ranking](#decisions-ranking-ai-matched-results)), and the overlay lists the studies loaded there and lets you choose up to two for a brief.
-2. **Understand this study.** The overlay downloads the official record from ClinicalTrials.gov and shows excerpts of the study's purpose, participation details, design and recruitment status, plus "Important unknowns" (things the record does not say, such as a missing visit schedule or no listed contact). Registry milestone dates are kept apart from your visit schedule. Nothing in this step is sent to OpenAI.
-3. **Get my study summary.** Pressing this button, which only your own click or key press can do, starts the OpenAI steps described in [How Treatable uses OpenAI](#how-treatable-uses-openai): an Agent selects exact record excerpts and standard questions, then the Decisions API sorts each question by who can answer it. The overlay then shows:
-   - **What participation could involve**: claims that are word-for-word copies of record excerpts, each with a **Read the supporting record text** link to the official record.
+1. **Search or open a study.** Use the overlay's search form or ClinicalTrials.gov's own controls, then open a study page. On a results page, AI-matched results reorders the cards (see [Decisions ranking](#decisions-ranking-ai-matched-results)).
+2. **Step 1, Understand.** The overlay downloads the official record from ClinicalTrials.gov and shows the study's title, recruitment status and a link to the official record, with one paragraph about what the next button sends and the **Get my study summary** button. Nothing else shows, and nothing is sent to OpenAI, before you press it. The step list at the top (**1 Understand · 2 Contact · 3 Email**) lets you move to any step at any time, and an earlier step shows a one-line summary there.
+3. **Get my study summary.** Pressing this button, which only your own click or key press can do, starts the OpenAI steps described in [How Treatable uses OpenAI](#how-treatable-uses-openai): an Agent selects exact record excerpts and standard questions, then the Decisions API sorts each question by who can answer it. Then **Next: who to contact** opens step 2.
+4. **Step 2, Contact.**
+   - **What participation could involve**: claims that are word-for-word copies of record excerpts, each with a **Read the supporting record text** link to the official record. Registry milestone dates are kept apart from your visit schedule.
+   - **Not in the record**: things the record does not say, such as a missing visit schedule or no listed contact.
    - **Three questions to start with**: the first three questions that Decisions routes to **Ask the study team**.
-   - **How this was generated**: what was sent, what came back and what was checked.
-4. **Who to contact.** Treatable picks the nearest site that is recruiting when you give a US ZIP code, or lets you choose a site. It lists that site's contact, falling back to the study's central contact, with backups and the principal investigator's name. Warnings appear when, for example, the record is old, the study is close to completion, a site is not recruiting yet, or contact details look inconsistent.
-5. **Personalize your email** (optional, collapsed until you open it, on your device only). Type a name, phone, reply email, best times, a ZIP code and any background you choose to share. Nothing typed here is sent to OpenAI.
-6. **Your email draft.** Treatable writes an editable draft addressed to a listed contact, with up to three questions. **Open draft in my email app** hands it to your own mail program. **Copy message** puts it on your clipboard. You read it and press Send yourself.
-7. **Call script and follow-up.** Each phone contact from the record gets a **Call** (`tel:`) link and **Copy number** when the number checks out. Treatable also writes a call script, a follow-up message, a follow-up date five business days away, and a calendar reminder file you can download. The reminder holds public study and contact information only.
+   - **Who to contact.** Treatable picks the nearest site that is recruiting when you give a US ZIP code, or lets you choose a site. It lists that site's contact, falling back to the study's central contact, with backups and the principal investigator's name. Warnings appear when, for example, the record is old, the study is close to completion, a site is not recruiting yet, or contact details look inconsistent.
+5. **Step 3, Email.** **Write my email** opens it.
+   - **Personalize your email** (optional, on your device only): your name, phone and reply email, with best times, a ZIP code and any background you choose to share under **More details**. Nothing typed here is sent to OpenAI.
+   - **Your email draft.** Treatable writes an editable draft addressed to a listed contact, with up to three questions. **Open in my email app** hands it to your own mail program. **Copy message** puts it on your clipboard. You read it and press Send yourself.
+   - **After you send** (collapsed): **Call the listed contact**, and for each phone contact from the record a **Call** (`tel:`) link and **Copy number** when the number checks out. Treatable also writes a call script, a follow-up message, a follow-up date five business days away, and a calendar reminder file you can download. The reminder holds public study and contact information only.
+6. **Technical details** at the bottom of the study section holds any failure code and, after a summary, what was sent, what came back and what was checked.
 
-If you have not generated a brief, steps 2 and 4 to 7 still work, using standard questions. Pressing **End and clear my details** clears the drafts, scripts and everything you typed, including Settings → Your details. When the 30-minute session expires (it is extended whenever you type or click in the overlay), the drafts, scripts and details typed in that section are cleared and Treatable asks you to reopen it; Settings → Your details stay until you clear them or the Treatable session ends.
+If you have not generated a summary, steps 2 and 3 still work, using standard questions. Closing Treatable (×) clears the drafts, scripts and everything you typed, including Settings → Your details, and asks first while anything is typed. **Clear my details** in Settings → Your details clears those details only. When the 30-minute session expires (it is extended whenever you type or click in the overlay), the drafts, scripts and details typed in the study section are cleared and Treatable asks you to reopen it; Settings → Your details stay until you clear them or the Treatable session ends.
 
 ## How Treatable uses OpenAI
 
@@ -108,11 +111,11 @@ Decisions is told not to assess eligibility, benefit or safety.
 
 ### If a step cannot run
 
-The status line under the Get my study summary button names each stage that failed, using plain wording and a failure code. If the helper is not installed, the key is missing or rejected, the account lacks access, a rate limit is reached or OpenAI cannot be reached, Treatable shows that message and the rest of the overlay keeps working. Failures in the Agent or Decisions are never replaced by invented results.
+The status line under the Get my study summary button names each stage that failed, in plain wording; the failure code is listed under **Technical details**. If the helper is not installed, the key is missing or rejected, the account lacks access, a rate limit is reached or OpenAI cannot be reached, Treatable shows that message and the rest of the overlay keeps working. Failures in the Agent or Decisions are never replaced by invented results.
 
 ### How this was generated
 
-The **How this was generated** section under the Get my study summary button shows:
+**Technical details** at the bottom of the study section has a **How this was generated** part that shows:
 - the study IDs and source excerpt IDs that were used;
 - display copies of the exact Agents and Decisions request bodies, formatted for reading, which you can copy (each copy is capped at 64 KiB; the request itself is never shortened, and a cut copy says so);
 - each tool call the Agent made and what the tool returned;
@@ -127,7 +130,7 @@ These parts are ordinary local code, not model output: downloading and cleaning 
 
 ### What stays on your device
 
-- Everything you type under Personalize your email and in Settings → Your details: name, phone, reply email, best times, ZIP code, background answers, your reason for reaching out, and any other note.
+- Everything you type under Personalize your email (step 3) and in Settings → Your details: name, phone, reply email, best times, ZIP code, background answers, your reason for reaching out, and any other note.
 - Your edited email draft, call script and follow-up message.
 - Your ZIP code and the distance calculation. Approximate ZIP-area centers are bundled in the extension and no geocoding service is called.
 - Your OpenAI API key, which lives only in the macOS Keychain and in the helper's memory while a request runs. It is never in Chrome, command-line arguments, environment variables, files or logs.
@@ -145,7 +148,7 @@ The earlier profile-based matching form (**Find my matches**, with its own age b
 
 ## Local model option (Ollama on this device)
 
-OpenAI is the default and stays the default. In Settings → **Study brief model**, you can switch **Model provider** to **Local model (Ollama on this device)**. Get my study summary then runs on your own computer through [Ollama](https://ollama.com/download), and nothing is sent to OpenAI: no API key is read and no OpenAI request is made.
+OpenAI is the default and stays the default. In Settings → **Study summary model**, you can switch **Model provider** to **Local model (Ollama on this device)**. Get my study summary then runs on your own computer through [Ollama](https://ollama.com/download), and nothing is sent to OpenAI: no API key is read and no OpenAI request is made.
 
 - **Privacy.** The local model gets the same public study excerpts and question topics the OpenAI steps get, and nothing else. Your name, contact details, typed answers and drafts are never part of it. Nothing leaves the device.
 - **Quality and speed depend on your machine and model.** A local model is smaller than the OpenAI models, so its excerpt choices and question routes can be weaker, and a brief can take from about half a minute to a few minutes. If a step is too slow (step 1 stops after 150 seconds, step 2 after 75, and both must finish within the study session) or its output fails validation, the brief falls back to the same defaults as the OpenAI path and says why. With less than a minute of the session left, Treatable asks you to reopen it before starting a local brief.
