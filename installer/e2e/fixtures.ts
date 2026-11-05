@@ -19,7 +19,14 @@ export const INSTALLER_ROOT = resolve(__dirname, "..");
 // developer has running on the default port.
 export const TEST_PORT = 3987;
 export const TEST_URL = `http://localhost:${TEST_PORT}`;
-export const GRANTED_HTML = "<html><head><title>Granted — federal funding intelligence for everyone</title></head></html>";
+// The page a fake install serves: the app its platform's scripts look for.
+// The Windows tray (granted-tray.ps1) wants Granted's page; the macOS scripts
+// want Treatable's since R-030 (treatable-tray.sh's probe_server). The
+// installer itself recognises both (ipcPure.ts's looksLikeGranted).
+export const FAKE_APP_HTML =
+  process.platform === "darwin"
+    ? "<html><head><title>Treatable — Find a study. Find a next step.</title></head></html>"
+    : "<html><head><title>Granted — federal funding intelligence for everyone</title></head></html>";
 
 export const ENV_EXAMPLE = [
   "OPENAI_API_KEY=sk-...",
@@ -35,7 +42,7 @@ const FAKE_DEV_SERVER = `
 const port = Number(process.env.PORT);
 if (!port) { console.error("fake dev server: PORT not set"); process.exit(1); }
 require("node:http")
-  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(GRANTED_HTML)}); })
+  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(FAKE_APP_HTML)}); })
   .listen(port, "127.0.0.1", () => console.log("fake Granted listening on 127.0.0.1:" + port));
 `;
 
@@ -67,7 +74,7 @@ export interface FakeInstall {
   /** macOS: the throwaway LaunchAgent label and plist folder this install's background server uses. */
   launchLabel: string;
   launchAgentsDir: string;
-  /** macOS: where the tray script writes the server log (never ~/Library/Logs/Granted). */
+  /** macOS: where the tray script writes the server log (never ~/Library/Logs/Treatable). */
   logDir: string;
   /** Where the installer is told to put the Desktop / Start menu shortcuts (never the real ones). */
   desktopDir: string;
@@ -85,7 +92,7 @@ export interface FakeInstall {
   /**
    * A stand-in for Chrome's/Edge's app mode that logs its arguments to
    * browserLog: a batch file on Windows, a shell script on macOS (where
-   * open-granted.sh runs it through execve, so it has to be executable and
+   * open-treatable.sh runs it through execve, so it has to be executable and
    * carry a #!).
    */
   fakeBrowser: string;
@@ -96,11 +103,12 @@ export interface FakeInstall {
 // The real scaffold/scripts/windows (tray + shortcuts + icon), copied into
 // each fake install — so the background/tray path under test is the real one.
 const WINDOWS_SCRIPTS = resolve(INSTALLER_ROOT, "..", "scaffold", "scripts", "windows");
-// The real scaffold/scripts/macos/granted-tray.sh (the LaunchAgent + menu-bar
+// The real scaffold/scripts/macos/treatable-tray.sh (the LaunchAgent + menu-bar
 // helper), for the same reason. Off by default: an install WITHOUT it is the
 // case most of the macOS tests are about (and the one that must not route
 // into the Windows tray path).
 const MACOS_SCRIPTS = resolve(INSTALLER_ROOT, "..", "scaffold", "scripts", "macos");
+const RUNTIME_MJS = resolve(INSTALLER_ROOT, "..", "scaffold", "lib", "runtime.mjs");
 
 export function makeFakeInstall(opts: { withWindowsScripts?: boolean; withMacScripts?: boolean } = {}): FakeInstall {
   const root = mkdtempSync(join(tmpdir(), "granted-e2e-"));
@@ -115,9 +123,13 @@ export function makeFakeInstall(opts: { withWindowsScripts?: boolean; withMacScr
   if (opts.withMacScripts) {
     const dest = join(scaffoldDir, "scripts", "macos");
     mkdirSync(dest, { recursive: true });
-    for (const f of ["granted-tray.sh", "open-granted.sh", "applications-launcher.sh"]) {
+    for (const f of ["treatable-tray.sh", "open-treatable.sh", "applications-launcher.sh", "treatable.ico"]) {
       copyFileSync(join(MACOS_SCRIPTS, f), join(dest, f));
     }
+    // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts read
+    // the app's default port (APP_PORT) from it when no --port is given.
+    mkdirSync(join(scaffoldDir, "lib"), { recursive: true });
+    copyFileSync(RUNTIME_MJS, join(scaffoldDir, "lib", "runtime.mjs"));
   }
   writeFileSync(
     join(scaffoldDir, "package.json"),
@@ -153,9 +165,9 @@ export function makeFakeInstall(opts: { withWindowsScripts?: boolean; withMacScr
     root,
     installDir,
     scaffoldDir,
-    // Unique per install, and never the real com.granted.server: a test must
-    // not be able to load, start or stop the real Granted LaunchAgent.
-    launchLabel: `com.granted.e2e.${basename(root)}`,
+    // Unique per install, and never the real com.treatable.server: a test must
+    // not be able to load, start or stop the real Treatable LaunchAgent.
+    launchLabel: `com.treatable.e2e.${basename(root)}`,
     launchAgentsDir: join(root, "LaunchAgents"),
     logDir: join(root, "logs"),
     desktopDir: join(root, "Desktop"),
@@ -188,28 +200,34 @@ export async function launchInstaller(
       // macOS background running: a throwaway LaunchAgent label and plist
       // folder, logs inside the fake install, and no menu-bar icon (a test
       // must not put one on the machine's menu bar — the real helper is
-      // covered by macTray.integration.test.ts and by hand).
+      // covered by macTray.integration.test.ts and by hand). The macOS
+      // scripts read TREATABLE_* variables (R-030 renamed them); the app
+      // passes its own environment on to the scripts it starts.
       ...(fake && {
-        GRANTED_LAUNCH_LABEL: fake.launchLabel,
-        GRANTED_LAUNCH_AGENTS_DIR: fake.launchAgentsDir,
-        GRANTED_LOG_DIR: fake.logDir,
-        GRANTED_MENUBAR_HELPER: "none",
+        TREATABLE_LAUNCH_LABEL: fake.launchLabel,
+        TREATABLE_LAUNCH_AGENTS_DIR: fake.launchAgentsDir,
+        TREATABLE_LOG_DIR: fake.logDir,
+        TREATABLE_MENUBAR_HELPER: "none",
         // The ~/Applications launcher and its Dock entry: a throwaway folder,
         // a throwaway `defaults` domain, and no Dock restart. A test must
         // never create a real launcher, change the real Dock or restart it.
-        GRANTED_APPLICATIONS_DIR: fake.applicationsDir,
-        GRANTED_DOCK_DOMAIN: fake.dockDomain,
-        GRANTED_DOCK_RELOAD_CMD: "none",
-        GRANTED_LAUNCHER_ALERT: "none",
+        TREATABLE_APPLICATIONS_DIR: fake.applicationsDir,
+        TREATABLE_DOCK_DOMAIN: fake.dockDomain,
+        TREATABLE_DOCK_RELOAD_CMD: "none",
+        TREATABLE_LAUNCHER_ALERT: "none",
       }),
-      // Never a real Edge window, and never the real settings file.
+      // Never a real Edge/Chrome window, and never the real settings file:
+      // GRANTED_* for the app and the Windows scripts, TREATABLE_* for the
+      // macOS scripts, both pointing at the same stand-ins.
       GRANTED_APP_BROWSER: fake ? fake.fakeBrowser : "none",
+      TREATABLE_APP_BROWSER: fake ? fake.fakeBrowser : "none",
       // A development build unless a test says otherwise (a GRANTED_RELEASE_TAG
       // left in the developer's shell by `npm run dist` must not leak in), and
       // never the real GitHub API (port 9: nothing listens there).
       GRANTED_RELEASE_TAG: "",
       GRANTED_RELEASES_API: "http://127.0.0.1:9/",
       GRANTED_SETTINGS_PATH: fake ? fake.settingsPath : join(tmpdir(), "granted-e2e-no-settings.json"),
+      TREATABLE_SETTINGS_PATH: fake ? fake.settingsPath : join(tmpdir(), "granted-e2e-no-settings.json"),
       ...extraEnv,
     } as Record<string, string>,
   });
@@ -291,7 +309,7 @@ export async function testPortIsFree(): Promise<boolean> {
 
 /**
  * macOS: stops this fake install's background server and unloads its
- * throwaway LaunchAgent — through the real granted-tray.sh, then through
+ * throwaway LaunchAgent — through the real treatable-tray.sh, then through
  * launchctl directly, so nothing is left registered on the machine whatever
  * state the test ended in. Must run BEFORE closing the app, like
  * stopTestTray: the server is launchd's child and does not die with the
@@ -299,17 +317,17 @@ export async function testPortIsFree(): Promise<boolean> {
  */
 export function stopTestLaunchAgent(install: FakeInstall): void {
   if (process.platform !== "darwin") return;
-  const tray = join(install.scaffoldDir, "scripts", "macos", "granted-tray.sh");
+  const tray = join(install.scaffoldDir, "scripts", "macos", "treatable-tray.sh");
   if (existsSync(tray)) {
     try {
       execFileSync("/bin/bash", [tray, "stop", "--port", String(TEST_PORT)], {
         stdio: "ignore",
         env: {
           ...process.env,
-          GRANTED_LAUNCH_LABEL: install.launchLabel,
-          GRANTED_LAUNCH_AGENTS_DIR: install.launchAgentsDir,
-          GRANTED_LOG_DIR: install.logDir,
-          GRANTED_SETTINGS_PATH: install.settingsPath,
+          TREATABLE_LAUNCH_LABEL: install.launchLabel,
+          TREATABLE_LAUNCH_AGENTS_DIR: install.launchAgentsDir,
+          TREATABLE_LOG_DIR: install.logDir,
+          TREATABLE_SETTINGS_PATH: install.settingsPath,
         },
       });
     } catch {

@@ -1,17 +1,17 @@
 /**
- * Integration: the REAL scaffold/scripts/macos/open-granted.sh — Granted in
+ * Integration: the REAL scaffold/scripts/macos/open-treatable.sh — Granted in
  * its own window (Chrome/Edge app mode) or in a browser tab — plus the two
- * granted-tray.sh subcommands that go through it. The macOS counterpart of
+ * treatable-tray.sh subcommands that go through it. The macOS counterpart of
  * tray.integration.test.ts's "open-granted.ps1" block, and written the same
  * way: a stand-in browser that only records how it was started, a stand-in
  * `open` that only records what it was asked to open, and a settings file per
  * test, so a test never launches a real browser, never opens a real tab and
- * never touches the real ~/Library/Application Support/Granted.
+ * never touches the real ~/Library/Application Support/Treatable.
  *
  * Which browsers the machine running this has installed makes no difference:
- * GRANTED_APP_BROWSER_DIRS replaces the folders the script looks in
+ * TREATABLE_APP_BROWSER_DIRS replaces the folders the script looks in
  * (/Applications and ~/Applications) with throwaway ones holding stand-in
- * .app bundles, and GRANTED_APP_BROWSER_MDFIND replaces (or disables) the
+ * .app bundles, and TREATABLE_APP_BROWSER_MDFIND replaces (or disables) the
  * Spotlight lookup — so "Chrome is installed", "only Edge is installed" and
  * "neither is installed" are all set up, not waited for.
  *
@@ -36,8 +36,8 @@ const execFileAsync = promisify(execFile);
 
 // `npm test` runs from installer/; the scripts live in scaffold/.
 const MACOS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "macos");
-const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-granted.sh");
-const TRAY_SCRIPT = join(MACOS_SCRIPTS, "granted-tray.sh");
+const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-treatable.sh");
+const TRAY_SCRIPT = join(MACOS_SCRIPTS, "treatable-tray.sh");
 const URL = "http://localhost:3979/?a=1&b=2";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -57,12 +57,12 @@ interface Sandbox {
   settings: string;
   /** The stand-in `open`, for a test that has to pass it on itself. */
   openCmd: string;
-  /** Run open-granted.sh and return its stdout. */
+  /** Run open-treatable.sh and return its stdout. */
   run: (args: string[], extra?: Record<string, string>) => Promise<string>;
-  /** Run granted-tray.sh (which is what the menu-bar helper calls) and return its stdout. */
+  /** Run treatable-tray.sh (which is what the menu-bar helper calls) and return its stdout. */
   tray: (args: string[], extra?: Record<string, string>) => Promise<string>;
   /**
-   * granted-tray.sh with exactly these arguments and nothing appended — for
+   * treatable-tray.sh with exactly these arguments and nothing appended — for
    * the argument-parsing tests, where `tray`'s own trailing `--port 3979`
    * would supply the very value the test is checking is missing.
    */
@@ -110,10 +110,10 @@ async function sandbox(options: { browsers?: Array<"chrome" | "edge"> } = {}): P
   const settings = join(root, "Granted", "settings.json");
   const env = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({
     ...process.env,
-    GRANTED_SETTINGS_PATH: settings,
-    GRANTED_APP_BROWSER_DIRS: `${apps}:${join(root, "Applications-empty")}`,
-    GRANTED_APP_BROWSER_MDFIND: "none",
-    GRANTED_OPEN_CMD: openStandIn,
+    TREATABLE_SETTINGS_PATH: settings,
+    TREATABLE_APP_BROWSER_DIRS: `${apps}:${join(root, "Applications-empty")}`,
+    TREATABLE_APP_BROWSER_MDFIND: "none",
+    TREATABLE_OPEN_CMD: openStandIn,
     // Never a real app-mode browser, and never the real settings file: the
     // overrides above are what makes that true, so a test that needs the real
     // default must say so itself.
@@ -131,9 +131,9 @@ async function sandbox(options: { browsers?: Array<"chrome" | "edge"> } = {}): P
     openCmd: openStandIn,
     run: async (args, extra = {}) => (await execFileAsync("/bin/bash", [OPEN_SCRIPT, ...args], { env: env(extra) })).stdout,
     tray: async (args, extra = {}) =>
-      (await execFileAsync("/bin/bash", [TRAY_SCRIPT, ...args, "--port", "3979"], { env: env({ GRANTED_LOG_DIR: join(root, "logs"), ...extra }) })).stdout,
+      (await execFileAsync("/bin/bash", [TRAY_SCRIPT, ...args, "--port", "3979"], { env: env({ TREATABLE_LOG_DIR: join(root, "logs"), ...extra }) })).stdout,
     trayRaw: async (args, extra = {}) =>
-      (await execFileAsync("/bin/bash", [TRAY_SCRIPT, ...args], { env: env({ GRANTED_LOG_DIR: join(root, "logs"), ...extra }) })).stdout,
+      (await execFileAsync("/bin/bash", [TRAY_SCRIPT, ...args], { env: env({ TREATABLE_LOG_DIR: join(root, "logs"), ...extra }) })).stdout,
     launched: () => lines(launchLog),
     opened: () => lines(openLog),
     removeBrowser: async (which) => rm(bundles[which], { recursive: true, force: true }),
@@ -161,7 +161,7 @@ async function fails(run: () => Promise<string>): Promise<{ code: unknown; messa
 }
 
 describe(
-  "open-granted.sh: Granted in its own window (Chrome/Edge app mode) or a browser tab",
+  "open-treatable.sh: Granted in its own window (Chrome/Edge app mode) or a browser tab",
   { skip: (process.platform === "win32" || !existsSync(OPEN_SCRIPT)) && "needs a POSIX bash, run from installer/" },
   () => {
     test("the real repo keeps both scripts exactly where the installer looks for them", () => {
@@ -173,9 +173,9 @@ describe(
       // describe is skipped there. What's checked here is the other half, which
       // does need the real clone: those two files really are at that path.
       const scaffoldRoot = resolve(MACOS_SCRIPTS, "..", "..");
-      assert.equal(macScriptPath(scaffoldRoot, "open-granted.sh"), OPEN_SCRIPT);
-      assert.equal(macScriptPath(scaffoldRoot, "granted-tray.sh"), TRAY_SCRIPT);
-      assert.ok(existsSync(OPEN_SCRIPT), "open-granted.sh is there");
+      assert.equal(macScriptPath(scaffoldRoot, "open-treatable.sh"), OPEN_SCRIPT);
+      assert.equal(macScriptPath(scaffoldRoot, "treatable-tray.sh"), TRAY_SCRIPT);
+      assert.ok(existsSync(OPEN_SCRIPT), "open-treatable.sh is there");
       assert.ok(existsSync(TRAY_SCRIPT), "and the tray script that calls it is there too");
     });
 
@@ -199,7 +199,7 @@ describe(
       await mkdir(macOS, { recursive: true });
       await writeFile(join(macOS, "Google Chrome"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
       assert.equal((await s.run(["--find-browser"])).trim(), "", "not in the folders it was told to search");
-      assert.match(await s.run(["--find-browser"], { GRANTED_APP_BROWSER_DIRS: `/nowhere:${userApps}` }), /Google Chrome$/m);
+      assert.match(await s.run(["--find-browser"], { TREATABLE_APP_BROWSER_DIRS: `/nowhere:${userApps}` }), /Google Chrome$/m);
     });
 
     test("a browser somewhere else entirely is found through Spotlight, and a Spotlight that answers nothing is not an error", async () => {
@@ -217,11 +217,11 @@ describe(
         `#!/bin/sh\ncase "$*" in *com.google.Chrome*) printf '%s' ${JSON.stringify(bundle)} ;; esac\n`,
         { mode: 0o755 },
       );
-      assert.match(await s.run(["--find-browser"], { GRANTED_APP_BROWSER_MDFIND: mdfind }), /Google Chrome$/m);
+      assert.match(await s.run(["--find-browser"], { TREATABLE_APP_BROWSER_MDFIND: mdfind }), /Google Chrome$/m);
       const silent = join(elsewhere, "silent-mdfind.sh");
       await writeFile(silent, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-      assert.equal((await s.run(["--find-browser"], { GRANTED_APP_BROWSER_MDFIND: silent })).trim(), "");
-      assert.equal((await s.run(["--find-browser"], { GRANTED_APP_BROWSER_MDFIND: "/nonexistent/mdfind" })).trim(), "");
+      assert.equal((await s.run(["--find-browser"], { TREATABLE_APP_BROWSER_MDFIND: silent })).trim(), "");
+      assert.equal((await s.run(["--find-browser"], { TREATABLE_APP_BROWSER_MDFIND: "/nonexistent/mdfind" })).trim(), "");
     });
 
     // --- opening ----------------------------------------------------------
@@ -252,15 +252,15 @@ describe(
       await notLaunched(s);
     });
 
-    test("GRANTED_APP_BROWSER=none is how a test says 'no app-mode browser', whatever is installed", async () => {
+    test("TREATABLE_APP_BROWSER=none is how a test says 'no app-mode browser', whatever is installed", async () => {
       const s = await sandbox();
-      assert.equal(parseOpenGrantedOutput(await s.run(["--url", URL, "--no-browser-fallback"], { GRANTED_APP_BROWSER: "none" })), "none");
+      assert.equal(parseOpenGrantedOutput(await s.run(["--url", URL, "--no-browser-fallback"], { TREATABLE_APP_BROWSER: "none" })), "none");
       await notLaunched(s);
     });
 
     test("a browser that can't be run falls back to a tab rather than reporting a window", async () => {
       const s = await sandbox();
-      const out = await s.run(["--url", URL], { GRANTED_APP_BROWSER: join(MACOS_SCRIPTS, "no-such-browser") });
+      const out = await s.run(["--url", URL], { TREATABLE_APP_BROWSER: join(MACOS_SCRIPTS, "no-such-browser") });
       assert.equal(parseOpenGrantedOutput(out), "browser");
       assert.deepEqual(s.opened(), [URL]);
       await notLaunched(s);
@@ -341,7 +341,7 @@ describe(
       ]) {
         await assert.rejects(() => s.run(["--url", url]), /must be an http\(s\) URL/, url);
       }
-      await assert.rejects(() => s.run(["--url", ""]), /usage: open-granted\.sh/, "and an empty one says how to call it");
+      await assert.rejects(() => s.run(["--url", ""]), /usage: open-treatable\.sh/, "and an empty one says how to call it");
       await assert.rejects(() => s.run(["--sideways"]), /unknown option --sideways/);
       await notLaunched(s);
       assert.deepEqual(s.opened(), []);
@@ -353,15 +353,15 @@ describe(
       // nothing left to shift. That fails, and under `set -e` it ended the
       // script with exit 1 and no output at all -- which is precisely the code
       // this script's contract reserves for "I opened nothing" (see the header
-      // comment, granted-tray.sh's open_granted and ipc.ts's
+      // comment, treatable-tray.sh's open_granted and ipc.ts's
       // runOpenGrantedScript). So `--url` with the URL left off was answered
       // with a silent browser-tab fallback instead of the usage error it is.
       const s = await sandbox();
       for (const option of ["--url", "--set-open-in"]) {
         const failed = await fails(() => s.run([option]));
         assert.equal(failed.code, 64, `${option} with no value is a usage error, not a failed open`);
-        assert.match(failed.message, new RegExp(`open-granted\\.sh: ${option} needs a value`));
-        assert.match(failed.message, /usage: open-granted\.sh/, "and says how to call it");
+        assert.match(failed.message, new RegExp(`open-treatable\\.sh: ${option} needs a value`));
+        assert.match(failed.message, /usage: open-treatable\.sh/, "and says how to call it");
       }
       assert.equal(existsSync(s.settings), false, "and saved nothing");
       await notLaunched(s);
@@ -375,9 +375,9 @@ describe(
       assert.deepEqual(await until(() => s.launched(), (l) => l.length > 0), [`chrome --app=${tricky}`]);
     });
 
-    // --- granted-tray.sh, which is what the menu-bar helper calls ---------
+    // --- treatable-tray.sh, which is what the menu-bar helper calls ---------
 
-    describe("granted-tray.sh goes through it, so the menu and the installer agree", () => {
+    describe("treatable-tray.sh goes through it, so the menu and the installer agree", () => {
       test("`open` opens an app window when that's the preference, and a tab when it isn't", async () => {
         const s = await sandbox();
         await s.tray(["open"]);
@@ -425,29 +425,29 @@ describe(
         ] as Array<[string[], string]>) {
           const failed = await fails(() => s.trayRaw(args));
           assert.equal(failed.code, 64, `${option} with no value is a usage error`);
-          assert.match(failed.message, new RegExp(`granted-tray\\.sh: ${option} needs a value`));
+          assert.match(failed.message, new RegExp(`treatable-tray\\.sh: ${option} needs a value`));
           assert.doesNotMatch(failed.message, /unbound variable/, "its own message, not the shell's");
         }
         assert.equal(existsSync(s.settings), false, "and saved nothing");
       });
 
-      test("an install too old to have open-granted.sh still opens Granted — in a tab — and says saving failed", async () => {
+      test("an install too old to have open-treatable.sh still opens Granted — in a tab — and says saving failed", async () => {
         const s = await sandbox();
         // The real tray script, alone in a scripts/macos with no
-        // open-granted.sh beside it: an install made before this landed.
+        // open-treatable.sh beside it: an install made before this landed.
         const root = await mkdtemp(join(tmpdir(), "granted-old-install-"));
         roots.push(root);
         const scripts = join(root, "granted", "scaffold", "scripts", "macos");
         await mkdir(scripts, { recursive: true });
-        const oldTray = join(scripts, "granted-tray.sh");
+        const oldTray = join(scripts, "treatable-tray.sh");
         await writeFile(oldTray, readFileSync(TRAY_SCRIPT, "utf8"), { mode: 0o755 });
         const tray = (args: string[]): Promise<{ stdout: string }> =>
           execFileAsync("/bin/bash", [oldTray, ...args, "--port", "3979"], {
             env: {
               ...process.env,
-              GRANTED_SETTINGS_PATH: s.settings,
-              GRANTED_LOG_DIR: join(root, "logs"),
-              GRANTED_OPEN_CMD: s.openCmd,
+              TREATABLE_SETTINGS_PATH: s.settings,
+              TREATABLE_LOG_DIR: join(root, "logs"),
+              TREATABLE_OPEN_CMD: s.openCmd,
             },
           });
         // Granted still opens, in a tab.
@@ -457,7 +457,7 @@ describe(
         // Reading the preference falls back to the default rather than failing…
         assert.match((await tray(["open-in"])).stdout, /"openIn":"window"/);
         // …and saving fails, which is what makes the menu put its tick back.
-        await assert.rejects(() => tray(["set-open-in", "--mode", "browser"]), /no .*open-granted\.sh in this install/);
+        await assert.rejects(() => tray(["set-open-in", "--mode", "browser"]), /no .*open-treatable\.sh in this install/);
       });
     });
   },

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, openSync, rmdirSync, statSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   buildMacInstallScript,
@@ -37,7 +37,10 @@ import {
   type StatusFile,
 } from "./ipcPure";
 import {
+  findMacScript,
   getSetupState,
+  MAC_OPEN_SCRIPTS,
+  MAC_TRAY_SCRIPTS,
   macScriptPath,
   probeGranted,
   readTaskStatus,
@@ -855,7 +858,7 @@ async function openGrantedPage(url: string): Promise<OpenIn | null> {
     process.platform === "win32"
       ? windowsScriptPath(scaffoldDir(), "open-granted.ps1")
       : process.platform === "darwin"
-        ? macScriptPath(scaffoldDir(), "open-granted.sh")
+        ? findMacScript(scaffoldDir(), MAC_OPEN_SCRIPTS)
         : null;
   if (script !== null && existsSync(script)) {
     const opened =
@@ -874,7 +877,7 @@ async function openGrantedPage(url: string): Promise<OpenIn | null> {
         : // /bin/bash explicitly, not the script itself: a file copied out of a
           // zip or restored from a backup can arrive without its execute bit,
           // and this must not be the thing that fails then.
-          await runOpenGrantedScript("open-granted.sh", "/bin/bash", [script, "--url", url, "--no-browser-fallback"]);
+          await runOpenGrantedScript(basename(script), "/bin/bash", [script, "--url", url, "--no-browser-fallback"]);
     if (opened !== "fallback") return opened;
   }
   return (await openInBrowser(url)) ? "browser" : null;
@@ -963,7 +966,7 @@ async function startGranted(sender: WebContents): Promise<StartResult> {
   // and startGranted always fails).
   const background =
     (process.platform === "win32" && existsSync(trayScriptPath())) ||
-    (process.platform === "darwin" && existsSync(macTrayScriptPath()));
+    (process.platform === "darwin" && findMacScript(scaffoldDir(), MAC_TRAY_SCRIPTS) !== null);
   const whereErrorsAre = background
     ? process.platform === "win32"
       ? "right-click the Granted icon by the clock and choose Show log"
@@ -1089,8 +1092,9 @@ function trayScriptPath(): string {
   return windowsScriptPath(scaffoldDir(), "granted-tray.ps1");
 }
 
+/** The install's macOS tray script under whichever name it has (see findMacScript); launchMacTray runs only when there is one. */
 function macTrayScriptPath(): string {
-  return macScriptPath(scaffoldDir(), "granted-tray.sh");
+  return findMacScript(scaffoldDir(), MAC_TRAY_SCRIPTS) ?? macScriptPath(scaffoldDir(), MAC_TRAY_SCRIPTS[0]);
 }
 
 /**
@@ -1134,7 +1138,7 @@ async function launchMacTray(): Promise<string> {
     // script, and killing it mid-build leaves no one to start the server.
     await execFileAsync(file, args, { cwd: scaffoldDir(), timeout: 10 * 60_000 });
   } catch (err) {
-    console.error("granted-tray.sh start failed:", err);
+    console.error(`${basename(macTrayScriptPath())} start failed:`, err);
   }
   return statusPath;
 }

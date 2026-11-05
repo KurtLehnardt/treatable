@@ -9,7 +9,7 @@ import { test, expect, type ElectronApplication, type Page } from "@playwright/t
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
-  GRANTED_HTML,
+  FAKE_APP_HTML,
   TEST_PORT,
   TEST_URL,
   closeEverything,
@@ -273,7 +273,7 @@ test("an older install without the tray scripts falls back to the console window
 
 test("already configured and already running: Yes just opens the browser, without a second server", async () => {
   configureHostedKeys();
-  const server = await serveOnTestPort(GRANTED_HTML);
+  const server = await serveOnTestPort(FAKE_APP_HTML);
   try {
     const a = await start();
     await page.getByRole("button", { name: "Yes, open Granted" }).click();
