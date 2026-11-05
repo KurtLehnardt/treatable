@@ -10,11 +10,11 @@ const until=async(check:()=>boolean,ms=3000)=>{const end=Date.now()+ms;while(!ch
 const [A,B,C]=['NCT00000001','NCT00000002','NCT00000003'];
 const records:Record<string,any>={[A]:{id:A,title:'Study A',status:'RECRUITING',minimumAge:'18 Years',maximumAge:null,sex:'ALL',locations:[]},[B]:{id:B,title:'Study B',status:'TERMINATED',minimumAge:null,maximumAge:null,sex:'ALL',locations:[]},[C]:{id:C,title:'Study C',status:'RECRUITING',minimumAge:'18 Years',maximumAge:null,sex:'ALL',locations:[]}};
 const TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
-function rig({decisions='ok'}:{decisions?:'ok'|'fail'}={}){
+function rig({decisions='ok',refuseBadge=false}:{decisions?:'ok'|'fail';refuseBadge?:boolean}={}){
  const connect=new Events(),messages=new Events(),commands:any[]=[],scripts:any[]=[],windows:any[]=[],nativeSent:any[]=[],origin='chrome-extension://test',session=new Map<string,unknown>();
  let snap:any={generation:'doc-1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[A,B,C],diagnostic:'Three cards',supported:true};
  const prefsChanged=new Events();
- const api:any={storage:{onChanged:prefsChanged},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','releaseCards','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async(v:any)=>{windows.push(v);return{id:2,tabs:[{id:9,url:origin+'/panel.html'}]}},remove:async()=>{}}};
+ const api:any={storage:{onChanged:prefsChanged},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','releaseCards','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return refuseBadge&&v.args?.[0]?.purpose==='badge'?[{result:false}]:[]}},windows:{create:async(v:any)=>{windows.push(v);return{id:2,tabs:[{id:9,url:origin+'/panel.html'}]}},remove:async()=>{}}};
  const rankNative=()=>{const onMessage=new Events(),onDisconnect=new Events();return{onMessage,onDisconnect,disconnect(){},postMessage(m:any){nativeSent.push(structuredClone(m));setTimeout(()=>{if(m.type==='prepareRank')onMessage.emit({id:m.id,type:'result',ok:true,result:{kind:'preparedRank',token:TOKEN,digest:DIGEST,expiresAt:Date.now()+300000,provider:'openai',nctIds:m.payload.nctIds,preview:{profile:m.payload.profile,request:{model:'gpt-6-luna',questions:m.payload.nctIds.map((name:string)=>({type:'score',name}))}}}});else if(m.type==='executeRank')onMessage.emit(decisions==='fail'?{id:m.id,type:'result',ok:false,code:'API_ERROR',error:'fixed'}:{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'test',provider:'openai',digest:DIGEST,scores:[[A,33],[B,100],[C,100]].map(([nctId,score])=>({nctId,score,reasonId:(score as number)>=75?'strong_match':'unclear',probabilities:RANK_LEVELS.map((_,i)=>i===((score as number)>=75?3:1)?1:0)}))}})},1)}}};
  const rankConsent={has:async()=>session.get('consent')===true,grant:async()=>{session.set('consent',true)},clear:async()=>{session.delete('consent')}};
  const service=installSiteAssistant(api,{lookupPublicStudy:async(id:string)=>records[id],rankNative,rankConsent});
@@ -40,7 +40,7 @@ test('the first ranking opens one top-level confirmation with the exact request;
  assert.deepEqual(h.scripts.filter(s=>s.args?.[0]?.purpose==='badge').map(s=>s.args[0].nctId),[C,A,B]);
  const badge=h.port('badge',B);badge.onMessage.emit({type:'site.authenticate',capability:h.scripts.filter(s=>s.args?.[0]?.nctId===B).at(-1).args[0].capability});await flush();
  assert.deepEqual(badge.sent.find((v:any)=>v.type==='site.badge'),{type:'site.badge',nctId:B,score:10,label:'not_recruiting'},'the badge gets the capped percentage and a reason id only');
- const done=ranking(p).find((s:any)=>s.phase==='done');assert.equal(done.applied,true);assert.deepEqual(done.studies.map((s:any)=>[s.nctId,s.percent,s.reasonId]),[[C,100,'strong_match'],[A,33,'unclear'],[B,10,'not_recruiting']]);
+ const done=ranking(p).find((s:any)=>s.phase==='done');assert.equal(done.applied,true);assert.equal(done.badged,true,'every card got its badge, so the panel can show one status line');assert.deepEqual(done.studies.map((s:any)=>[s.nctId,s.percent,s.reasonId]),[[C,100,'strong_match'],[A,33,'unclear'],[B,10,'not_recruiting']]);
  /* Later rankings in the same browser session run without another window. */
  h.setSnapshot({generation:'doc-2',url:'https://clinicaltrials.gov/search?cond=Asthma&page=2',nctIds:[A,C],diagnostic:'Two cards',supported:true});
  await h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}});await until(()=>h.nativeSent.length===4);assert.equal(h.windows.length,1);
@@ -152,4 +152,12 @@ test('site.ping never extends an applied ranking: the applied order lapses five 
  t.mock.timers.setTime(start+4*60*1000);assert.deepEqual((await h.service.handle(1,{id:'alive',type:'site.ping',payload:{generation:'doc-1'}})).result,{active:true});
  t.mock.timers.setTime(start+6*60*1000);await assert.rejects(h.service.handle(1,{id:'expired',type:'site.rank',payload:{generation:'doc-1'}}),'the applied order expired even though the search session was pinged');
  p.disconnect();
+});
+
+test('when the page reports a badge could not be placed, the ranking state says so and the panel keeps the full list',async()=>{
+ const h=rig({refuseBadge:true}),p=await connected(h);
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});
+ await until(()=>h.windows.length===1);h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});
+ await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
+ assert.equal(ranking(p).find((s:any)=>s.phase==='done').badged,false);p.disconnect();
 });

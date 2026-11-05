@@ -1,6 +1,8 @@
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
+import {OpenSettingsContext} from './settings-context';
+import {collapsedStatus} from './rank-state';
 function useResolvedTheme(theme: OverlayTheme) {
  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
  useEffect(() => {
@@ -15,7 +17,10 @@ function useResolvedTheme(theme: OverlayTheme) {
 function SettingsIcon() {return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9.5 3-.6 2.2-1.8 1-2.2-.6-2.5 4.3 1.7 1.6v2l-1.7 1.6 2.5 4.3 2.2-.6 1.8 1 .6 2.2h5l.6-2.2 1.8-1 2.2.6 2.5-4.3-1.7-1.6v-2l1.7-1.6-2.5-4.3-2.2.6-1.8-1L14.5 3z"/><circle cx="12" cy="12" r="3"/></svg>}
 /** `ranking` is the AI-matched results section for a results page; `apply` is the study brief. */
 export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewModel & UnsavedWorkHost; apply?: ReactNode; settings?: ReactNode; ranking?: ReactNode}) {
- const [settingsOpen, setSettingsOpen] = useState(false);
+ const [settingsOpen, setSettingsOpen] = useState(false), openDetails = useRef(false);
+ /* "Add your condition and age" opens Settings and lands on Your details. */
+ const showDetails = useRef(() => {openDetails.current = true; setSettingsOpen(true)}).current;
+ useEffect(() => {if (!settingsOpen || !openDetails.current) return; openDetails.current = false; const heading = typeof document !== 'undefined' && typeof document.getElementById === 'function' ? document.getElementById('your-details-heading') : null; heading?.scrollIntoView?.({block: 'start'}); heading?.focus?.()}, [settingsOpen]);
  const displayMode = vm.displayMode || 'popup', theme = vm.theme || 'system', resolvedTheme = useResolvedTheme(theme);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
@@ -74,17 +79,17 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  useEffect(() => {const key = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); if (confirming.current || event.repeat) return; if (settingsOpen) setSettingsOpen(false); else void requestClose()}}; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)}, [settingsOpen]);
  /* Before the toolbar button connects this frame, or after the session ends, one sentence says what to do instead of a form that cannot be used. */
  const idle = !vm.connected || vm.ended;
- const header = <header className="overlay-header"><div className="overlay-brand"><span className="brand-symbol" aria-hidden="true">t</span><div><h1>Treatable</h1></div></div><div className="header-actions"><button type="button" className="icon-button settings-button" data-treatable-guide="appearance" aria-label="Treatable settings" aria-expanded={settingsOpen} aria-controls="treatable-settings" onClick={() => setSettingsOpen(!settingsOpen)}><SettingsIcon/></button><button type="button" className="icon-button" aria-label={vm.collapsed ? 'Expand search assistant' : 'Collapse search assistant'} onClick={() => vm.setCollapsed(!vm.collapsed)}>{vm.collapsed ? '↗' : '−'}</button><button type="button" className="icon-button" aria-label="Close Treatable and end session" onClick={() => void requestClose()}>×</button></div></header>;
+ const header = <header className="overlay-header"><div className="overlay-brand"><span className="brand-symbol" aria-hidden="true">t</span><div><h1>Treatable</h1>{vm.collapsed && !vm.study && vm.aiRanking !== 'off' && collapsedStatus(vm.ranking) && <p role="status" className="collapsed-status">{collapsedStatus(vm.ranking)}</p>}</div></div><div className="header-actions"><button type="button" className="icon-button settings-button" data-treatable-guide="appearance" aria-label="Treatable settings" aria-expanded={settingsOpen} aria-controls="treatable-settings" onClick={() => setSettingsOpen(!settingsOpen)}><SettingsIcon/></button><button type="button" className="icon-button" aria-label={vm.collapsed ? 'Expand search assistant' : 'Collapse search assistant'} onClick={() => vm.setCollapsed(!vm.collapsed)}>{vm.collapsed ? '↗' : '−'}</button><button type="button" className="icon-button" aria-label="Close Treatable and end session" onClick={() => void requestClose()}>×</button></div></header>;
  const settingsPanel = settingsOpen && <section id="treatable-settings" className="display-settings" aria-label="Treatable display settings"><div className="settings-heading"><h2>Make yourself comfortable.</h2><div className="settings-actions">{vm.guide&&<button type="button" className="quiet settings-replay" data-treatable-guide="replay" disabled={!vm.connected||vm.guide.active} onClick={vm.guide.replayIntro}>Replay intro</button>}<button type="button" className="quiet" onClick={() => setSettingsOpen(false)}>Done</button></div></div><div className="settings-grid"><label>Display<select value={displayMode} onChange={event => vm.setDisplayMode?.(event.target.value as typeof displayMode)}><option value="popup">Popup</option><option value="sidebar">Sidebar</option></select></label><label>Theme<select value={theme} onChange={event => vm.setTheme?.(event.target.value as OverlayTheme)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div><p>Popup centers the assistant. Clicking the website outside it closes it, or only hides it while you have typed details or a draft; the toolbar button then shows a dot and brings it back. While it is hidden, AI-matched results pause and nothing is sent, and if the website moves to another study or results page, that page’s study drafts start over (your details stay). Sidebar stays beside this website, which narrows to make room when the window is wide enough. Your display, theme and AI-matched results choices are remembered on this device. Searches and health details are never saved.</p>{settings}</section>;
  const idleNote = <div className="overlay-content"><p role={vm.error ? 'alert' : 'status'} className={vm.error ? 'notice error' : 'notice'}>{vm.error ? vm.error : vm.ended ? 'Session ended. Anything you typed here was cleared. Click the Treatable button in the toolbar to start again.' : 'Click the Treatable button in the toolbar to start.'}</p></div>;
  const mainAttrs = {"data-theme": resolvedTheme, "data-display-mode": displayMode, role: displayMode === 'popup' ? 'dialog' : undefined, "aria-modal": displayMode === 'popup' ? true : undefined, "aria-label": displayMode === 'popup' ? 'Treatable study assistant' : undefined, className: `site-overlay${vm.collapsed ? ' is-collapsed' : ''}`} as const;
  if (idle) return <main {...mainAttrs}>{header}{settingsPanel}{!vm.collapsed && idleNote}</main>;
- return <main {...mainAttrs}>
+ return <OpenSettingsContext.Provider value={showDetails}><main {...mainAttrs}>
   {header}
   {settingsPanel}
   {vm.setAiRanking && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label></div>}
   {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button></div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
   </div></>}
- </main>;
+ </main></OpenSettingsContext.Provider>;
 }

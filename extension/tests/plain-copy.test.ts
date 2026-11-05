@@ -106,7 +106,9 @@ test('failure copy no longer promises a local search the overlay does not have',
 test('the match percentage on a card badge is at least 12px',()=>{
   const css=readFileSync(new URL('../src/score-badge.css',import.meta.url),'utf8');
   assert.match(css,/\.badge-ring strong\{[^}]*font-size:1[23]px/,'the percentage rule was found');
-  assert.deepEqual(fontSizesBelow(css,12),[]);
+  /* The one exception is "100%", the widest label: 11px so it clears the ring (see results-status-line.test.ts). */
+  assert.deepEqual(fontSizesBelow(css.replace(/\.badge-ring strong\.full\{[^}]*\}/,''),12),[]);
+  assert.match(css,/\.badge-ring strong\.full\{font-size:11px/);
 });
 
 test('Your details says what is sent, when it is asked about, and that age band and sex stay on this device',async()=>{

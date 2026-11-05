@@ -6,7 +6,7 @@ export type RankingPhase='checking'|'preparing'|'confirming'|'scoring'|'done'|'o
 export type RankingNote='no_condition'|'too_many'|'no_cards'|'declined';
 export interface RankingStudyView{nctId:string;title:string;percent:number|null;reasonId:RankReasonId;checks:CheckReason[];score?:number;probabilities?:number[]}
 export interface RankingTraceBody{text:string;bytes:number;truncated:boolean}
-export interface RankingState{phase:RankingPhase;total?:number;studies?:RankingStudyView[];applied?:boolean;provider?:'openai'|'local'|'none';mode?:'live'|'test';failure?:string;note?:RankingNote;request?:RankingTraceBody;profile?:{conditions:string[];ageBand?:string;sex?:string}}
+export interface RankingState{phase:RankingPhase;total?:number;studies?:RankingStudyView[];applied?:boolean;provider?:'openai'|'local'|'none';mode?:'live'|'test';failure?:string;note?:RankingNote;request?:RankingTraceBody;profile?:{conditions:string[];ageBand?:string;sex?:string};/** Set by the background after a ranking is applied: every ranked card got its badge. Absent means unknown, and the full list is shown. */badged?:boolean}
 const PHASES:readonly RankingPhase[]=['checking','preparing','confirming','scoring','done','off','unavailable'];
 const NOTES:readonly RankingNote[]=['no_condition','too_many','no_cards','declined'];
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -20,7 +20,7 @@ function study(v:unknown):RankingStudyView|undefined{
 }
 /** Strict parse of a posted status; anything unexpected is dropped as a whole. */
 export function parseRankingState(v:unknown):RankingState|undefined{
- if(!record(v)||!only(v,['phase','total','studies','applied','provider','mode','failure','note','request','profile'])||!PHASES.includes(v.phase as RankingPhase))return;
+ if(!record(v)||!only(v,['phase','total','studies','applied','provider','mode','failure','note','request','profile','badged'])||!PHASES.includes(v.phase as RankingPhase))return;
  const out:RankingState={phase:v.phase as RankingPhase};
  if(v.total!==undefined){if(!Number.isInteger(v.total)||(v.total as number)<0||(v.total as number)>100)return;out.total=v.total as number}
  if(v.studies!==undefined){if(!Array.isArray(v.studies)||v.studies.length>10)return;const list=v.studies.map(study);if(list.some(x=>!x)||new Set(list.map(x=>x!.nctId)).size!==list.length)return;out.studies=list as RankingStudyView[]}
@@ -31,5 +31,15 @@ export function parseRankingState(v:unknown):RankingState|undefined{
  if(v.note!==undefined){if(!NOTES.includes(v.note as RankingNote))return;out.note=v.note as RankingNote}
  if(v.request!==undefined){const r=v.request;if(!record(r)||!only(r,['text','bytes','truncated'])||!text(r.text,100_000)||!Number.isSafeInteger(r.bytes)||typeof r.truncated!=='boolean')return;out.request={text:r.text as string,bytes:r.bytes as number,truncated:r.truncated}}
  if(v.profile!==undefined){const p=v.profile;if(!record(p)||!only(p,['conditions','ageBand','sex'])||!Array.isArray(p.conditions)||p.conditions.length>6||p.conditions.some(c=>!text(c,80))||p.ageBand!==undefined&&!AGE_BANDS.includes(p.ageBand as never)||p.sex!==undefined&&!['female','male'].includes(p.sex as string))return;out.profile={conditions:[...p.conditions as string[]],...(p.ageBand?{ageBand:p.ageBand as string}:{}),...(p.sex?{sex:p.sex as string}:{})}}
+ if(v.badged!==undefined){if(typeof v.badged!=='boolean')return;out.badged=v.badged}
  return out;
+}
+/** One short line of job status for the collapsed frame, or undefined when there is nothing to report. */
+export function collapsedStatus(state:RankingState|undefined):string|undefined{
+ if(!state)return;
+ if(state.phase==='checking'||state.phase==='preparing'||state.phase==='scoring')return'Ranking…';
+ if(state.phase==='confirming')return'Waiting for your answer';
+ if(state.phase!=='done'||state.applied===false||!state.studies?.length)return;
+ const n=state.studies.length,scored=state.provider!=='none'&&!state.failure,top=Math.max(-1,...state.studies.map(s=>s.percent??-1));
+ return scored&&top>=0?`Ranked ${n} · top match ${top}%`:`Ranked ${n} · record checks only`;
 }

@@ -1,4 +1,5 @@
-import React,{useEffect,useRef,useState,type MutableRefObject} from 'react';
+import React,{useContext,useEffect,useRef,useState,type MutableRefObject} from 'react';
+import {OpenSettingsContext} from './settings-context';
 import {OverlayView} from './overlay-view';
 import {useSiteController} from './use-site-controller';
 import {ApplyView} from './apply-view';
@@ -11,15 +12,17 @@ import type {UiPrefs} from './ui-prefs';
 import {useGuide} from './use-guide';
 import {RankingSection} from './ranking-view';
 import {useAiRanking} from './use-ai-ranking';
+import {useYourDetails} from './your-details';
 /** Reports whether this study section holds typed work to the frame, which asks before closing over it. */
 function ApplySection({nctId,dirtyRef,engine}:{nctId?:string;dirtyRef:MutableRefObject<boolean>;engine:BriefEngineChoice}){const vm=useApply(nctId,undefined,undefined,engine);useEffect(()=>{dirtyRef.current=vm.dirty},[vm.dirty]);useEffect(()=>()=>{dirtyRef.current=false},[]);return <ApplyView vm={vm}/>}
 /** AI-matched results for a results page. Ranking starts on its own once the intro tour is out of the way; see use-ai-ranking.ts. It pauses
  * while the popup is hidden, so nothing is ranked or sent while Treatable looks closed, and resumes for the page then shown when it is back. */
 function Ranking({vm,guide}:{vm:ReturnType<typeof useSiteController>;guide:ReturnType<typeof useGuide>}){
  const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported;
+ const openSettings=useContext(OpenSettingsContext),{details}=useYourDetails(),sharpen=openSettings&&!hasDetails(details)?openSettings:undefined;
  const{again}=useAiRanking({enabled,url:vm.snapshot?.url,nctIds:vm.snapshot?.nctIds,rank:vm.rankPage});
  const waiting=enabled?undefined:!guide.settled||guide.active?'intro':!vm.snapshot?.supported||!vm.snapshot.nctIds.length?'page':undefined;
- return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again,searchHelp:guide.canSearchHelp?guide.startSearchHelp:undefined}}/>;
+ return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again,sharpen,searchHelp:guide.canSearchHelp?guide.startSearchHelp:undefined}}/>;
 }
 /** The overlay: AI-matched results on results pages, the public-study brief and local drafting. It has no health-sharing form. "Your details" live in a session-only store owned by this frame; ending the session or closing the frame clears them. */
 export function OverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){const vm=useSiteController(initialPrefs);const guide=useGuide(vm.guideHost);const[details]=useState(sessionDetailsStore);const dirty=useRef(false);const[localModels]=useState(()=>new LocalModelsStore());
