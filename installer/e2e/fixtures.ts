@@ -123,7 +123,7 @@ export function makeFakeInstall(opts: { withWindowsScripts?: boolean; withMacScr
   if (opts.withMacScripts) {
     const dest = join(scaffoldDir, "scripts", "macos");
     mkdirSync(dest, { recursive: true });
-    for (const f of ["treatable-tray.sh", "open-treatable.sh", "applications-launcher.sh"]) {
+    for (const f of ["treatable-tray.sh", "open-treatable.sh", "applications-launcher.sh", "treatable.ico"]) {
       copyFileSync(join(MACOS_SCRIPTS, f), join(dest, f));
     }
     // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts read
