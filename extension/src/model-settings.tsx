@@ -18,11 +18,11 @@ export function ModelProviderSettings({provider,localModel,setProvider,setLocalM
  return <section className="model-settings" aria-labelledby="model-settings-heading">
   <h3 id="model-settings-heading">Study brief model</h3>
   <label>Model provider<select value={provider} disabled={ended} onChange={event=>setProvider(event.target.value as ModelProvider)}><option value="openai">OpenAI (default)</option><option value="local">Local model (Ollama on this device)</option></select></label>
-  {provider==='openai'?<p className="fine">Study briefs use the OpenAI Agents and Decisions APIs and send only the selected public study records.</p>:<>
+  {provider==='openai'?<p className="fine">Study briefs are prepared by OpenAI from the selected public study records only.</p>:<>
    <p className="fine">Runs on this device through Ollama. Nothing is sent to OpenAI. Quality and speed depend on this computer and the model; a brief can take a minute or two.</p>
    {state.status==='checking'&&<p role="status">Checking Ollama on this device…</p>}
    {state.status==='unavailable'&&<p role="status">Open a ClinicalTrials.gov study or results page to check the local models on this device.</p>}
-   {state.status==='failed'&&<p role="status" className="notice">{failureCopy(state.code)} <code>{state.code}</code></p>}
+   {state.status==='failed'&&<><p role="status" className="notice">{failureCopy(state.code)}</p><details className="brief-how"><summary>Technical details</summary><p className="fine">Failure code: <code>{state.code}</code></p></details></>}
    {result&&<p className="fine">This device: {machineLine(result)}</p>}
    {result?.ollama.status==='not_installed'&&<p role="status" className="notice">Ollama is not installed on this device. <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Download Ollama</a>, then choose Check again.</p>}
    {result?.ollama.status==='runtime_failed'&&<p role="status" className="notice">Ollama is installed, but Treatable could not start its own private Ollama runtime.</p>}

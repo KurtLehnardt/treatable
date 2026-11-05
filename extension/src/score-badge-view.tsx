@@ -25,7 +25,7 @@ export function ScoreBadge({score,label,distance,theme='system',onExpand}:{score
   <div className="badge-hit" onMouseEnter={()=>show(true)} onMouseLeave={()=>show(false)}>
    <div className="badge-ring" tabIndex={0} role="img" aria-label={spoken} onFocus={()=>show(true)} onBlur={()=>show(false)}>
     <svg viewBox="0 0 40 40" aria-hidden="true"><circle className="ring-track" cx="20" cy="20" r="17"/>{percent!==undefined&&<circle className="ring-fill" cx="20" cy="20" r="17" pathLength={100} strokeDasharray={`${Math.max(percent,1)} 100`} transform="rotate(-90 20 20)"/>}</svg>
-    <strong aria-hidden="true">{percent===undefined?'–':`${percent}%`}</strong>
+    <strong aria-hidden="true" className={percent===100?'full':undefined}>{percent===undefined?'–':`${percent}%`}</strong>
    </div>
    {open&&<div className="badge-tip" aria-hidden="true"><strong>{headline}</strong>{reason&&<span>{reason}</span>}{where&&<span>{where}</span>}</div>}
   </div>

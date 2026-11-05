@@ -136,10 +136,10 @@ test('study brief view: a local result says which model ran on this device, that
  const result=localResult(),b=result.briefs[0],r=normalizeApplyRecord(rawStudy(),1);
  const vm:any={phase:'ready',nctId:b.nctId,engine:{provider:'local',localModel:'qwen3.5:9b'},activity:[{sequence:1,stage:'local.runtime.start'},{sequence:2,stage:'local.brief.request'}],analysisInput:{nctIds:[b.nctId],sourceItemIds:['e1']},candidates:[{nctId:b.nctId}],selectedIds:[b.nctId],records:[r],record:r,brief:b,result,agentBusy:false,patient:{name:'',phone:'',email:'',bestTimes:'',zip:'',answers:{}},zipNote:'',plan:{nctId:b.nctId,questionIds:['still_enrolling'],answerIds:[],siteOptions:[],flagIds:[],callContacts:[],backups:[],followUp:'',phoneScript:'',followUpMessage:'',subject:'s',body:'b'},draftEdited:false,draftOutdated:false,draftHeaders:false,callScript:'',callScriptEdited:false,callScriptOutdated:false,followUpMessage:'',followUpEdited:false,followUpOutdated:false,copied:'',reminder:''};
  const html=renderToStaticMarkup(React.createElement(ApplyView,{vm}));
- assert.match(html,/with the local model <strong>qwen3\.5:9b<\/strong> via Ollama on this device/);assert.match(html,/Local model qwen3\.5:9b: brief complete · question routing complete · nothing sent to OpenAI/);
+ assert.match(html,/local model <strong>qwen3\.5:9b<\/strong> via Ollama on this device/);assert.match(html,/nothing is sent to OpenAI/);assert.match(html,/Local model qwen3\.5:9b: study summary ready · questions sorted · nothing sent to OpenAI/);
  assert.match(html,/Local model: qwen3\.5:9b via Ollama 0\.32\.1 on this device; nothing was sent to OpenAI\./);assert.match(html,/Starting the private Ollama runtime on this device/);
  assert.match(html,/Model-reported, not calibrated/);assert.match(html,/0\.62/);assert.match(html,/Local request body/);assert.match(html,/Model output/);assert.doesNotMatch(html,/Provider session deletion|public-record tool lookups/);
- const openaiView=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm,engine:{provider:'openai',localModel:null},result:undefined,activity:[]}}));assert.match(openaiView,/using OpenAI Agents and Decisions/);assert.doesNotMatch(openaiView,/Ollama/);
+ const openaiView=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm,engine:{provider:'openai',localModel:null},result:undefined,activity:[]}}));assert.match(openaiView,/Treatable sends this study’s public record to OpenAI/);assert.match(openaiView,/Nothing you type is included/);assert.doesNotMatch(openaiView,/Agents and Decisions|source-backed participation brief/);assert.doesNotMatch(openaiView,/Ollama/);
 });
 
 test('broker: a local brief is not started without enough session left, and an OpenAI brief never carries a budget',async()=>{
@@ -150,4 +150,13 @@ test('broker: a local brief is not started without enough session left, and an O
  const sent=n.sent.length;await b.send(p,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'LOCAL_SESSION_TOO_SHORT');assert.equal(n.sent.length,sent,'nothing reached the helper');
  const o=broker(),q=await o.open();await o.send(q,{id:'p',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806']}});const m=o.natives[0];await o.reply(m,{id:'p',type:'result',ok:true,result:preparedBrief()});
  await o.send(q,{id:'run',type:'executeStudyBrief',payload:{token:TOKEN,digest:DIGEST,budgetMs:200000}});assert.deepEqual(m.sent.at(-1).payload,{token:TOKEN,digest:DIGEST});
+});
+
+test('a local-model check failure shows plain copy in the notice and the support code only inside Technical details',()=>{
+ const{html}=settingsWith(s=>{(s as any).state={status:'failed',code:'LOCAL_NOT_INSTALLED'}});
+ assert.match(html,/<p role="status" class="notice">Ollama is not installed on this device/);
+ const notice=html.slice(html.indexOf('<p role="status" class="notice">'),html.indexOf('</p>',html.indexOf('<p role="status" class="notice">')));
+ assert.doesNotMatch(notice,/LOCAL_NOT_INSTALLED|<code>/,'no raw code in the patient-facing line');
+ assert.match(html,/<details class="brief-how"><summary>Technical details<\/summary><p class="fine">Failure code: <code>LOCAL_NOT_INSTALLED<\/code><\/p><\/details>/);
+ assert.equal((html.match(/LOCAL_NOT_INSTALLED/g)??[]).length,1,'the code appears once, inside the disclosure');
 });

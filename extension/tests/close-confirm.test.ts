@@ -16,14 +16,16 @@ function view(overrides: Partial<Vm> = {}): Vm {
   return {connected: true, ended: false, busy: false, error: '', snapshot, records: [], opacity: .9, collapsed: false, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
 }
 let mounted: Array<() => Promise<void>> = [];
-async function mountView(vm: Vm) {
+async function mountView(vm: Vm, extra: Record<string, unknown> = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => {root.render(React.createElement(OverlayView, {vm}))});
+  await act(async () => {root.render(React.createElement(OverlayView, {vm, ...extra}))});
   mounted.push(async () => {await act(async () => {root.unmount()}); container.remove()});
-  return {container, rerender: (next: Vm) => act(async () => {root.render(React.createElement(OverlayView, {vm: next}))})};
+  return {container, rerender: (next: Vm, nextExtra: Record<string, unknown> = extra) => act(async () => {root.render(React.createElement(OverlayView, {vm: next, ...nextExtra}))})};
 }
+/** Stands in for the study section: only its heading matters to the focus rules. */
+const studySection = (key = 'study') => React.createElement('h2', {id: 'apply-heading', tabIndex: -1, key}, 'Understand this study');
 const escape = (target: EventTarget = window, init: KeyboardEventInit = {}) => target.dispatchEvent(new (window as any).KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true, ...init}));
 const popup = () => document.querySelector('.swal2-popup') as HTMLElement | null;
 const dialogs = () => document.querySelectorAll('.swal2-popup').length;
@@ -434,8 +436,14 @@ test('production overlay: "Your details" from Settings are typed work even when 
 
 test('production overlay: a running intro tour is stopped before asking, and focus still returns to the field', async () => {
   const page = await mountAssistant({tour: true});
-  const replay = () => [...document.querySelectorAll('button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement;
-  assert.equal(replay().disabled, true, 'the intro tour is showing its first step');
+  /* Replay intro lives in Settings: open them to read the button, and close them again so Escape still reaches the close question. */
+  const replayDisabled = async () => {
+    await act(async () => {button('Treatable settings').click()});
+    const disabled = ([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled;
+    await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
+    return disabled;
+  };
+  assert.equal(await replayDisabled(), true, 'the intro tour is showing its first step');
   const field = personalizeName();
   await typeInto(field, 'Morgan Example');
   field.focus();
@@ -443,7 +451,7 @@ test('production overlay: a running intro tour is stopped before asking, and foc
   await settle();
   assert.ok(popup(), 'asks before closing');
   assert.equal(document.querySelectorAll('.swal2-popup').length, 1, 'only the confirmation is open: the tour dialog is gone');
-  assert.equal(replay().disabled, false, 'the tour was stopped, so it can be replayed');
+  assert.equal(await replayDisabled(), false, 'the tour was stopped, so it can be replayed');
   await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
   await later();
   assert.equal(page.closes(), 0);
@@ -551,10 +559,57 @@ test('production overlay: outside press with a typed name hides it with everythi
 
 test('production overlay: outside press with nothing typed ends the session at once, even while the intro tour shows', async () => {
   const page = await mountAssistant({tour: true});
-  assert.equal(([...document.querySelectorAll('button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled, true, 'the intro tour is running');
+  await act(async () => {button('Treatable settings').click()});
+  assert.equal(([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Replay intro') as HTMLButtonElement).disabled, true, 'the intro tour is running');
+  await act(async () => {([...document.querySelectorAll('#treatable-settings button')].find(node => node.textContent === 'Done') as HTMLButtonElement).click()});
   await page.outside();
   assert.equal(page.closes(), 1);
   assert.equal(page.hides().length, 0);
   assert.equal(dialogs(), 0);
   assert.ok(sessionEnded());
 });
+
+test('opening a study page in the popup puts focus on the study heading, once', async () => {
+  const study = {apply: studySection()};
+  const page = await mountView(view({}), study);
+  assert.equal(document.activeElement?.id, 'apply-heading');
+  (document.activeElement as HTMLElement).blur();
+  await page.rerender(view({}), {apply: studySection('another-study')});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'moving to another study on the site does not pull focus again');
+});
+
+test('the sidebar and a results page leave the website\'s focus alone', async () => {
+  await mountView(view({displayMode: 'sidebar'}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+  document.body.innerHTML = '';
+  await mountView(view({}));
+  assert.notEqual(document.activeElement?.id, 'apply-heading');
+});
+
+test('collapsed, then close: the study section coming back never takes focus from the close question', async () => {
+  const page = await mountView(view({hasUnsavedWork: () => true, collapsed: true}), {apply: undefined});
+  await act(async () => {escape()});
+  await settle();
+  assert.ok(popup(), 'the close question is open');
+  /* Opening the frame to ask mounts the study section again, as the real section does. */
+  await page.rerender(view({hasUnsavedWork: () => true, collapsed: false}), {apply: studySection()});
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'the heading must not take focus from behind the dialog');
+  assert.ok(popup()!.contains(document.activeElement), `focus stays in the dialog, not ${document.activeElement?.tagName}`);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+  assert.notEqual(document.activeElement?.id, 'apply-heading', 'Keep working does not send focus to the heading either');
+  assert.equal(counts.closed, 0);
+});
+
+test('merged overlay: exactly one Replay intro, only in Settings, no footer, and the website-filters help and search link stay', async () => {
+  await mountAssistant({tour: false});
+  const replays = () => [...document.querySelectorAll('button')].filter(node => node.textContent === 'Replay intro');
+  assert.equal(replays().length, 0, 'closed settings: none on the page');
+  assert.equal(document.querySelector('footer'), null, 'no footer');
+  await act(async () => {button('Treatable settings').click()});
+  assert.equal(replays().length, 1, 'one, in Settings');
+  assert.ok(replays()[0].closest('#treatable-settings'), 'inside the settings panel');
+  assert.ok(replays()[0].closest('.settings-actions'), 'beside Done');
+  assert.ok([...document.querySelectorAll('button')].some(node => node.textContent === 'Search for other studies on ClinicalTrials.gov'), 'the study page keeps the search link');
+});
+
