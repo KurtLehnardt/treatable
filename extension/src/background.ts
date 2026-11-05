@@ -1,4 +1,3 @@
-import './zod-jitless';
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
 import {installSiteAssistant,isSitePort,toolbarTitle} from './site-background';
 import {clearLegacyPatientData} from './storage';
