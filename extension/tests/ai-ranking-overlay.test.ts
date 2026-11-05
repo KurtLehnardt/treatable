@@ -36,7 +36,8 @@ function mount({study,prefs=DEFAULT_UI_PREFS}:{study?:string;prefs?:any}={}){
  const restore=()=>{act(()=>renderer?.unmount());for(const[key,value]of Object.entries(old))Object.defineProperty(globalThis,key,{configurable:true,value})};
  const requests=(type:string)=>sent.filter(v=>v.type===type);
  const emitRanking=async(state:RankingState)=>{await act(async()=>{messages.emit({type:'site.ranking',state})});await settle()};
- return{start,restore,requests,emitRanking,storageWrites,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
+ const emit=async(v:any)=>{await act(async()=>{messages.emit(v)});await settle()};
+ return{start,restore,requests,emitRanking,emit,storageWrites,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
 }
 
 test('the shipped overlay ranks a results page on its own, with Your details limited to age band, sex and short condition terms',async()=>{
@@ -98,4 +99,28 @@ test('one disclaimer: the notice holds the single statement; the panel, cards an
  const waiting=renderToStaticMarkup(React.createElement(RankingSection,{vm:{aiRanking:'on',connected:true,busy:false,setAiRanking:()=>{},restore:()=>{},again:()=>{},waiting:'intro'}}));assert.match(waiting,/Ranking starts once the intro tour is finished or skipped/);
  const overlay=readFileSync(new URL('../src/overlay-view.tsx',import.meta.url),'utf8');assert.doesNotMatch(overlay,/Match scores express relevance/);
  const badgeBundle=readFileSync(new URL('../dist/score-badge.js',import.meta.url),'utf8');assert.doesNotMatch(badgeBundle,/Normalized relevance|not eligibility odds|Eligibility unknown/);
+});
+
+test('while the popup is hidden AI-matched results pause, even when the page changes; shown again from the toolbar, it ranks the page then shown',async()=>{
+ const m=mount();try{await m.start();await settle(1000);
+  assert.equal(m.requests('site.aiRank').length,1);
+  await m.emit({type:'site.view',hidden:true,collapsed:false});
+  await m.emit({type:'site.snapshot',snapshot:{generation:'g2',url:'https://clinicaltrials.gov/search?cond=Asthma&page=2',nctIds:[B,A],diagnostic:'Two cards',supported:true}});
+  await settle(1000);
+  assert.equal(m.requests('site.aiRank').length,1,'nothing is ranked or sent while hidden');
+  await m.emit({type:'site.view',hidden:false,collapsed:false});await settle(1000);
+  assert.equal(m.requests('site.aiRank').length,2,'ranking resumes once it is shown');
+ }finally{m.restore()}
+});
+
+test('a toolbar press that expands a compact popup expands its view too, and malformed reports change nothing',async()=>{
+ const m=mount();try{await m.start();
+  const labelled=(label:string)=>m.root().findAll(n=>n.type==='button'&&n.props['aria-label']===label).length;
+  await act(async()=>m.root().find(n=>n.type==='button'&&n.props['aria-label']==='Collapse search assistant').props.onClick());
+  assert.equal(labelled('Expand search assistant'),1,'collapsed by the person');
+  for(const bad of [{type:'site.view',hidden:'no',collapsed:false},{type:'site.view',hidden:false,collapsed:false,extra:1},{type:'site.view',collapsed:false}])await m.emit(bad);
+  assert.equal(labelled('Expand search assistant'),1,'malformed reports change nothing');
+  await m.emit({type:'site.view',hidden:false,collapsed:false});
+  assert.equal(labelled('Collapse search assistant'),1,'the view agrees with the expanded frame');assert.match(m.shown(),/Search the live registry/);
+ }finally{m.restore()}
 });

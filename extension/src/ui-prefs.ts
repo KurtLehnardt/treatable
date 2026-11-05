@@ -6,7 +6,9 @@
  */
 import {isLocalModelName} from '../shared/local-model.mjs';
 export const UI_PREFS_KEY = 'treatable.uiPrefs';
-export const DISPLAY_MODES = ['overlay', 'popup', 'sidebar'] as const;
+export const DISPLAY_MODES = ['popup', 'sidebar'] as const;
+/** Display modes saved by earlier versions that no longer exist. The corner card ('overlay') was removed; a record that still holds it reads as the default popup, with its other choices kept. */
+const RETIRED_DISPLAY_MODES: readonly unknown[] = ['overlay'];
 export const THEMES = ['system', 'light', 'dark'] as const;
 /** Who generates study briefs: OpenAI (the default) or a local model through Ollama on this device. */
 export const MODEL_PROVIDERS = ['openai', 'local'] as const;
@@ -39,7 +41,8 @@ const PREF_KEYS = ['displayMode', 'theme', 'provider', 'localModel', 'aiRanking'
 /**
  * Strict schema check. The value must be a plain object with exactly the five known keys: display mode, theme, provider and aiRanking
  * each hold an allowed enum value and localModel holds null or a valid model name. Records saved by earlier versions still load: exactly
- * displayMode and theme (OpenAI as the provider), or exactly those four without aiRanking; both read with AI-matched results on.
+ * displayMode and theme (OpenAI as the provider), or exactly those four without aiRanking; both read with AI-matched results on. A retired
+ * display mode (the removed corner card, 'overlay') reads as the default popup instead of discarding the whole record.
  * Anything else (extra or missing keys, wrong types, unknown values) is rejected as a whole. The result is always a fresh object built from the validated fields, so nothing from the input is carried through.
  */
 export function parseUiPrefs(value: unknown): UiPrefs | undefined {
@@ -49,7 +52,7 @@ export function parseUiPrefs(value: unknown): UiPrefs | undefined {
  const keys = Object.keys(value), exactly = (list: readonly string[]) => keys.length === list.length && list.every(key => keys.includes(key));
  const legacy = exactly(['displayMode', 'theme']), providerEra = exactly(PROVIDER_ERA_KEYS);
  if (!legacy && !providerEra && !exactly(PREF_KEYS)) return undefined;
- const record = value as Record<string, unknown>, {displayMode, theme} = record;
+ const record = value as Record<string, unknown>, {theme} = record, displayMode = RETIRED_DISPLAY_MODES.includes(record.displayMode) ? DEFAULT_UI_PREFS.displayMode : record.displayMode;
  const provider = legacy ? 'openai' : record.provider, localModel = legacy ? null : record.localModel, aiRanking = legacy || providerEra ? DEFAULT_UI_PREFS.aiRanking : record.aiRanking;
  return isDisplayMode(displayMode) && isTheme(theme) && isModelProvider(provider) && isLocalModelPref(localModel) && isAiRanking(aiRanking) ? {displayMode, theme, provider, localModel, aiRanking} : undefined;
 }

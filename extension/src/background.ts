@@ -1,7 +1,7 @@
 import './zod-jitless';
 import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
-import {installSiteAssistant,isSitePort} from './site-background';
+import {installSiteAssistant,isSitePort,toolbarTitle} from './site-background';
 import {isSupportedSite} from './sites';
 import {clearLegacyPatientData} from './storage';
 // Every port belongs to exactly one broker below (site overlay/badge, private live matching, apply). Any other name, including the retired side-panel port, is disconnected unanswered.
@@ -11,8 +11,8 @@ const siteAssistant=installSiteAssistant(chrome,{onProtectedEnd:tabId=>{liveBrok
 liveBroker=installLiveBroker(chrome,siteAssistant);
 // Help me apply: study-page overlay frame only; public NCT ID and prepared receipt only.
 installApplyBroker(chrome,siteAssistant);
-// The toolbar title says what a click does on this tab. Tab URLs are readable only on the supported sites, so any other tab reads as unsupported. Titles need no permission.
-function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:isSupportedSite(tab.url??'')?'Open Treatable':'Open ClinicalTrials.gov to use Treatable'})).catch(()=>{})}catch{}}
+// The toolbar title says what a click does on this tab, or that Treatable is hidden there. toolbarTitle is its one source, shared with the hidden cue. Titles need no permission.
+function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:toolbarTitle(siteAssistant.isHidden(tab.id),tab.url)})).catch(()=>{})}catch{}}
 // Revisions keep a late startup snapshot from overwriting the title of a tab that navigated or activated after the snapshot began.
 let titleSequence=0;
 const titleRevisions=new Map<number,number>();
@@ -20,6 +20,8 @@ function updateTitle(tab:any){if(!Number.isInteger(tab?.id)||tab.id<0)return;tit
 async function initializeTitles(){
  const revision=titleSequence;
  try{const tabs=await chrome.tabs.query({});
+ /* A fresh worker holds no hidden overlay, but a per-tab badge outlives the worker, so a dot left by a hidden overlay would otherwise stay while the title resets. */
+ for(const tab of tabs)if(Number.isInteger(tab?.id)&&tab.id>=0)try{void Promise.resolve(chrome.action.setBadgeText({tabId:tab.id,text:''})).catch(()=>{})}catch{}
  for(const tab of tabs)if((titleRevisions.get(tab.id)??0)<=revision)updateTitle(tab);
  }catch{}
 }

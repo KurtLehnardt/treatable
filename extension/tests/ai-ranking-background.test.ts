@@ -99,3 +99,19 @@ test('switching AI-matched results off while the first-ranking window is open cl
  assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank']);assert.equal(h.session.has('consent'),false);
  p.disconnect();
 });
+
+test('hiding the popup closes an open ranking confirmation and sends nothing; no confirmation opens while hidden; shown again, it asks anew',async()=>{
+ const h=rig(),p=await connected(h);const removed:number[]=[];h.api.windows.remove=async(id:number)=>{removed.push(id)};
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});
+ await until(()=>h.windows.length===1);
+ await h.service.handle(1,{id:'h',type:'site.hide',payload:{expiresAt:Date.now()+60000}});
+ assert.deepEqual(removed,[2],'the open confirmation window closes');assert.equal(h.service.ranker.isRunning(1),false,'the ranking stops');
+ h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});await flush();
+ assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank'],'nothing is scored or sent');assert.equal(h.session.get('consent'),undefined,'no consent is recorded, even if the closed window answers');
+ await assert.rejects(h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}}));await flush();
+ assert.equal(h.windows.length,1,'no confirmation opens while hidden');
+ await h.service.launch({id:1,url:'https://clinicaltrials.gov/search?cond=Asthma'});
+ await h.service.handle(1,{id:'r3',type:'site.aiRank',payload:{details:{}}});
+ await until(()=>h.windows.length===2);assert.ok(ranking(p).some((s:any)=>s.phase==='confirming'),'the closed confirmation was not taken as Not now');
+ p.disconnect();
+});
