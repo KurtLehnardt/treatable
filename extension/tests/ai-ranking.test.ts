@@ -158,7 +158,7 @@ test('when the page drops an applied ranking on its own, a cached ranking goes s
  service.start(1,details);await until(()=>!!done(h.posts));assert.equal(done(h.posts)!.applied,true);assert.equal(h.applied.length,1);
  const page={generation:'g1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[...ids],diagnostic:'',supported:true};
  service.lapsed(1,{...page,url:'https://clinicaltrials.gov/search?cond=Other'});await until(()=>true);assert.equal(h.applied.length,1,'a different page never gets the old ranking');
- const posts=h.posts.length;service.lapsed(1,page);await until(()=>h.applied.length===2);assert.equal(h.posts.length,posts,'re-applied from memory, with no new model call and nothing to report');
+ const posts=h.posts.length;service.lapsed(1,page);await until(()=>h.applied.length===2&&h.posts.length===posts+1);assert.equal(h.posts.at(-1)!.applied,true,'re-applied from memory with no new model call; the overlay is told once so it learns whether every badge is back');
  assert.equal(h.native.sent.filter(m=>m.type==='executeRank').length,1);
  const failing=hostFake({reply:m=>m.type==='prepareRank'?prepared(m):fail(m,'RATE_LIMITED')});failing.setConsent(true);const other=createRankService(failing.host);
  other.start(1,details);await until(()=>!!done(failing.posts));other.lapsed(1,page);const last=failing.posts.at(-1)!;assert.equal(last.applied,false,'without a cached ranking the overlay offers to apply again');

@@ -10,17 +10,18 @@ const until=async(check:()=>boolean,ms=3000)=>{const end=Date.now()+ms;while(!ch
 const [A,B,C]=['NCT00000001','NCT00000002','NCT00000003'];
 const records:Record<string,any>={[A]:{id:A,title:'Study A',status:'RECRUITING',minimumAge:'18 Years',maximumAge:null,sex:'ALL',locations:[]},[B]:{id:B,title:'Study B',status:'TERMINATED',minimumAge:null,maximumAge:null,sex:'ALL',locations:[]},[C]:{id:C,title:'Study C',status:'RECRUITING',minimumAge:'18 Years',maximumAge:null,sex:'ALL',locations:[]}};
 const TOKEN='t'.repeat(43),DIGEST='a'.repeat(64);
-function rig({decisions='ok'}:{decisions?:'ok'|'fail'}={}){
+function rig({decisions='ok',refuseBadge=false}:{decisions?:'ok'|'fail';refuseBadge?:boolean}={}){
+ const badge={result:(id:string):any=>refuseBadge?[{result:false}]:[{result:true}]};
  const connect=new Events(),messages=new Events(),commands:any[]=[],scripts:any[]=[],windows:any[]=[],nativeSent:any[]=[],origin='chrome-extension://test',session=new Map<string,unknown>();
  let snap:any={generation:'doc-1',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[A,B,C],diagnostic:'Three cards',supported:true};
  const prefsChanged=new Events();
- const api:any={storage:{onChanged:prefsChanged},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','releaseCards','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async(v:any)=>{windows.push(v);return{id:2,tabs:[{id:9,url:origin+'/panel.html'}]}},remove:async()=>{}}};
+ const api:any={storage:{onChanged:prefsChanged},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','releaseCards','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return v.args?.[0]?.purpose==='badge'?badge.result(v.args[0].nctId):[]}},windows:{create:async(v:any)=>{windows.push(v);return{id:2,tabs:[{id:9,url:origin+'/panel.html'}]}},remove:async()=>{}}};
  const rankNative=()=>{const onMessage=new Events(),onDisconnect=new Events();return{onMessage,onDisconnect,disconnect(){},postMessage(m:any){nativeSent.push(structuredClone(m));setTimeout(()=>{if(m.type==='prepareRank')onMessage.emit({id:m.id,type:'result',ok:true,result:{kind:'preparedRank',token:TOKEN,digest:DIGEST,expiresAt:Date.now()+300000,provider:'openai',nctIds:m.payload.nctIds,preview:{profile:m.payload.profile,request:{model:'gpt-6-luna',questions:m.payload.nctIds.map((name:string)=>({type:'score',name}))}}}});else if(m.type==='executeRank')onMessage.emit(decisions==='fail'?{id:m.id,type:'result',ok:false,code:'API_ERROR',error:'fixed'}:{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'test',provider:'openai',digest:DIGEST,scores:[[A,33],[B,100],[C,100]].map(([nctId,score])=>({nctId,score,reasonId:(score as number)>=75?'strong_match':'unclear',probabilities:RANK_LEVELS.map((_,i)=>i===((score as number)>=75?3:1)?1:0)}))}})},1)}}};
  const rankConsent={has:async()=>session.get('consent')===true,grant:async()=>{session.set('consent',true)},clear:async()=>{session.delete('consent')}};
  const lookups:string[]=[];const service=installSiteAssistant(api,{lookupPublicStudy:async(id:string)=>{lookups.push(id);return records[id]},rankNative,rankConsent});
  function port(purpose='overlay',nct?:string){const onMessage=new Events(),onDisconnect=new Events(),sent:any[]=[];const p:any={name:`treatable.site.${purpose}.v1`,sender:{id:'test',tab:{id:1,url:snap.url},frameId:purpose==='overlay'?2:5,documentId:purpose+'-document',url:origin+'/'+(purpose==='overlay'?'overlay.html':`score-badge.html?nct=${nct}`)},onMessage,onDisconnect,sent,closed:false,postMessage(v:any){sent.push(structuredClone(v))},disconnect(){p.closed=true;onDisconnect.emit()}};connect.emit(p);return p}
  const confirmSender={id:'test',url:origin+'/confirm-send.html',frameId:0,documentId:'confirm-doc',tab:{id:9,windowId:2,url:origin+'/confirm-send.html'}};
- return{lookups,api,service,commands,scripts,windows,nativeSent,session,messages,port,confirmSender,prefsChanged,setSnapshot:(s:any)=>{snap=s}};
+ return{badge,lookups,api,service,commands,scripts,windows,nativeSent,session,messages,port,confirmSender,prefsChanged,setSnapshot:(s:any)=>{snap=s}};
 }
 async function connected(h:ReturnType<typeof rig>){await h.service.launch({id:1,url:'https://clinicaltrials.gov/search?cond=Asthma'});const p=h.port();p.onMessage.emit({type:'site.authenticate',capability:h.scripts.at(-1).args[0].capability});await flush();return p}
 const ranking=(p:any)=>p.sent.filter((v:any)=>v.type==='site.ranking').map((v:any)=>v.state);
@@ -40,7 +41,7 @@ test('the first ranking opens one top-level confirmation with the exact request;
  assert.deepEqual(h.scripts.filter(s=>s.args?.[0]?.purpose==='badge').map(s=>s.args[0].nctId),[C,A,B]);
  const badge=h.port('badge',B);badge.onMessage.emit({type:'site.authenticate',capability:h.scripts.filter(s=>s.args?.[0]?.nctId===B).at(-1).args[0].capability});await flush();
  assert.deepEqual(badge.sent.find((v:any)=>v.type==='site.badge'),{type:'site.badge',nctId:B,score:10,label:'not_recruiting'},'the badge gets the capped percentage and a reason id only');
- const done=ranking(p).find((s:any)=>s.phase==='done');assert.equal(done.applied,true);assert.deepEqual(done.studies.map((s:any)=>[s.nctId,s.percent,s.reasonId]),[[C,100,'strong_match'],[A,33,'unclear'],[B,10,'not_recruiting']]);
+ const done=ranking(p).find((s:any)=>s.phase==='done');assert.equal(done.applied,true);assert.equal(done.badged,true,'every card got its badge, so the panel can show one status line');assert.deepEqual(done.studies.map((s:any)=>[s.nctId,s.percent,s.reasonId]),[[C,100,'strong_match'],[A,33,'unclear'],[B,10,'not_recruiting']]);
  /* Later rankings in the same browser session run without another window. */
  h.setSnapshot({generation:'doc-2',url:'https://clinicaltrials.gov/search?cond=Asthma&page=2',nctIds:[A,C],diagnostic:'Two cards',supported:true});
  await h.service.handle(1,{id:'r2',type:'site.aiRank',payload:{details:{}}});await until(()=>h.nativeSent.length===4);assert.equal(h.windows.length,1);
@@ -154,6 +155,14 @@ test('site.ping never extends an applied ranking: the applied order lapses five 
  p.disconnect();
 });
 
+test('when the page reports a badge could not be placed, the ranking state says so and the panel keeps the full list',async()=>{
+ const h=rig({refuseBadge:true}),p=await connected(h);
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});
+ await until(()=>h.windows.length===1);h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});
+ await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
+ assert.equal(ranking(p).find((s:any)=>s.phase==='done').badged,false);p.disconnect();
+});
+
 test('a title the ranking facts already hold is used without another lookup',async()=>{
  const h=rig(),p=await connected(h);
  await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{ageBand:'30_44',sex:'male'}}});
@@ -170,4 +179,35 @@ test('site.openSearch ends the derived ranking: the page is restored and the nav
  const restores=()=>h.commands.filter(c=>c.type==='restore').length,before=restores(),navs:any[]=[];h.api.tabs.update=async(id:number,v:any)=>{navs.push({id,...v})};
  await h.service.handle(1,{id:'os',type:'site.openSearch',payload:{}});await flush();
  assert.equal(restores(),before+1,'the reordered cards are restored when the session ends');assert.deepEqual(navs,[{id:1,url:'https://clinicaltrials.gov/'}]);
+});
+
+const content={id:'test',frameId:0,tab:{id:1},url:'https://clinicaltrials.gov/search?cond=Asthma'};
+async function rankOnce(h:ReturnType<typeof rig>,p:any){await h.service.handle(1,{id:'r'+Math.random(),type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length>=1);h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});await until(()=>ranking(p).some((s:any)=>s.phase==='done'));return ranking(p).filter((s:any)=>s.phase==='done').at(-1)}
+
+test('badged is true only when the page confirms every badge: one refusal, or any result that is not an explicit true, clears it',async()=>{
+ for(const [name,result] of [['one card refused',(id:string)=>id===B?[{result:false}]:[{result:true}]],['empty result',()=>[]],['undefined result',()=>[{result:undefined}]],['null result',()=>[{result:null}]],['string result',()=>[{result:'true'}]],['script error',()=>[{error:{message:'controller unavailable'}}]]] as const){
+  const h=rig(),p=await connected(h);h.badge.result=result as any;
+  assert.equal((await rankOnce(h,p)).badged,false,name);p.disconnect();
+ }
+});
+test('the page re-renders the cards into the site order with the same ids and URL: the ranking is re-applied and badged is decided again',async()=>{
+ const h=rig(),p=await connected(h);const first=await rankOnce(h,p);assert.equal(first.badged,true);
+ const before=p.sent.length,scripts=h.scripts.length;
+ h.setSnapshot({generation:'doc-9',url:'https://clinicaltrials.gov/search?cond=Asthma',nctIds:[A,B,C],diagnostic:'Three cards',supported:true});
+ h.messages.emit({kind:'treatable.site.content',type:'matchingEnded'},content,()=>{});
+ await until(()=>h.scripts.length>=scripts+3);await flush();await new Promise(r=>setTimeout(r,30));
+ const posted=p.sent.slice(before).filter((v:any)=>v.type==='site.ranking').map((v:any)=>v.state);
+ assert.ok(posted.length>=1,'the overlay is told again');assert.equal(posted.at(-1).applied,true);assert.equal(posted.at(-1).badged,true,'fresh claim after the re-apply');
+ p.disconnect();
+});
+test('a re-apply that cannot place one badge tells the overlay badged is false; an unapplied state never carries badged',async()=>{
+ const h=rig(),p=await connected(h);await rankOnce(h,p);
+ const before=p.sent.length,scripts=h.scripts.length;h.badge.result=((id:string)=>id===A?[{result:false}]:[{result:true}]) as any;
+ h.messages.emit({kind:'treatable.site.content',type:'matchingEnded'},content,()=>{});
+ await until(()=>h.scripts.length>=scripts+3);await flush();await new Promise(r=>setTimeout(r,30));
+ const posted=p.sent.slice(before).filter((v:any)=>v.type==='site.ranking').map((v:any)=>v.state);
+ assert.equal(posted.at(-1).applied,true);assert.equal(posted.at(-1).badged,false,'the stale true is replaced');
+ h.messages.emit({kind:'treatable.site.content',type:'matchingEnded',hidden:true},content,()=>{});await flush();await new Promise(r=>setTimeout(r,30));
+ const lapsed=p.sent.filter((v:any)=>v.type==='site.ranking').map((v:any)=>v.state).at(-1);assert.equal(lapsed.applied,false);assert.equal(lapsed.badged,undefined,'no badge claim on an unapplied ranking');
+ p.disconnect();
 });
