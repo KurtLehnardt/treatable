@@ -197,7 +197,7 @@ The installer pins the Node executable used to run it. Use a functioning runtime
 
 Table/map views and unknown card layouts remain read-only.
 
-Cards already loaded on a results page are filtered by fresh public status: by default only recruiting and available expanded-access studies stay shown, and unknown or unavailable status stays visible and labeled unverified. Treatable has no status checkboxes of its own; use the website's own Study Status filter to look at other studies.
+Treatable never hides a ClinicalTrials.gov result card. Every study the website lists stays visible; AI-matched results only reorders them, and studies that are not recruiting move to the end with the reason shown. Use the website's own Study Status filter to change which studies the website lists.
 
 ## Guided walkthroughs
 

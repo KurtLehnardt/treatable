@@ -22,7 +22,7 @@ export function LegacyOverlayAssistant({initialPrefs}:{initialPrefs?:UiPrefs}){c
 /** AI-matched results for a results page. Ranking starts on its own once the intro tour is out of the way; see use-ai-ranking.ts. It pauses
  * while the popup is hidden, so nothing is ranked or sent while Treatable looks closed, and resumes for the page then shown when it is back. */
 function Ranking({vm,guide}:{vm:ReturnType<typeof useSiteController>;guide:ReturnType<typeof useGuide>}){
- const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported&&!vm.availability?.loading;
+ const enabled=vm.connected&&!vm.ended&&!vm.hidden&&!vm.study&&vm.aiRanking==='on'&&!!guide.settled&&!guide.active&&!!vm.snapshot?.supported;
  const{again}=useAiRanking({enabled,url:vm.snapshot?.url,nctIds:vm.snapshot?.nctIds,rank:vm.rankPage});
  const waiting=enabled?undefined:!guide.settled||guide.active?'intro':!vm.snapshot?.supported||!vm.snapshot.nctIds.length?'page':undefined;
  return <RankingSection vm={{aiRanking:vm.aiRanking,ranking:vm.ranking,waiting,connected:vm.connected,busy:vm.busy,setAiRanking:vm.setAiRanking,restore:vm.restore,again}}/>;

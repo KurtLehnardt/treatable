@@ -71,11 +71,11 @@ test('ending during activation rejects immediately and cannot reactivate from a 
 test('private matching is blocked up front above the page limit and remains available for ten cards',()=>{for(const count of [10,11]){let opened=0;const nctIds=Array.from({length:count},(_,index)=>`NCT${String(index+1).padStart(8,'0')}`);const model=view({snapshot:{...snapshot,nctIds},openPrivate:()=>opened++});const renderer=TestRenderer.create(React.createElement(OverlayView,{vm:model}));const button=renderer.root.findAllByType('button').find(node=>node.children.includes('Find my matches'))!;assert.equal(button.props.disabled,count>10);button.props.onClick();assert.equal(opened,count>10?0:1);const html=renderToStaticMarkup(React.createElement(OverlayView,{vm:model}));if(count>10)assert.match(html,/set ClinicalTrials.gov to 10 studies per page/);else assert.doesNotMatch(html,/set ClinicalTrials.gov to 10 studies per page/);renderer.unmount()}});
 
 
-test('the status summary, inline content and a wide selectable diagnostic are visible, and there are no status checkboxes',()=>{
- const model=view({diagnostics:'{"supported":true}',availability:{onlyAccepting:true,includeSoon:false,includeInvitation:false,loading:false,hidden:2,unverified:1,total:5}});
+test('inline content and a wide selectable diagnostic are visible, with no status checkboxes or hidden-card summary',()=>{
+ const model=view({diagnostics:'{"supported":true}'});
  const renderer=TestRenderer.create(React.createElement(OverlayView,{vm:model,inlineMatching:React.createElement('p',null,'Inline protected form')}));
  const html=renderToStaticMarkup(React.createElement(OverlayView,{vm:model,inlineMatching:React.createElement('p',null,'Inline protected form')}));
- for(const text of ['unverified status remain visible','Inline protected form'])assert.ok(html.includes(text),text);for(const gone of ['Only studies accepting participants','Include opening soon','Include invitation-only studies','Which studies to show'])assert.ok(!html.includes(gone),gone);assert.doesNotMatch(html,/type="checkbox"/);
+ assert.ok(html.includes('Inline protected form'));for(const gone of ['hidden by your status choices','unverified status remain visible','Checking public recruitment status','Only studies accepting participants','Include opening soon','Include invitation-only studies','Which studies to show'])assert.ok(!html.includes(gone),gone);assert.doesNotMatch(html,/type="checkbox"/);
  const diagnostic=renderer.root.findByProps({'aria-label':'Copyable diagnostic report'});assert.equal(diagnostic.props.readOnly,true);assert.equal(diagnostic.props.rows,12);assert.equal(diagnostic.props.wrap,'soft');
  let selected=false;diagnostic.props.onFocus({currentTarget:{select(){selected=true}}});assert.ok(selected);renderer.unmount();
  const css=readFileSync(new URL('../src/overlay.css',import.meta.url),'utf8');assert.match(css,/diagnostic-report textarea\{[^}]*width:100%[^}]*min-height:14rem[^}]*resize:vertical/);

@@ -1,7 +1,7 @@
 import type{SitePoint}from'./local-distance';
 import{isSupportedSite}from'./sites';
 export type SitePurpose='overlay'|'badge';
-export interface SiteSnapshot{generation:string;url:string;nctIds:string[];diagnostic:string;supported:boolean;totalCards?:number;hiddenCards?:number;unverifiedCards?:number;allNctIds?:string[];distanceHiddenCards?:number}
+export interface SiteSnapshot{generation:string;url:string;nctIds:string[];diagnostic:string;supported:boolean;distanceHiddenCards?:number}
 export interface SiteScore{nctId:string;score:number}
 export interface LiveSiteStudy{id:string;title:string;status:string;conditions:string[];criteria:string;minimumAge:string|null;maximumAge:string|null;sex:string|null;healthyVolunteers:boolean|null;hasResults:boolean;sourceUrl:string;fetchedAt:string;lastUpdatePostDate:string|null;locations?:SitePoint[]}
 export type SiteRequestType='site.snapshot'|'site.layout'|'site.restore'|'site.close'|'site.fetch'|'site.rank'|'site.openPrivate'|'site.diagnostics'|'site.endMatching'|'site.ping'|'site.guide'|'site.openSearch'|'site.aiRank'|'site.aiRankStop'|'site.hide';
