@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
-import {AI_SWITCH_DISCLOSURE} from './ai-switch';
+import {AI_SWITCH_DISCLOSURE,AI_SWITCH_MIN_SHOWN_MS} from './ai-switch';
 function useResolvedTheme(theme: OverlayTheme) {
  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches);
  useEffect(() => {
@@ -21,6 +21,24 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
  const [searchError, setSearchError] = useState(false);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
+ /* The switch row (switch and disclosure) and since when the browser has reported it fully visible: not covered, faded, filtered or
+  * transformed by anything in the page or this frame. Script on the website could otherwise hide or cover the frame and line the switch
+  * up under a decoy, so a turn-on counts only after it has been shown like that for AI_SWITCH_MIN_SHOWN_MS (see ai-switch.ts). Without
+  * this browser support it is never reported visible, and the switch cannot be turned on. */
+ const showSwitch = !!vm.setAiRanking && !vm.collapsed && vm.connected && !vm.ended;
+ const switchRow = useRef<HTMLDivElement | null>(null), shownSince = useRef<number | undefined>(undefined);
+ useEffect(() => {
+  shownSince.current = undefined;
+  const row = switchRow.current, Observer = (globalThis as any).IntersectionObserver;
+  if (!showSwitch || !row || typeof Observer !== 'function') return;
+  let observer: {observe: (target: unknown) => void; disconnect: () => void} | undefined;
+  try {
+   observer = new Observer((entries: {isVisible?: unknown; time: number}[]) => {const last = entries[entries.length - 1]; if (!last) return; shownSince.current = last.isVisible === true ? shownSince.current ?? last.time : undefined}, {trackVisibility: true, delay: 100, threshold: [0, 1]});
+   observer!.observe(row);
+  } catch {return}
+  return () => {observer?.disconnect(); shownSince.current = undefined};
+ }, [showSwitch]);
+ const switchShown = () => {const since = shownSince.current, now = (globalThis as any).performance?.now?.(); return since !== undefined && typeof now === 'number' && now - since >= AI_SWITCH_MIN_SHOWN_MS};
  /* Closing ends the session and clears what was typed. Ask first only when there is something to lose; otherwise close at once. */
  const requestClose = useRef(async () => {
   const host = latest.current;
@@ -87,7 +105,7 @@ export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewMode
   {settingsPanel}
   {/* Turning the switch on is the person's consent, so it is shown only with its disclosure beside it: never while collapsed, where the
      * compact frame has no room for that line. It is off unless the person turns it on. */}
-  {vm.setAiRanking && !vm.collapsed && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking === 'on'} disabled={vm.ended || vm.aiSwitchBusy} aria-describedby="ai-switch-disclosure" onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off', event)}/><span><strong>AI-matched results</strong><small>{vm.aiRanking === 'on' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label><p id="ai-switch-disclosure" className="ai-disclosure">{AI_SWITCH_DISCLOSURE[vm.provider === 'local' ? 'local' : 'openai']}</p></div>}
+  {vm.setAiRanking && !vm.collapsed && <div className="ai-switch-row" ref={switchRow}><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking === 'on'} disabled={vm.ended} aria-busy={vm.aiSwitchBusy || undefined} aria-describedby="ai-switch-disclosure" onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off', event, switchShown())}/><span><strong>AI-matched results</strong><small>{vm.aiRanking === 'on' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label><p id="ai-switch-disclosure" className="ai-disclosure">{AI_SWITCH_DISCLOSURE[vm.provider === 'local' ? 'local' : 'openai']}</p></div>}
   {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button>{searchError && <p role="alert" className="notice error">Could not open the ClinicalTrials.gov home page. Try again.</p>}</div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
   </div></>}

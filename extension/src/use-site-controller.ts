@@ -12,7 +12,7 @@ import{SESSION_TTL_MS,watchActivity}from'./session-lease';
 /** The search session lasts 30 minutes from the last typing or click, and the heartbeat keeps running while the tab is hidden. */
 export const SEARCH_SESSION_TTL_MS=SESSION_TTL_MS;
 /** initialPrefs are the saved display preferences, loaded before the first render so the saved layout never flashes the defaults. */
-export function useSiteController(initialPrefs:UiPrefs=DEFAULT_UI_PREFS):OverlayViewModel & {guideHost:GuideHost;aiRanking:AiRanking;setAiRanking:(value:AiRanking,event?:unknown)=>void;aiSwitchBusy:boolean;ranking?:RankingState;rankPage:(details:RankDetails,force?:boolean)=>void} {
+export function useSiteController(initialPrefs:UiPrefs=DEFAULT_UI_PREFS):OverlayViewModel & {guideHost:GuideHost;aiRanking:AiRanking;setAiRanking:(value:AiRanking,event?:unknown,shown?:boolean)=>void;aiSwitchBusy:boolean;ranking?:RankingState;rankPage:(details:RankDetails,force?:boolean)=>void} {
  const start=parseUiPrefs(initialPrefs)??DEFAULT_UI_PREFS,prefs=useRef<UiPrefs>({...start});
  const[connected,setConnected]=useState(false),[ended,setEnded]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[snapshot,setSnapshot]=useState<OverlaySnapshot>(),[displayMode,setDisplayModeState]=useState<'popup'|'sidebar'>(start.displayMode),[theme,setThemeState]=useState<'system'|'light'|'dark'>(start.theme),[provider,setProviderState]=useState<ModelProvider>(start.provider),[localModel,setLocalModelState]=useState<string|null>(start.localModel),[aiConsent,setAiConsent]=useState<AiConsent|null>(null),[aiSwitchBusy,setAiSwitchBusy]=useState(false),[ranking,setRanking]=useState<RankingState>(),[collapsed,setCollapsedState]=useState(false),[hidden,setHidden]=useState(false),[study,setStudy]=useState<OverlayStudy>();
  /* The AI-matched results switch shows what the background recorded (site.ready, then site.aiConsent), read for the provider chosen
@@ -34,11 +34,14 @@ export function useSiteController(initialPrefs:UiPrefs=DEFAULT_UI_PREFS):Overlay
  const guideHost:GuideHost={connected,snapshot,collapsed,layout:async value=>{setCollapsedState(value);if(client.current)await client.current.request('site.layout',{collapsed:value}).catch(()=>{})},request:(type,payload)=>client.current?client.current.request(type,payload):Promise.reject(Error('Treatable is not connected.')),subscribe:listener=>{guideListeners.current.add(listener);return()=>{guideListeners.current.delete(listener)}}};
  return {guideHost,study,connected,ended,busy,error,snapshot,displayMode,theme,provider,localModel,collapsed,hidden,aiRanking,aiSwitchBusy,ranking,onOutsideClick,
  /* Off: shown at once, and the background stops every ranking and forgets the switch. On: only for the person's own click or key press
-  * on the switch, with the disclosure for the provider chosen here beside it. The background records that disclosure and the switch
-  * shows on once it has. */
- setAiRanking:(value,event)=>{const current=client.current;if(!isAiRanking(value)||!current||!connected)return;
-  if(value==='off'){setAiConsent(null);setRanking({phase:'off'});void current.request('site.aiSwitch',{on:false}).catch(()=>{});return}
-  if(switching.current||!fromUserGesture(event))return;switching.current=true;setAiSwitchBusy(true);setError('');
+  * on a switch the browser reported fully visible, with the disclosure for the provider chosen here beside it. The background records
+  * that disclosure and the switch shows on once it has. */
+ setAiRanking:(value,event,shown)=>{const current=client.current;if(!isAiRanking(value)||!current||!connected)return;
+  if(value==='off'){setAiConsent(null);setRanking({phase:'off'});void current.request('site.aiSwitch',{on:false}).catch(()=>{if(alive.current&&client.current===current)setError('AI-matched results is off now, but Treatable could not save that. If the switch shows on the next time you open Treatable, turn it off again.')});return}
+  if(switching.current)return;
+  if(!fromUserGesture(event)){setError('To turn on AI-matched results, click the switch or press Space on it.');return}
+  if(shown!==true){setError('AI-matched results was not turned on because Treatable was not fully in view. Make sure nothing covers it, then try the switch again.');return}
+  switching.current=true;setAiSwitchBusy(true);setError('');
   void current.request('site.aiSwitch',{on:true,disclosure:provider}).then(result=>{if(!alive.current||client.current!==current)return;setAiConsent(isAiConsent(result?.consent)?result.consent:null);setRanking(undefined)}).catch(()=>{if(alive.current&&client.current===current)setError('AI-matched results could not be turned on. Try the switch again.')}).finally(()=>{switching.current=false;if(alive.current)setAiSwitchBusy(false)})},
  rankPage:(details,force=false)=>{if(!client.current||!connected)return;void client.current.request('site.aiRank',{details,...(force?{force:true}:{})}).catch(()=>{if(alive.current)setRanking({phase:'unavailable',failure:'UNEXPECTED_FAILURE'})})},
  setDisplayMode:value=>{if(!isDisplayMode(value))return;setDisplayModeState(value);prefs.current={...prefs.current,displayMode:value};void saveUiPrefs(uiPrefsArea(),prefs.current);if(client.current)void client.current.request('site.layout',{displayMode:value}).catch(()=>{})},

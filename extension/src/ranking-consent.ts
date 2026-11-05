@@ -21,7 +21,8 @@ export function rankingConsent(area:RankingConsentArea|undefined,root?:any):Rank
  return{
   async get(){if(!area)return null;try{const stored=await area.get(RANKING_CONSENT_KEY);return stored&&typeof stored==='object'&&Object.hasOwn(stored,RANKING_CONSENT_KEY)?parse((stored as Record<string,unknown>)[RANKING_CONSENT_KEY]):null}catch{return null}},
   async grant(consent){if(!area||!isAiConsent(consent))return false;try{await area.set({[RANKING_CONSENT_KEY]:RANKING_CONSENT_VALUES[consent]});return true}catch{return false}},
-  async revoke(){if(!area)return true;try{await area.remove(RANKING_CONSENT_KEY);return true}catch{return false}},
+  /* Turning the switch off must stick: a failed removal is tried twice more before it is reported. */
+  async revoke(){if(!area)return true;for(let attempt=0;attempt<3;attempt++){try{await area.remove(RANKING_CONSENT_KEY);return true}catch{}}return false},
   watch(listener){const source=root?.storage?.onChanged;if(!source||typeof source.addListener!=='function')return()=>{};const changed=(changes:Record<string,{newValue?:unknown}>,areaName:string)=>{if(areaName==='local'&&changes&&Object.hasOwn(changes,RANKING_CONSENT_KEY))listener(parse(changes[RANKING_CONSENT_KEY]?.newValue))};source.addListener(changed);return()=>source.removeListener?.(changed)},
  };
 }

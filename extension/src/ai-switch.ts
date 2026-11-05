@@ -19,6 +19,13 @@ export const AI_SWITCH_DISCLOSURE:Readonly<Record<ModelProvider,string>>=Object.
 /** Whether AI-matched results run for this provider. OpenAI ranking needs the switch turned on beside the OpenAI disclosure. The local
  * model sends nothing to OpenAI, so it runs when the switch was turned on beside either disclosure. */
 export function aiRankingFor(consent:AiConsent|null|undefined,provider:ModelProvider|undefined):AiRanking{return consent==='openai'||consent==='local'&&provider==='local'?'on':'off'}
+/**
+ * The overlay is a frame inside the ClinicalTrials.gov page, so script on that page could hide it, fade it or cover it with a decoy and
+ * line the switch up under something else. A turn-on therefore counts only when the browser reports the switch and its disclosure fully
+ * visible (IntersectionObserver with trackVisibility: not covered, faded, filtered or transformed by anything in the page or the frame)
+ * and has kept reporting that for at least this long.
+ */
+export const AI_SWITCH_MIN_SHOWN_MS=500;
 /** True only for a person's own click or key press on the switch: a trusted browser event while this frame has transient user activation.
  * A script that sets the switch, a synthetic event or a call without an event is not consent. */
 export function fromUserGesture(event:unknown):boolean{

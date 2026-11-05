@@ -152,6 +152,15 @@ test('no condition means record checks only, with nothing sent',async()=>{
  assert.equal(done(none.posts)!.note,'no_condition');assert.equal(none.native.sent.length,0);assert.equal(done(none.posts)!.applied,true);
 });
 
+test('choosing the local model while an OpenAI ranking is prepared sends nothing to OpenAI: the page is ranked again on this device',async()=>{
+ let provider:'openai'|'local'='openai';
+ const h=hostFake({reply:m=>{if(m.type==='prepareRank'&&!m.payload.provider){provider='local';return prepared(m)}return m.type==='prepareRank'?prepared(m,'local'):ranked(m,'local')}});
+ h.host.prefs=async()=>({displayMode:'popup',theme:'system',provider,localModel:'qwen3.5:9b'});
+ createRankService(h.host).start(1,details);await until(()=>!!done(h.posts));
+ assert.deepEqual(h.native.sent.map(m=>[m.type,m.payload.provider??null]),[['prepareRank',null],['prepareRank','local'],['executeRank',null]],'no executeRank for the OpenAI preparation');
+ assert.equal(h.native.ports[0].disconnected,true,'its helper connection is closed');assert.equal(done(h.posts)!.provider,'local');
+});
+
 test('a newer request supersedes a running one: the older run’s helper connection closes and it never sends',async()=>{
  let first=true;const h=hostFake({reply:m=>{if(m.type==='prepareRank'&&first){first=false;return undefined}return m.type==='prepareRank'?prepared(m):ranked(m)}});
  const service=createRankService(h.host);service.start(1,details);await until(()=>h.native.sent.length===1);

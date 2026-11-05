@@ -29,20 +29,27 @@ function mount({study,prefs=DEFAULT_UI_PREFS,consent=null}:{study?:string;prefs?
  const snapshot={generation:'g1',url,nctIds:study?[]:[A,B],diagnostic:'Two cards',supported:!study};
  const sitePort:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){sent.push(structuredClone(v));if(v.type==='site.authenticate'){queueMicrotask(()=>{messages.emit({type:'site.ready',snapshot,aiConsent:consent,...(study?{study:{nctId:study}}:{})})})}else queueMicrotask(()=>messages.emit({id:v.id,ok:true,result:v.type==='site.aiRank'?{started:true}:v.type==='site.aiSwitch'?{consent:v.payload.on?v.payload.disclosure:null}:{active:true}}))}};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{userActivation:activation}});
+ /* The browser's visibility reports for the switch row (IntersectionObserver with trackVisibility). */
+ const observers:any[]=[],oldObserver=Object.getOwnPropertyDescriptor(globalThis,'IntersectionObserver');
+ class FakeObserver{target:any;disconnected=false;constructor(public callback:(entries:any[])=>void,public options:any){observers.push(this)}observe(target:any){this.target=target}disconnect(){this.disconnected=true}}
+ Object.defineProperty(globalThis,'IntersectionObserver',{configurable:true,writable:true,value:FakeObserver});
+ /** Reports the switch row visible (or not) since `ms` ago to every live observer. */
+ const report=(isVisible:boolean,ms=1000)=>{for(const o of observers)if(!o.disconnected&&o.target)o.callback([{isVisible,time:performance.now()-ms,intersectionRatio:1}])};
  const applyPort:any={onMessage:new Events(),onDisconnect:new Events(),postMessage(){},disconnect(){}};
  const local={get:async(key:string)=>key===ONBOARDING_FLAG_KEY?{[key]:ONBOARDING_VERSION}:{},set:async()=>{},remove:async()=>{}},storageWrites:any[]=[];
  const runtime={connect:({name}:{name:string})=>{if(name==='treatable.site.overlay.v1')return sitePort;if(name==='treatable-apply-v1')return applyPort;throw Error('unexpected port '+name)},sendMessage:async()=>({ok:true}),getURL:(v:string)=>`chrome-extension://test/${v}`};
  for(const[key,value]of Object.entries({window:win,document:doc,chrome:{runtime,storage:{local:{...local,set:async(v:any)=>{storageWrites.push(v)}},session:local}}}))Object.defineProperty(globalThis,key,{configurable:true,value});
  captureSiteActivations(win);let renderer!:TestRenderer.ReactTestRenderer;
  const start=async()=>{await act(async()=>{renderer=TestRenderer.create(React.createElement(OverlayAssistant,{initialPrefs:prefs}),{createNodeMock:()=>({focus(){},scrollIntoView(){}})});const e=new Event('message');Object.assign(e,{source:parent,origin:'https://clinicaltrials.gov',data:{type:'treatable.site.activate',purpose:'overlay',capability:'a'.repeat(64)}});win.dispatchEvent(e)});await settle(5)};
- const restore=()=>{act(()=>renderer?.unmount());for(const[key,value]of Object.entries(old))Object.defineProperty(globalThis,key,{configurable:true,value});if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator)};
+ const restore=()=>{act(()=>renderer?.unmount());for(const[key,value]of Object.entries(old))Object.defineProperty(globalThis,key,{configurable:true,value});if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);if(oldObserver)Object.defineProperty(globalThis,'IntersectionObserver',oldObserver);else delete (globalThis as any).IntersectionObserver};
  const requests=(type:string)=>sent.filter(v=>v.type===type);
  const emitRanking=async(state:RankingState)=>{await act(async()=>{messages.emit({type:'site.ranking',state})});await settle()};
  const emit=async(v:any)=>{await act(async()=>{messages.emit(v)});await settle()};
  const toggle=()=>renderer.root.findAll(n=>n.type==='input'&&n.props.role==='switch')[0];
- /** Flips the switch as React would report it: `trusted` is the browser's isTrusted on the event; `active` the frame's user activation. */
- const flip=async(checked:boolean,{trusted=true,active=true}:{trusted?:boolean;active?:boolean}={})=>{activation.isActive=active;await act(async()=>toggle().props.onChange({target:{checked},nativeEvent:{isTrusted:trusted}}));activation.isActive=false;await settle()};
- return{start,restore,requests,emitRanking,emit,storageWrites,toggle,flip,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
+ /** Flips the switch as React would report it: `trusted` is the browser's isTrusted on the event; `active` the frame's user activation;
+  * `visible` whether the browser reports the switch row fully visible, and for how long (`visibleMs`). */
+ const flip=async(checked:boolean,{trusted=true,active=true,visible=true,visibleMs=1000}:{trusted?:boolean;active?:boolean;visible?:boolean;visibleMs?:number}={})=>{report(visible,visibleMs);activation.isActive=active;await act(async()=>toggle().props.onChange({target:{checked},nativeEvent:{isTrusted:trusted}}));activation.isActive=false;await settle()};
+ return{start,restore,requests,emitRanking,emit,storageWrites,toggle,flip,observers,root:()=>renderer.root,shown:()=>text(renderer.toJSON())};
 }
 
 test('default off: the switch is off on first open with its disclosure beside it, and nothing ranks; only the person’s own click turns it on',async()=>{
@@ -58,6 +65,18 @@ test('default off: the switch is off on first open with its disclosure beside it
   assert.deepEqual(m.requests('site.aiSwitch').map(v=>v.payload),[{on:true,disclosure:'openai'}],'the disclosure that was beside the switch is what the background records');
   assert.equal(m.toggle().props.checked,true);assert.equal(m.requests('site.aiRank').length,1,'ranking starts once it is on');
   assert.deepEqual(m.storageWrites,[],'the overlay never stores the switch itself');
+ }finally{m.restore()}
+});
+
+test('a click on a switch the page has covered, faded or only just shown is not consent',async()=>{
+ const m=mount();try{await m.start();
+  const observer=m.observers.find((o:any)=>!o.disconnected);assert.ok(observer,'the switch row is watched');assert.equal(observer.options.trackVisibility,true,'with the browser visibility check');assert.ok(observer.options.delay>=100);
+  await m.flip(true,{visible:false});assert.match(m.shown(),/was not turned on because Treatable was not fully in view/);
+  await m.flip(true,{visible:true,visibleMs:100});
+  assert.equal(m.requests('site.aiSwitch').length,0,'covered, faded or shown for less than half a second: nothing is turned on');assert.equal(m.toggle().props.checked,false);
+  assert.equal(m.toggle().props.disabled,false,'a pending turn-on never disables the switch, so keyboard focus stays on it');
+  /* The browser reports it hidden, then visible again a second ago: the time counts from when it became visible again. */
+  await m.flip(true,{visible:false});await m.flip(true);assert.deepEqual(m.requests('site.aiSwitch').map(v=>v.payload),[{on:true,disclosure:'openai'}],'shown, unobstructed, for long enough: it turns on');
  }finally{m.restore()}
 });
 
@@ -124,7 +143,8 @@ test('turning AI-matched results off takes effect at once, needs no gesture chec
   for(const bad of [{type:'site.aiConsent',consent:'anthropic'},{type:'site.aiConsent',consent:'openai',extra:1},{type:'site.aiConsent'}])await m.emit(bad);
   assert.equal(m.toggle().props.checked,false,'malformed reports change nothing');
  }finally{m.restore()}
- const old=mount({prefs:{...DEFAULT_UI_PREFS},consent:null});try{await old.start();await settle(1000);assert.equal(old.requests('site.aiRank').length,0);assert.match(old.shown(),/AI-matched results are off/)}finally{old.restore()}
+ /* Migration: preferences an earlier version saved with the switch on, and no switch record in the background, open with it off. */
+ const old=mount({prefs:{...DEFAULT_UI_PREFS,aiRanking:'on'},consent:null});try{await old.start();await settle(1000);assert.equal(old.toggle().props.checked,false);assert.equal(old.requests('site.aiRank').length,0);assert.match(old.shown(),/AI-matched results are off/)}finally{old.restore()}
 });
 
 test('a study page keeps the brief as the main action and never ranks',async()=>{

@@ -114,6 +114,8 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
     if(prepared.provider!==(local?'local':'openai')||JSON.stringify(prepared.nctIds)!==JSON.stringify(s.nctIds)||JSON.stringify(prepared.preview.profile)!==JSON.stringify(profile))throw new NativeOperationError('RESULT_MISMATCH');
     provider=prepared.provider;/* Display copy only: key-shaped text from public records is redacted, as in the study brief trace. */request=redactedTraceBody(prepared.preview.request,TRACE_ROOM);sent=prepared.preview.profile;
     if(!await allowed(prepared.provider)){post({phase:'off'});return}if(!alive())return;
+    /* The person chose another model provider while this was prepared: nothing goes to the old one; the page is ranked again with the new one. */
+    const latest=await host.prefs().catch(()=>undefined);if(!alive())return;if(latest?.provider!==prefs.provider){start(tabId,details,force);return}
     phase('scoring',total);attempted=true;const result=parseRankResult(await session.request('executeRank',{token:prepared.token,digest:prepared.digest},local?LOCAL_EXECUTE_TIMEOUT_MS:EXECUTE_TIMEOUT_MS));if(!alive())return;
     if(result.digest!==prepared.digest||result.provider!==prepared.provider||result.scores.length!==s.nctIds.length||result.scores.some(x=>!s.nctIds.includes(x.nctId)))throw new NativeOperationError('RESULT_MISMATCH');
     // A local model can fail for single studies; those stay unscored. If none was scored, the first failure explains why.
