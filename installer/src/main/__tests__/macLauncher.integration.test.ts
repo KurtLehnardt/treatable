@@ -6,10 +6,10 @@
  * macTray.integration.test.ts does for the background server.
  *
  * Nothing here touches anything real. The launcher is created in a throwaway
- * folder (GRANTED_APPLICATIONS_DIR), never ~/Applications; the Dock entry is
+ * folder (TREATABLE_APPLICATIONS_DIR), never ~/Applications; the Dock entry is
  * written to a throwaway `defaults` domain — a plist file of its own, chosen
- * by path (GRANTED_DOCK_DOMAIN) — never com.apple.dock, and the Dock is never
- * restarted (GRANTED_DOCK_RELOAD_CMD=none). The launcher-really-starts-Granted
+ * by path (TREATABLE_DOCK_DOMAIN) — never com.apple.dock, and the Dock is never
+ * restarted (TREATABLE_DOCK_RELOAD_CMD=none). The launcher-really-starts-Granted
  * test runs against the same kind of fake install macTray.integration.test.ts
  * uses: a throwaway LaunchAgent label, a tiny Node server standing in for
  * `npm run dev`, no menu-bar icon, and a stand-in for `open`.
@@ -33,16 +33,18 @@ const execFileAsync = promisify(execFile);
 
 // `npm test` runs from installer/; the scripts live in scaffold/.
 const MACOS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "macos");
-const WINDOWS_SCRIPTS = resolve(process.cwd(), "..", "scaffold", "scripts", "windows");
+const RUNTIME_MJS = resolve(process.cwd(), "..", "scaffold", "lib", "runtime.mjs");
 const LAUNCHER_SCRIPT = join(MACOS_SCRIPTS, "applications-launcher.sh");
-const TRAY_SCRIPT = join(MACOS_SCRIPTS, "granted-tray.sh");
-const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-granted.sh");
-const ICO = join(WINDOWS_SCRIPTS, "granted.ico");
-const GRANTED_HTML = "<title>Granted — federal funding intelligence for everyone</title>";
+const TRAY_SCRIPT = join(MACOS_SCRIPTS, "treatable-tray.sh");
+const OPEN_SCRIPT = join(MACOS_SCRIPTS, "open-treatable.sh");
+const ICO = join(MACOS_SCRIPTS, "treatable.ico");
+// The page the fake server serves: what the macOS scripts look for since
+// R-030 (treatable-tray.sh's probe_server wants "Treatable").
+const TREATABLE_HTML = "<title>Treatable — Find a study. Find a next step.</title>";
 // Not 3000, and not macTray.integration.test.ts's 3977: a real Granted (or
 // that test) must never be mistaken for this one's fake server.
 const PORT = 3975;
-const BUNDLE_ID = "io.github.kurtlehnardt.granted.launcher";
+const BUNDLE_ID = "io.github.kurtlehnardt.treatable.launcher";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -96,17 +98,21 @@ async function setUpFakeInstall(): Promise<FakeInstall> {
   const root = realpathSync(await mkdtemp(join(tmpdir(), "granted-mac-launcher-it-")));
   const scaffold = join(root, "granted", "scaffold");
   mkdirSync(join(scaffold, "scripts", "macos"), { recursive: true });
+  // scaffold/lib/runtime.mjs, as a real install has it: the macOS scripts read
+  // the app's default port (APP_PORT) from it when no --port is given.
+  mkdirSync(join(scaffold, "lib"), { recursive: true });
+  await writeFile(join(scaffold, "lib", "runtime.mjs"), readFileSync(RUNTIME_MJS, "utf8"), "utf8");
   mkdirSync(join(scaffold, "scripts", "windows"), { recursive: true });
   mkdirSync(join(root, "LaunchAgents"), { recursive: true });
   for (const [from, to] of [
     [LAUNCHER_SCRIPT, join(scaffold, "scripts", "macos", "applications-launcher.sh")],
-    [TRAY_SCRIPT, join(scaffold, "scripts", "macos", "granted-tray.sh")],
-    [OPEN_SCRIPT, join(scaffold, "scripts", "macos", "open-granted.sh")],
+    [TRAY_SCRIPT, join(scaffold, "scripts", "macos", "treatable-tray.sh")],
+    [OPEN_SCRIPT, join(scaffold, "scripts", "macos", "open-treatable.sh")],
   ] as const) {
     await writeFile(to, readFileSync(from, "utf8"), "utf8");
   }
   // The icon the launcher converts, where a real install has it.
-  await writeFile(join(scaffold, "scripts", "windows", "granted.ico"), readFileSync(ICO));
+  await writeFile(join(scaffold, "scripts", "macos", "treatable.ico"), readFileSync(ICO));
   await writeFile(
     join(scaffold, "package.json"),
     JSON.stringify({
@@ -114,7 +120,7 @@ async function setUpFakeInstall(): Promise<FakeInstall> {
       private: true,
       version: "9.8.7",
       // build + start, not dev: the tray builds when there is no current
-      // production build and then starts that build (see granted-tray.sh).
+      // production build and then starts that build (see treatable-tray.sh).
       scripts: { dev: "node fake-dev.js", build: "node fake-build.js", start: "node fake-dev.js" },
     }),
     "utf8",
@@ -125,14 +131,14 @@ async function setUpFakeInstall(): Promise<FakeInstall> {
       "const port = Number(process.env.PORT);",
       'if (!port) { console.error("fake dev server: PORT not set"); process.exit(1); }',
       'require("node:http")',
-      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(GRANTED_HTML)}); })`,
+      `  .createServer((_req, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(${JSON.stringify(TREATABLE_HTML)}); })`,
       '  .listen(port, "127.0.0.1", () => console.log("fake Granted listening on 127.0.0.1:" + port));',
     ].join("\n"),
     "utf8",
   );
   await writeFile(
     join(scaffold, "fake-build.js"),
-    // Stand-in for `next build`: writes the .next/BUILD_ID that granted-tray.sh's
+    // Stand-in for `next build`: writes the .next/BUILD_ID that treatable-tray.sh's
     // needs_build (and its Windows and installer counterparts) treat as "a
     // production build is present", so the real build-then-start flow is
     // exercised without a real Next.js compile.
@@ -148,32 +154,32 @@ async function setUpFakeInstall(): Promise<FakeInstall> {
   const openedLog = join(root, "opened.log");
   const openCmd = join(root, "fake-open.sh");
   await writeFile(openCmd, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(openedLog)}\n`, { mode: 0o755 });
-  const label = `com.granted.test.${randomUUID()}`;
+  const label = `com.treatable.test.${randomUUID()}`;
   const applicationsDir = join(root, "Applications");
   const env = {
-    GRANTED_APPLICATIONS_DIR: applicationsDir,
+    TREATABLE_APPLICATIONS_DIR: applicationsDir,
     // A path, not com.apple.dock: `defaults` then reads and writes exactly
     // this file and nothing else.
-    GRANTED_DOCK_DOMAIN: join(root, "testdock"),
+    TREATABLE_DOCK_DOMAIN: join(root, "testdock"),
     // The user's real Dock must never be restarted by a test.
-    GRANTED_DOCK_RELOAD_CMD: "none",
-    GRANTED_LAUNCH_LABEL: label,
-    GRANTED_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
-    GRANTED_LOG_DIR: join(root, "logs"),
-    GRANTED_SETTINGS_PATH: join(root, "support", "settings.json"),
-    GRANTED_MENUBAR_HELPER: "none",
-    GRANTED_APP_BROWSER: "none",
-    GRANTED_OPEN_CMD: openCmd,
+    TREATABLE_DOCK_RELOAD_CMD: "none",
+    TREATABLE_LAUNCH_LABEL: label,
+    TREATABLE_LAUNCH_AGENTS_DIR: join(root, "LaunchAgents"),
+    TREATABLE_LOG_DIR: join(root, "logs"),
+    TREATABLE_SETTINGS_PATH: join(root, "support", "settings.json"),
+    TREATABLE_MENUBAR_HELPER: "none",
+    TREATABLE_APP_BROWSER: "none",
+    TREATABLE_OPEN_CMD: openCmd,
     // An osascript alert would wait for a click that never comes.
-    GRANTED_LAUNCHER_ALERT: "none",
+    TREATABLE_LAUNCHER_ALERT: "none",
   };
   return {
     root,
     scaffold,
     launcherScript: join(scaffold, "scripts", "macos", "applications-launcher.sh"),
     applicationsDir,
-    appPath: join(applicationsDir, "Granted.app"),
-    dockDomain: env.GRANTED_DOCK_DOMAIN,
+    appPath: join(applicationsDir, "Treatable.app"),
+    dockDomain: env.TREATABLE_DOCK_DOMAIN,
     label,
     openedLog,
     env,
@@ -181,7 +187,7 @@ async function setUpFakeInstall(): Promise<FakeInstall> {
       // Whatever the test left running: stop the server and unregister the
       // throwaway label, directly as well as through the script.
       try {
-        execFileSync("/bin/bash", [join(scaffold, "scripts", "macos", "granted-tray.sh"), "stop", "--port", String(PORT)], {
+        execFileSync("/bin/bash", [join(scaffold, "scripts", "macos", "treatable-tray.sh"), "stop", "--port", String(PORT)], {
           stdio: "ignore",
           env: { ...process.env, ...env },
         });
@@ -213,7 +219,7 @@ test(
       .filter((line) => !/^\s*#/.test(line))
       .join("\n");
     // Per-user, no admin rights: ~/Applications, never /Applications.
-    assert.match(script, /GRANTED_APPLICATIONS_DIR:-\$HOME\/Applications/);
+    assert.match(script, /TREATABLE_APPLICATIONS_DIR:-\$HOME\/Applications/);
     assert.ok(!/APPLICATIONS_DIR="\/Applications"/.test(script), "never the system-wide /Applications");
     // Every destructive path is guarded by the bundle's own identifier.
     assert.match(script, /is_our_bundle/);
@@ -226,7 +232,7 @@ test(
     assert.ok(!code.includes("System Events"), "no AppleScript UI scripting");
     // And the Dock restart is overridable, so a test can never restart the
     // machine's real Dock.
-    assert.match(code, /GRANTED_DOCK_RELOAD_CMD-killall Dock/);
+    assert.match(code, /TREATABLE_DOCK_RELOAD_CMD-killall Dock/);
     // REGRESSION (real hardware): the restart has to be waited for. A Dock
     // that is still starting up has not read the change yet, and writes its
     // startup copy of persistent-apps back the next time it is asked to quit
@@ -241,7 +247,7 @@ test(
     // It is repeated here as a plain string check because this file's CI has
     // no macOS runner: without LSUIElement, launchd tears the launcher's whole
     // job down a second or two after the script exits and kills the
-    // granted-tray.sh it just started, so a real double-click never opens
+    // treatable-tray.sh it just started, so a real double-click never opens
     // Granted. Deleting the key from the template has to fail somewhere that
     // actually runs.
     assert.ok(code.includes("<key>LSUIElement</key>"), "the generated Info.plist declares LSUIElement");
@@ -301,8 +307,8 @@ describe(
       // The bundle's shape.
       const contents = join(fake.appPath, "Contents");
       assert.ok(existsSync(join(contents, "Info.plist")), "Contents/Info.plist");
-      assert.ok(existsSync(join(contents, "MacOS", "Granted")), "Contents/MacOS/<executable>");
-      assert.ok(existsSync(join(contents, "Resources", "granted.icns")), "Contents/Resources/<icon>.icns");
+      assert.ok(existsSync(join(contents, "MacOS", "Treatable")), "Contents/MacOS/<executable>");
+      assert.ok(existsSync(join(contents, "Resources", "treatable.icns")), "Contents/Resources/<icon>.icns");
       assert.equal(readFileSync(join(contents, "PkgInfo"), "utf8"), "APPL????");
 
       // The Info.plist is a plist as far as the system is concerned, and says
@@ -312,13 +318,13 @@ describe(
         execFileSync("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, join(contents, "Info.plist")], { encoding: "utf8" }).trim();
       assert.equal(plist("CFBundleIdentifier"), BUNDLE_ID);
       assert.equal(plist("CFBundlePackageType"), "APPL");
-      assert.equal(plist("CFBundleExecutable"), "Granted");
-      assert.equal(plist("CFBundleIconFile"), "granted");
-      assert.equal(plist("CFBundleName"), "Granted");
+      assert.equal(plist("CFBundleExecutable"), "Treatable");
+      assert.equal(plist("CFBundleIconFile"), "treatable");
+      assert.equal(plist("CFBundleName"), "Treatable");
       // REGRESSION (real hardware). LSUIElement is what keeps a Dock or
       // Finder launch working at all: without it, launchd tears down the
       // app's whole job a second after this launcher exits and kills the
-      // granted-tray.sh it started — so the menu-bar icon would flash and
+      // treatable-tray.sh it started — so the menu-bar icon would flash and
       // vanish and Granted would never open, while the server (launchd's own
       // child) carried on, which is what made the first real double-click
       // look half-working rather than broken. Measured on this Mac: nohup, a
@@ -330,22 +336,22 @@ describe(
 
       // The executable really is executable (double-clicking it is the whole
       // point), and is this install's own tray script with this port.
-      const exe = join(contents, "MacOS", "Granted");
+      const exe = join(contents, "MacOS", "Treatable");
       assert.ok(statSync(exe).mode & 0o111, "the bundle's executable has its execute bits");
       const text = readFileSync(exe, "utf8");
-      assert.ok(text.includes(join(fake.scaffold, "scripts", "macos", "granted-tray.sh")), "it runs this install's tray script");
+      assert.ok(text.includes(join(fake.scaffold, "scripts", "macos", "treatable-tray.sh")), "it runs this install's tray script");
       assert.match(text, new RegExp(`--port ${PORT}`));
       assert.match(text, /start --open-browser/, "one click starts the background server and opens Granted");
 
       // A real .icns, as the system reads it — not just a file with the right name.
-      const { stdout: icnsInfo } = await execFileAsync("/usr/bin/file", [join(contents, "Resources", "granted.icns")]);
+      const { stdout: icnsInfo } = await execFileAsync("/usr/bin/file", [join(contents, "Resources", "treatable.icns")]);
       assert.match(icnsInfo, /Mac OS X icon/);
       const { stdout: sizes } = await execFileAsync("/usr/bin/sips", [
         "-g",
         "pixelWidth",
         "-g",
         "pixelHeight",
-        join(contents, "Resources", "granted.icns"),
+        join(contents, "Resources", "treatable.icns"),
       ]);
       assert.match(sizes, /pixelWidth: 256/);
       assert.match(sizes, /pixelHeight: 256/);
@@ -367,11 +373,11 @@ describe(
       const { stdout: noIcon } = await execFileAsync(
         "/bin/bash",
         [fake.launcherScript, "install", "--port", String(PORT)],
-        { env: { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: other, GRANTED_LAUNCHER_ICO: join(fake.root, "nope.ico") } },
+        { env: { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: other, TREATABLE_LAUNCHER_ICO: join(fake.root, "nope.ico") } },
       );
-      assert.deepEqual(parseLauncherOutput(noIcon), { launcher: join(other, "Granted.app"), icon: false, dock: "skipped" });
-      assert.ok(existsSync(join(other, "Granted.app", "Contents", "MacOS", "Granted")), "the launcher is still there");
-      assert.ok(!existsSync(join(other, "Granted.app", "Contents", "Resources", "granted.icns")), "with no icon");
+      assert.deepEqual(parseLauncherOutput(noIcon), { launcher: join(other, "Treatable.app"), icon: false, dock: "skipped" });
+      assert.ok(existsSync(join(other, "Treatable.app", "Contents", "MacOS", "Treatable")), "the launcher is still there");
+      assert.ok(!existsSync(join(other, "Treatable.app", "Contents", "Resources", "treatable.icns")), "with no icon");
     });
 
     test("install --add-to-dock: one tile is added to the Dock's persistent-apps, and re-running it adds no second copy", async () => {
@@ -436,8 +442,8 @@ describe(
       // tile, and remove-from-dock answered "absent" and left the real one
       // sitting in the Dock.
       const weird = join(fake.root, "100%added");
-      const env = { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: weird };
-      const app = join(weird, "Granted.app");
+      const env = { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: weird };
+      const app = join(weird, "Treatable.app");
       const run = (...args: string[]): Promise<{ stdout: string; stderr: string }> =>
         execFileAsync("/bin/bash", [fake.launcherScript, ...args], { env, timeout: 120_000 });
 
@@ -485,7 +491,7 @@ describe(
       const unused = join(fake.root, "NeverInstalled");
       const run = (...args: string[]): Promise<unknown> =>
         execFileAsync("/bin/bash", [fake.launcherScript, ...args], {
-          env: { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: unused },
+          env: { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: unused },
         });
       const refused = async (args: string[], what: string): Promise<void> => {
         const failed = await fails(() => run(...args));
@@ -502,30 +508,30 @@ describe(
       const bare = await fails(() => run("install", "--port"));
       assert.equal(bare.code, 64);
       assert.match(bare.message, /--port needs a value/);
-      assert.ok(!existsSync(join(unused, "Granted.app")), "and none of that created a launcher");
+      assert.ok(!existsSync(join(unused, "Treatable.app")), "and none of that created a launcher");
     });
 
-    test("something else already at ~/Applications/Granted.app is refused, not overwritten or deleted", async () => {
+    test("something else already at ~/Applications/Treatable.app is refused, not overwritten or deleted", async () => {
       const mine = join(fake.root, "SomeoneElse");
-      const theirs = join(mine, "Granted.app");
+      const theirs = join(mine, "Treatable.app");
       mkdirSync(join(theirs, "Contents"), { recursive: true });
       await writeFile(join(theirs, "Contents", "Info.plist"), "<plist><dict/></plist>", "utf8");
       await writeFile(join(theirs, "important.txt"), "not ours", "utf8");
       await assert.rejects(
         () =>
           execFileAsync("/bin/bash", [fake.launcherScript, "install"], {
-            env: { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: mine },
+            env: { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: mine },
           }),
-        /isn't Granted's launcher/,
+        /isn't Treatable's launcher/,
       );
       assert.equal(readFileSync(join(theirs, "important.txt"), "utf8"), "not ours", "it was left completely alone");
       // And `remove` refuses it too.
       await assert.rejects(
         () =>
           execFileAsync("/bin/bash", [fake.launcherScript, "remove"], {
-            env: { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: mine },
+            env: { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: mine },
           }),
-        /isn't Granted's launcher/,
+        /isn't Treatable's launcher/,
       );
       assert.ok(existsSync(theirs));
     });
@@ -541,22 +547,22 @@ describe(
 
     test("running the launcher — what a double-click does — really starts the background server and opens Granted", async () => {
       await launcher("install", "--port", String(PORT));
-      const exe = join(fake.appPath, "Contents", "MacOS", "Granted");
+      const exe = join(fake.appPath, "Contents", "MacOS", "Treatable");
 
       // Exactly what Finder or the Dock does: run the bundle's executable.
       // It returns at once (it detaches the tray script on purpose), so what
       // it started has to be waited for afterwards.
       await execFileAsync(exe, [], { env: { ...process.env, ...fake.env }, timeout: 30_000 });
 
-      // The real granted-tray.sh really started the real LaunchAgent, and the
+      // The real treatable-tray.sh really started the real LaunchAgent, and the
       // server really answers.
       assert.equal(await until(() => probeGranted(`http://127.0.0.1:${PORT}/`, 3000), (p) => p === "granted"), "granted");
       const loaded = execFileSync("launchctl", ["print", `gui/${process.getuid?.() ?? 0}/${fake.label}`], { encoding: "utf8" });
       assert.match(loaded, /state = running/, "the throwaway LaunchAgent is running the server");
       assert.match(readFileSync(join(fake.root, "logs", `server-${PORT}.log`), "utf8"), /fake Granted listening/);
 
-      // And it opened Granted: with no app-mode browser (GRANTED_APP_BROWSER
-      // =none), open-granted.sh falls back to `open`, whose stand-in logs what
+      // And it opened Granted: with no app-mode browser (TREATABLE_APP_BROWSER
+      // =none), open-treatable.sh falls back to `open`, whose stand-in logs what
       // it was asked for.
       const opened = await until(
         async () => (existsSync(fake.openedLog) ? readFileSync(fake.openedLog, "utf8") : ""),
@@ -566,10 +572,10 @@ describe(
       assert.match(opened, new RegExp(`http://localhost:${PORT}`), "Granted was opened");
 
       // The launcher logs what it did, in the log folder the tray uses.
-      assert.match(readFileSync(join(fake.root, "logs", "launcher.log"), "utf8"), new RegExp(`starting Granted on port ${PORT}`));
+      assert.match(readFileSync(join(fake.root, "logs", "launcher.log"), "utf8"), new RegExp(`starting Treatable on port ${PORT}`));
 
       // Leave nothing running or registered.
-      execFileSync("/bin/bash", [join(fake.scaffold, "scripts", "macos", "granted-tray.sh"), "stop", "--port", String(PORT)], {
+      execFileSync("/bin/bash", [join(fake.scaffold, "scripts", "macos", "treatable-tray.sh"), "stop", "--port", String(PORT)], {
         stdio: "ignore",
         env: { ...process.env, ...fake.env },
       });
@@ -579,18 +585,18 @@ describe(
     test("a launcher whose install folder has gone says so instead of failing silently", async () => {
       const gone = join(fake.root, "Gone");
       await execFileAsync("/bin/bash", [fake.launcherScript, "install"], {
-        env: { ...process.env, ...fake.env, GRANTED_APPLICATIONS_DIR: gone },
+        env: { ...process.env, ...fake.env, TREATABLE_APPLICATIONS_DIR: gone },
       });
-      const exe = join(gone, "Granted.app", "Contents", "MacOS", "Granted");
+      const exe = join(gone, "Treatable.app", "Contents", "MacOS", "Treatable");
       // Rewritten to point at a tray script that doesn't exist — the same
       // thing a deleted or moved install does to a real launcher.
       const text = readFileSync(exe, "utf8").replace(
-        join(fake.scaffold, "scripts", "macos", "granted-tray.sh"),
-        join(fake.root, "deleted", "granted-tray.sh"),
+        join(fake.scaffold, "scripts", "macos", "treatable-tray.sh"),
+        join(fake.root, "deleted", "treatable-tray.sh"),
       );
       await writeFile(exe, text, { mode: 0o755 });
       await assert.rejects(() => execFileAsync(exe, [], { env: { ...process.env, ...fake.env } }));
-      assert.match(readFileSync(join(fake.root, "logs", "launcher.log"), "utf8"), /is gone -- Granted was moved or deleted/);
+      assert.match(readFileSync(join(fake.root, "logs", "launcher.log"), "utf8"), /is gone -- Treatable was moved or deleted/);
     });
   },
 );

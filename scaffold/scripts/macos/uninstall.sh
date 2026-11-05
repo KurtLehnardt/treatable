@@ -190,7 +190,15 @@ KEEP_KEYS=1
 # secrets, and --no-keep-keys means do not write them anywhere.
 KEEP_KEYS_GIVEN=0
 BACKUP_DIR=""
-PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCRIPT_DIR/../../lib/runtime.mjs")}"
+# The port: --port, else $TREATABLE_PORT, else the app's own APP_PORT
+# (scaffold/lib/runtime.mjs). Looked up only when neither was given, after the
+# options are read: reading APP_PORT needs node on PATH and this install's
+# lib/, and a caller that passes --port (the ~/Applications launcher, started
+# from Finder with launchd's minimal PATH) must not depend on either.
+# PORT_GIVEN keeps an explicitly empty --port '' an error, as in
+# applications-launcher.sh.
+PORT=""
+PORT_GIVEN=0
 
 # An option that takes a value must actually have been given one, and must say
 # so when it wasn't -- the same guard, for the same reason, as
@@ -208,7 +216,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --install-dir) need_value "$#" --install-dir; INSTALL_DIR="$2"; shift 2 ;;
     --backup-dir) need_value "$#" --backup-dir; BACKUP_DIR="$2"; shift 2 ;;
-    --port) need_value "$#" --port; PORT="$2"; shift 2 ;;
+    --port) need_value "$#" --port; PORT="$2"; PORT_GIVEN=1; shift 2 ;;
     --quiet) QUIET=1; shift ;;
     --force) FORCE=1; shift ;;
     --confirmed) CONFIRMED=1; shift ;;
@@ -219,6 +227,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ "$PORT_GIVEN" = "0" ]; then PORT="${TREATABLE_PORT:-$(node --input-type=module -e 'const {APP_PORT}=await import(process.argv[1]); console.log(APP_PORT)' "$SCRIPT_DIR/../../lib/runtime.mjs")}"; fi
 case "$PORT" in
   ''|*[!0-9]*) bad_input "--port must be a number (got $PORT)" ;;
 esac
