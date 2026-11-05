@@ -13,7 +13,7 @@ import{mergeRanking,rankConditions,recordChecks,type RankedStudy,type StudyFacts
 import type{RankingNote,RankingState}from'./rank-state';
 import type{RankingConsent}from'./ranking-consent';
 import type{SiteSnapshot}from'./site-contract';
-import{readSiteSearchUrl}from'./site-search';
+import{readSiteCondition}from'./site-search';
 import type{UiPrefs}from'./ui-prefs';
 export const RANK_NATIVE_HOST='com.treatable.local';
 /** Ranked results stay in extension memory for the length of a Treatable session, so the page order can be put back without asking a model again. */
@@ -90,7 +90,7 @@ export function createRankService(host:RankHost,{now=()=>Date.now()}:{now?:()=>n
   const s=await host.snapshot(tabId);if(!alive())return;
   if(!s.supported||!s.nctIds.length){post({phase:'unavailable',note:'no_cards',total:0});return}
   if(s.nctIds.length>RANK_MAX_STUDIES){post({phase:'unavailable',note:'too_many',total:s.nctIds.length});return}
-  let cond:unknown;try{cond=readSiteSearchUrl(s.url).cond}catch{}
+  let cond:unknown;try{cond=readSiteCondition(s.url)}catch{}
   // Relevance needs only the condition terms. The age band and sex stay on this device and feed the record checks alone.
   const conditions=rankConditions(cond,details.terms??[]),profile:RankProfile|undefined=conditions.length?{conditions}:undefined;
   const key=JSON.stringify({url:s.url,ids:s.nctIds,conditions,ageBand:details.ageBand??null,sex:details.sex??null,provider:prefs.provider,model:prefs.provider==='local'?prefs.localModel:null}),cached=cache.get(tabId);

@@ -1,9 +1,20 @@
 import test from'node:test';import assert from'node:assert/strict';
-import{SITE_FILTERS}from'../src/site-filter-catalog';import{buildSiteSearchUrl,readSiteSearchUrl,parseSiteSearchFilters}from'../src/site-search';import{parseSiteRequest}from'../src/site-contract';
-test('complete user search/filter inventory has stable unique fields',()=>{assert.equal(SITE_FILTERS.length,28);assert.equal(new Set(SITE_FILTERS.map(f=>f.key)).size,28);for(const key of ['cond','term','intr','loc','status','sex','ages','manualAge','healthy','phase','studyType','results','docs','funderType','start','primComp','firstPost','resFirstPost','lastUpdPost','studyComp','titles','outc','spons','lead','id','locn','violation','ressub'])assert.ok(SITE_FILTERS.some(f=>f.key===key));});
-test('actual website text queries encoded as values, not executable extra parameters',()=>{const url=new URL(buildSiteSearchUrl({cond:'線維筋痛症',term:'pain & aggFilters=status:all',intr:'physical therapy'}));assert.equal(url.origin,'https://clinicaltrials.gov');assert.equal(url.pathname,'/search');assert.equal(url.searchParams.get('cond'),'線維筋痛症');assert.equal(url.searchParams.get('term'),'pain & aggFilters=status:all');assert.equal(url.searchParams.has('aggFilters'),false);});
-test('verified aggregate options and dates round trip through official serialization',()=>{const input={status:['not','rec'],sex:'f',ages:['adult','older'],healthy:true,phase:['2','3'],studyType:['obs_patreg','exp_indiv'],results:['with'],docs:['prot','sap','icf'],funderType:['nih','fed'],violation:true,ressub:'c',start:{from:'2024-02-29',to:'2026-10-24'}};const url=buildSiteSearchUrl(input);assert.deepEqual(readSiteSearchUrl(url),input);assert.equal(new URL(url).searchParams.get('aggFilters'),'ages:adult older,docs:prot sap icf,funderType:nih fed,healthy:y,phase:2 3,ressub:c,results:with,sex:f,status:not rec,studyType:obs_patreg exp_indiv,violation:y');});
-test('manual ages retain units, reject reversed or conflicting ranges',()=>{const f={manualAge:{from:'6',to:'18',fromUnit:'M' as const,toUnit:'y' as const}};assert.deepEqual(readSiteSearchUrl(buildSiteSearchUrl(f)),f);for(const input of [{manualAge:{from:'18',to:'2'}},{manualAge:{from:'1e2',to:'120'}},{manualAge:{from:'1',to:'2'},ages:['adult']},{manualAge:{from:0,to:0}},{manualAge:{from:'1'}}])assert.throws(()=>buildSiteSearchUrl(input));});
-test('invalid dates, options and invisible controls fail without echoing inputs',()=>{for(const input of [{start:{from:'2025-02-29'}},{firstPost:{from:'2026-10-25',to:'2026-10-24'}},{start:{from:false}},{status:['rec','rec']},{healthy:'yes'},{cond:'private\u202Etext'},{endpoint:'https://evil.test'}])assert.throws(()=>parseSiteSearchFilters(input));});
-test('location requires verified coordinates; valid zero coordinates preserved',()=>{assert.throws(()=>buildSiteSearchUrl({loc:{text:'Boise'}}));const url=new URL(buildSiteSearchUrl({loc:{text:'zero',lat:0,lng:0,distance:50}}));assert.equal(url.searchParams.get('lat'),'0');assert.equal(url.searchParams.get('lng'),'0');assert.equal(url.searchParams.get('distance'),'50');assert.throws(()=>buildSiteSearchUrl({loc:{text:'bad',lat:91,lng:0}}));});
+import{readSiteCondition}from'../src/site-search';import{parseSiteRequest}from'../src/site-contract';
 test('cross-context request rejects unknown keys, oversized values and coercible IDs',()=>{assert.equal(parseSiteRequest({id:'abc',type:'site.snapshot',payload:{}}).id,'abc');for(const input of [{id:123,type:'site.snapshot',payload:{}},{id:'abc',type:'site.snapshot',payload:{},secret:'bad'},{id:'abc',type:'site.snapshot',payload:{x:'a'.repeat(140000)}}])assert.throws(()=>parseSiteRequest(input));});
+test('the removed in-overlay search messages are rejected, not silently accepted',()=>{
+ for(const type of ['site.search','site.availability'])assert.throws(()=>parseSiteRequest({id:'abc',type,payload:{}}),/Invalid site operation/,type);
+ assert.throws(()=>parseSiteRequest({id:'abc',type:'site.search',payload:{filters:{cond:'asthma'}}}));
+});
+test('the site request allow-list still carries every message the remaining features send',()=>{
+ for(const type of ['site.snapshot','site.layout','site.restore','site.close','site.fetch','site.rank','site.openPrivate','site.diagnostics','site.endMatching','site.ping','site.guide','site.openSearch','site.aiRank','site.aiRankStop','site.hide'])assert.equal(parseSiteRequest({id:'abc',type,payload:{}}).type,type);
+});
+test('readSiteCondition reads only the website cond parameter and ignores every other filter',()=>{
+ assert.equal(readSiteCondition('https://clinicaltrials.gov/search?cond=asthma&term=x&locStr=83702&lat=1&lng=2&aggFilters=status:rec'),'asthma');
+ assert.equal(readSiteCondition('https://clinicaltrials.gov/search?cond=%E7%B7%9A%E7%B6%AD%E7%AD%8B%E7%97%9B%E7%97%87'),'線維筋痛症');
+ assert.equal(readSiteCondition('https://clinicaltrials.gov/search?cond=%20%20'),undefined);
+ assert.equal(readSiteCondition('https://clinicaltrials.gov/search?term=pain'),undefined);
+ assert.equal(readSiteCondition('https://clinicaltrials.gov/'),undefined);
+});
+test('readSiteCondition fails on control characters, bidirectional overrides and oversized text without echoing them',()=>{
+ for(const bad of ['private%00','a%E2%80%AEb','%E2%81%A6x','a'.repeat(501)])assert.throws(()=>readSiteCondition('https://clinicaltrials.gov/search?cond='+bad),(e:any)=>e.message==='Invalid search text');
+});

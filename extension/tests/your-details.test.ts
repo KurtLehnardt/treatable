@@ -5,7 +5,6 @@ import {useApply,type ApplyController,type ApplyEnv} from '../src/use-apply';
 import {ApplyView} from '../src/apply-view';
 import {OverlayAssistant} from '../src/overlay-app';
 import {captureSiteActivations} from '../src/overlay-port';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 import {installSiteAssistant} from '../src/site-background';
 import {installApplyBroker,APPLY_PORT} from '../src/apply-background';
 import {buildApplyPlan} from '../src/apply-plan';
@@ -50,7 +49,7 @@ test('details fill the email, call script and follow-up message; a per-study nam
 test('settings fields edit the session store; Clear and ending the Treatable session wipe them',async(t)=>{
  const old={window:(globalThis as any).window,document:(globalThis as any).document,chrome:(globalThis as any).chrome};const win:any=new EventTarget(),doc:any=new EventTarget(),parent={postMessage(){}};win.parent=parent;doc.visibilityState='visible';doc.hidden=false;
  const messages=new Events(),storageCalls:string[]=[],area=new Proxy({},{get:(_t,key)=>(...args:unknown[])=>{/* The intro tour's own two keys are allowed; any other storage use by the details panel is a failure. */if(!JSON.stringify(args).includes('treatable.onboarding'))storageCalls.push(String(key));throw Error('storage prohibited')}});
- const sitePort:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){if(v.type==='site.authenticate')messages.emit({type:'site.ready',snapshot:{generation:'g',url:'https://clinicaltrials.gov/search?cond=x',nctIds:[],diagnostic:'',supported:false},filters:SITE_FILTERS,search:{}});else messages.emit({id:v.id,ok:true,result:{active:true}})}};
+ const sitePort:any={onMessage:messages,onDisconnect:new Events(),disconnect(){},postMessage(v:any){if(v.type==='site.authenticate')messages.emit({type:'site.ready',snapshot:{generation:'g',url:'https://clinicaltrials.gov/search?cond=x',nctIds:[],diagnostic:'',supported:false}});else messages.emit({id:v.id,ok:true,result:{active:true}})}};
  const applyPort:any={onMessage:new Events(),onDisconnect:new Events(),postMessage(){},disconnect(){}};
  const runtime={connect:({name}:{name:string})=>{if(name==='treatable.site.overlay.v1')return sitePort;if(name==='treatable-apply-v1')return applyPort;throw Error('unexpected port '+name)},sendMessage:async()=>({ok:true}),getURL:(v:string)=>`chrome-extension://test/${v}`};
  for(const[key,value]of Object.entries({window:win,document:doc,chrome:{runtime,storage:{local:area,session:area}}}))Object.defineProperty(globalThis,key,{configurable:true,value});captureSiteActivations(win);let renderer!:TestRenderer.ReactTestRenderer;

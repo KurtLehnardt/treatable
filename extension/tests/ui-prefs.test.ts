@@ -10,7 +10,6 @@ import {OverlayView} from '../src/overlay-view';
 import {ScoreBadgeClient} from '../src/score-badge-client';
 import {installSiteContent} from '../src/site-content';
 import {captureSiteActivations} from '../src/overlay-port';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 
 const flush = async () => {await new Promise<void>(r => setImmediate(r)); await new Promise<void>(r => setImmediate(r))};
 const DEFAULTS: UiPrefs = {displayMode: 'popup', theme: 'system', provider: 'openai', localModel: null, aiRanking: 'on'};
@@ -160,7 +159,7 @@ class FakePort {
  emit(v: any) {for (const f of this.listeners) f(v)}
  postMessage(v: any) {
   this.messages.push(structuredClone(v));
-  if (v.type === 'site.authenticate') {queueMicrotask(() => this.emit({type: 'site.ready', snapshot, filters: SITE_FILTERS, search: {}})); return}
+  if (v.type === 'site.authenticate') {queueMicrotask(() => this.emit({type: 'site.ready', snapshot})); return}
   queueMicrotask(() => this.emit({id: v.id, ok: true, result: {}}));
  }
  disconnect() {if (this.closed) return; this.closed = true; for (const f of this.ends) f()}
@@ -285,21 +284,16 @@ test('invalid values and missing storage never break the overlay or write anythi
  act(() => broken.renderer.unmount());
 });
 
-test('End session clears the search but keeps the display preferences, and no search text reaches storage', async () => {
+test('End session keeps the display preferences, and nothing but them reaches storage', async () => {
  const area = fakeArea();
  const session = await mount(area, await loadUiPrefs(area));
  act(() => latest.setTheme('dark'));
- act(() => latest.setField('cond', 'PRIVATE_QUERY_CANARY'));
- await act(async () => latest.search());
- assert.equal(latest.fields.cond, 'PRIVATE_QUERY_CANARY');
  await act(async () => {latest.close(); await flush()});
- assert.deepEqual(latest.fields, {});
  assert.equal(latest.connected, false);
  assert.equal(latest.ended, true);
  assert.equal(latest.theme, 'dark', 'ending the session does not reset the theme');
  assert.deepEqual(area.store.get(UI_PREFS_KEY), {...DEFAULTS, theme: 'dark'});
  assert.deepEqual([...area.store.keys()], [UI_PREFS_KEY]);
- assert.doesNotMatch(JSON.stringify([...area.store]), /PRIVATE_QUERY_CANARY/);
  assert.ok(area.calls.every(call => call === 'set:' + UI_PREFS_KEY || call === 'get:' + UI_PREFS_KEY), area.calls.join());
  assert.ok(!area.calls.some(call => call.startsWith('remove')), 'ending a session never deletes the preferences');
  act(() => session.renderer.unmount());

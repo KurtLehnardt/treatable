@@ -2,7 +2,6 @@ import test, {before, after, afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import React, {act} from 'react';
 import {installDom, settle, type TestDom} from './dom-harness';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 import type {OverlayViewModel, UnsavedWorkHost} from '../src/overlay-types';
 
 /**
@@ -14,7 +13,7 @@ const snapshot = {generation: 'page-1', url: 'https://clinicaltrials.gov/search?
 type Vm = OverlayViewModel & UnsavedWorkHost;
 let counts = {closed: 0, collapsed: [] as boolean[]};
 function view(overrides: Partial<Vm> = {}): Vm {
-  return {connected: true, ended: false, busy: false, error: '', fields: {}, catalog: SITE_FILTERS, snapshot, records: [], opacity: .9, collapsed: false, setField() {}, search() {}, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
+  return {connected: true, ended: false, busy: false, error: '', snapshot, records: [], opacity: .9, collapsed: false, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
 }
 let mounted: Array<() => Promise<void>> = [];
 async function mountView(vm: Vm) {
@@ -70,7 +69,7 @@ test('a host that does not report unsaved work keeps the old behavior: Escape an
 
 test('Escape with typed work asks first; Keep working leaves everything as it was and returns focus', async () => {
   await mountView(view({hasUnsavedWork: () => true}));
-  const field = document.getElementById('search-cond') as HTMLInputElement;
+  const field = button('Treatable settings');
   field.focus();
   assert.ok(document.activeElement === field);
   await act(async () => {escape(field)});
@@ -275,7 +274,7 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
   const now = Date.now(), messages = new Events(), sent: any[] = [];
   const sitePort: any = {onMessage: messages, onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {
     sent.push(v);
-    if (v.type === 'site.authenticate') messages.emit({type: 'site.ready', snapshot: {generation: 'g', url: `https://clinicaltrials.gov/study/${ID}`, nctIds: [], diagnostic: '', supported: true}, filters: SITE_FILTERS, search: {}, study: {nctId: ID}});
+    if (v.type === 'site.authenticate') messages.emit({type: 'site.ready', snapshot: {generation: 'g', url: `https://clinicaltrials.gov/study/${ID}`, nctIds: [], diagnostic: '', supported: true}, study: {nctId: ID}});
     else messages.emit({id: v.id, ok: true, result: {active: true}});
   }};
   const applyPort: any = {onMessage: new Events(), onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {
