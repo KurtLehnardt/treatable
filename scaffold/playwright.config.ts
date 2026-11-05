@@ -13,12 +13,10 @@ import { APP_PORT } from "./lib/runtime.mjs";
  * In CI (no server running) it falls back to `npm run start` (after `npm run
  * build`) on the same URL.
  *
- * The critical journeys stub /api/match and /api/interview at the network layer
- * (page.route) so they are deterministic and spend zero model credits.
- *
- * Flag-gated journeys (interview, sidebar sections, buckets, auto-fill,
- * billing) depend on build-time NEXT_PUBLIC_* flags; run against a build with
- * the relevant flag on, or see the fixme notes in e2e/journeys.spec.ts.
+ * The journeys stub the routes that would reach a model provider or download
+ * a model (/api/match, /api/profile, /api/llm/*) at the network layer
+ * (page.route), so they are deterministic and spend zero model credits, and
+ * fail any request to a host other than the local server (e2e/fixtures.ts).
  */
 const BASE_URL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${APP_PORT}`;
 
