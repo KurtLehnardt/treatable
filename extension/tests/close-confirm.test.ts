@@ -2,7 +2,6 @@ import test, {before, after, afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import React, {act} from 'react';
 import {installDom, settle, type TestDom} from './dom-harness';
-import {SITE_FILTERS} from '../src/site-filter-catalog';
 import type {OverlayViewModel, UnsavedWorkHost} from '../src/overlay-types';
 
 /**
@@ -14,7 +13,7 @@ const snapshot = {generation: 'page-1', url: 'https://clinicaltrials.gov/search?
 type Vm = OverlayViewModel & UnsavedWorkHost;
 let counts = {closed: 0, collapsed: [] as boolean[]};
 function view(overrides: Partial<Vm> = {}): Vm {
-  return {connected: true, ended: false, busy: false, error: '', fields: {}, catalog: SITE_FILTERS, snapshot, records: [], opacity: .9, collapsed: false, setField() {}, search() {}, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
+  return {connected: true, ended: false, busy: false, error: '', snapshot, records: [], opacity: .9, collapsed: false, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
 }
 let mounted: Array<() => Promise<void>> = [];
 async function mountView(vm: Vm) {
@@ -70,7 +69,7 @@ test('a host that does not report unsaved work keeps the old behavior: Escape an
 
 test('Escape with typed work asks first; Keep working leaves everything as it was and returns focus', async () => {
   await mountView(view({hasUnsavedWork: () => true}));
-  const field = document.getElementById('search-cond') as HTMLInputElement;
+  const field = button('Treatable settings');
   field.focus();
   assert.ok(document.activeElement === field);
   await act(async () => {escape(field)});
@@ -90,6 +89,43 @@ test('Escape with typed work asks first; Keep working leaves everything as it wa
   assert.equal(dialogs(), 0, 'the dialog is gone');
   assert.ok(document.activeElement === field, 'focus returns to the control that had it');
   assert.equal(document.querySelectorAll('main').length, 1, 'the overlay is still there');
+});
+
+const OTHER = 'Search for other studies on ClinicalTrials.gov';
+const link = () => [...document.querySelectorAll('button')].find(node => node.textContent === OTHER) as HTMLButtonElement | undefined;
+test('study page: the search link goes straight to the website search when nothing was typed', async () => {
+  let opened = 0;
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch: () => {opened++}} as any, hasUnsavedWork: () => false}));
+  assert.ok(link(), 'the link is on the study page');
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.equal(opened, 1);
+  assert.equal(dialogs(), 0);
+});
+
+test('study page: with typed work the search link asks first; Keep working stays, Leave and clear goes', async () => {
+  let opened = 0;
+  await mountView(view({study: {nctId: 'NCT00000001'}, guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch: () => {opened++}} as any, hasUnsavedWork: () => true}));
+  await act(async () => {link()!.click()});
+  await settle();
+  assert.equal(opened, 0, 'nothing happens while asking');
+  assert.match(popup()!.textContent!, /Leave this study and clear what you typed\?/);
+  assert.match(popup()!.textContent!, /cannot be brought back/);
+  await act(async () => {(popup()!.querySelector('.swal2-cancel') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(opened, 0, 'Keep working leaves the study as it was');
+  assert.equal(counts.closed, 0);
+  await act(async () => {link()!.click()});
+  await settle();
+  await act(async () => {(popup()!.querySelector('.swal2-confirm') as HTMLButtonElement).click()});
+  await later();
+  assert.equal(opened, 1, 'confirming goes to the search page');
+  assert.equal(counts.closed, 0, 'it does not close the overlay');
+});
+
+test('the search link is only on study pages', async () => {
+  await mountView(view({guide: {active: false, canSearchHelp: false, startSearchHelp() {}, replayIntro() {}, stop() {}, openSearch() {}} as any}));
+  assert.equal(link(), undefined);
 });
 
 test('Confirm closes and ends the session', async () => {
@@ -275,7 +311,7 @@ async function mountAssistant({tour = false}: {tour?: boolean} = {}) {
   const now = Date.now(), messages = new Events(), sent: any[] = [];
   const sitePort: any = {onMessage: messages, onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {
     sent.push(v);
-    if (v.type === 'site.authenticate') messages.emit({type: 'site.ready', snapshot: {generation: 'g', url: `https://clinicaltrials.gov/study/${ID}`, nctIds: [], diagnostic: '', supported: true}, filters: SITE_FILTERS, search: {}, study: {nctId: ID}});
+    if (v.type === 'site.authenticate') messages.emit({type: 'site.ready', snapshot: {generation: 'g', url: `https://clinicaltrials.gov/study/${ID}`, nctIds: [], diagnostic: '', supported: true}, study: {nctId: ID}});
     else messages.emit({id: v.id, ok: true, result: {active: true}});
   }};
   const applyPort: any = {onMessage: new Events(), onDisconnect: new Events(), disconnect() {}, postMessage(v: any) {

@@ -51,14 +51,14 @@ const reducedMotion = () => { try { return !!window.matchMedia?.('(prefers-reduc
  * sweetalert2 listens for Escape on the window in the capture phase and stops that keydown there, so the same key
  * press never reaches the overlay's own Escape handler.
  */
-export async function confirmDiscard(options: { theme?: 'light' | 'dark' } = {}): Promise<boolean> {
+export async function confirmDiscard(options: { theme?: 'light' | 'dark'; title?: string; text?: string; confirmText?: string } = {}): Promise<boolean> {
   installStyles(document);
   const opener = document.activeElement as HTMLElement | null;
   const result = await Swal.fire({
-    title: titleElement(DISCARD_TITLE),
-    text: DISCARD_TEXT,
+    title: titleElement(options.title ?? DISCARD_TITLE),
+    text: options.text ?? DISCARD_TEXT,
     showCancelButton: true,
-    confirmButtonText: DISCARD_CONFIRM,
+    confirmButtonText: options.confirmText ?? DISCARD_CONFIRM,
     cancelButtonText: DISCARD_CANCEL,
     focusCancel: true,
     focusConfirm: false,
