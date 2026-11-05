@@ -141,7 +141,7 @@ The Agents API keeps session state until the session is deleted, and Agents sess
 
 ### Older paths kept in the repository
 
-The earlier profile-based matching form (**Find my matches**, with its own age band, state and condition-label form, agent questions and distance filter) is not shown in the toolbar overlay; AI-matched results replaced it on results pages. Its code, helper operations and tests remain in the repository. The retained legacy panel (`panel.html`, built in every folder below) holds local screening against a bundled snapshot of 2,000 ClinicalTrials.gov studies, fictional API examples (a built-in fictional profile and two fixed public studies) and an optional analysis of up to two snapshot studies. The toolbar button does not open it, and native Chrome side panels stay disabled. Its entry address is `chrome-extension://lmgmjeabbalehlcakdbolielnfgchojf/panel.html`; actual Chrome access to it has not been verified. The legacy panel's own notice describes what its optional analysis sends.
+The earlier profile-based matching form (**Find my matches**, with its own age band, state and condition-label form, agent questions and distance filter) is not shown in the toolbar overlay; AI-matched results replaced it on results pages. Its code, helper operations and tests remain in the repository. The legacy side-panel page (`panel.html`) and the A/B build variants were retired: nothing in the extension opened that page, so it, its bundle, `build:a`/`build:b` and the `dist-a`/`dist-b` folders were removed. The helper operations behind it (`scoreDemo`, `agentDemo`, `prepareReal`, `executeReal`) remain in `extension/native/` but no extension page calls them.
 
 ## Local model option (Ollama on this device)
 
@@ -162,21 +162,13 @@ Requires Chrome **142+**, a working Node **20+** runtime, macOS and Xcode comman
 ```sh
 cd extension
 npm ci
-npm run build:all
+npm run build
 npm run typecheck
 node --import tsx --test tests/*.test.ts
 node --test native/test/*.test.mjs
 ```
 
-The build folders are:
-
-| Folder | Interface |
-|---|---|
-| `extension/dist` | Current Version B; default build |
-| `extension/dist-b` | Identical Version B compatibility build |
-| `extension/dist-a` | Preserved Version A reference |
-
-All three share the same toolbar overlay and differ only in the retained legacy panel and the manifest name. Chrome → Extensions → Developer mode → Load unpacked → choose **`extension/dist`**. After an update, Reload the extension and refresh the ClinicalTrials.gov tab. All variants share a pinned extension ID; use only one in a Chrome profile at a time. The current B archive is `extension/artifacts/treatable-version-b-current.zip`, with the manifest at its root. Extract into a dedicated folder before loading unpacked. Earlier A archives marked **PRE-PRIVACY BASELINE — NOT CURRENT** are historical artifacts.
+`npm run build` writes the single build to `extension/dist`. The earlier A/B variants (`dist-a`, `dist-b`, `npm run build:a`/`build:b`/`build:all`) were retired together with the legacy panel; the manifest name is "Treatable — private study finder". Chrome → Extensions → Developer mode → Load unpacked → choose **`extension/dist`**. After an update, Reload the extension and refresh the ClinicalTrials.gov tab. The extension ID is pinned by the manifest key.
 
 From the repository root, install the native helper before configuring its credential:
 
@@ -190,10 +182,10 @@ The installer pins the Node executable used to run it. Use a functioning runtime
 
 ## Search the website
 
-1. Open `https://clinicaltrials.gov` or `https://www.clinicaltrials.gov` and click Treatable in Chrome's toolbar. Other hosts and HTTP pages are unsupported; there is no globally enabled Treatable side panel.
+1. Open `https://clinicaltrials.gov` or `https://www.clinicaltrials.gov` and click Treatable in Chrome's toolbar. Other hosts and HTTP pages are unsupported; Treatable uses no Chrome side panel.
 2. Search with the website's own search box and filters. Treatable does not show a copy of them. On a search page, **Show me how to search** (see [Guided walkthroughs](#guided-walkthroughs)) walks through two of the website's filters.
 3. Searches you run on the website go to ClinicalTrials.gov and may appear in browser history. Treatable sends no search of its own and makes **no OpenAI request** for one; on the results page, AI-matched results may then rank the cards as described under [Decisions ranking](#decisions-ranking-ai-matched-results). Treatable reads only the condition in the results page address, to name it in the ranking request.
-4. The overlay reopens compact after the intro tour takes you to the registry's home page. Expand it to choose up to two studies from the results, or open a study page, and use Understand this study. Treatable opens in the **Popup** display by default: a centered window, with the page behind it inert until the window is collapsed. Clicking the page outside the popup closes it at once when there is nothing to lose. When details or drafts have been typed (the same work the Close button asks about), the same click only hides the popup, without asking and without clearing anything, and the toolbar button shows it again as it was (if its 30-minute session ran out in the meantime, the toolbar button opens a fresh one instead). One exception: a study's drafts belong to the page they were written on, so if the website moves to another study or results page while the popup is hidden, that study section starts over, just as it does when the popup is open; Your details are kept. While the popup is hidden, the toolbar button shows a dot and its tooltip reads "Treatable is hidden — click to reopen", and AI-matched results pause (see [Decisions ranking](#decisions-ranking-ai-matched-results)). If the hide cannot be done, the click falls back to the usual close, which asks first. On a touch screen the page is tapped, not dragged: starting to scroll does not close or hide the popup. The Close button and Escape still ask before clearing typed work. The top-right settings gear offers Popup or in-page **Sidebar**, plus System, Light or Dark themes. The Sidebar docks along the right edge and the page narrows to make room for it, so nothing of the website sits underneath; fixed website controls on the right edge, such as Back to top, move left just far enough to clear the Sidebar, and the page gets its full width back when the Sidebar is collapsed, switched or closed. In a window that would leave the website less than 480 pixels beside the Sidebar, the Sidebar lies over the page instead. If the extension is reloaded or updated while the Sidebar or Popup is open, the page is put back as it was within a second. Clicking the page does not close the Sidebar. The corner card display of earlier versions was removed; a saved choice of it opens as the Popup. A saved choice always wins over the default; native Chrome side panels stay disabled.
+4. The overlay reopens compact after the intro tour takes you to the registry's home page. Expand it to choose up to two studies from the results, or open a study page, and use Understand this study. Treatable opens in the **Popup** display by default: a centered window, with the page behind it inert until the window is collapsed. Clicking the page outside the popup closes it at once when there is nothing to lose. When details or drafts have been typed (the same work the Close button asks about), the same click only hides the popup, without asking and without clearing anything, and the toolbar button shows it again as it was (if its 30-minute session ran out in the meantime, the toolbar button opens a fresh one instead). One exception: a study's drafts belong to the page they were written on, so if the website moves to another study or results page while the popup is hidden, that study section starts over, just as it does when the popup is open; Your details are kept. While the popup is hidden, the toolbar button shows a dot and its tooltip reads "Treatable is hidden — click to reopen", and AI-matched results pause (see [Decisions ranking](#decisions-ranking-ai-matched-results)). If the hide cannot be done, the click falls back to the usual close, which asks first. On a touch screen the page is tapped, not dragged: starting to scroll does not close or hide the popup. The Close button and Escape still ask before clearing typed work. The top-right settings gear offers Popup or in-page **Sidebar**, plus System, Light or Dark themes. The Sidebar docks along the right edge and the page narrows to make room for it, so nothing of the website sits underneath; fixed website controls on the right edge, such as Back to top, move left just far enough to clear the Sidebar, and the page gets its full width back when the Sidebar is collapsed, switched or closed. In a window that would leave the website less than 480 pixels beside the Sidebar, the Sidebar lies over the page instead. If the extension is reloaded or updated while the Sidebar or Popup is open, the page is put back as it was within a second. Clicking the page does not close the Sidebar. The corner card display of earlier versions was removed; a saved choice of it opens as the Popup. A saved choice always wins over the default; Treatable uses no native Chrome side panel.
 
 Table/map views and unknown card layouts remain read-only.
 
@@ -232,4 +224,4 @@ These still need manual verification on your machine: how the overlay mounts and
 
 Recruitment-query encoding: the current official [filter definitions](https://clinicaltrials.gov/chunk-N3WLMKWZ.js) map `rec` to Recruiting and `ava` to Available in the expanded-access group; their native `not rec` preset uses space-separated statuses. The official [query serializer](https://clinicaltrials.gov/chunk-N5W3TRDQ.js) writes sorted `key:value` entries into `aggFilters`. This verifies encoding, while actual browser filter-chip behavior remains a separate check.
 
-[Native setup](native/API_SETUP.md) · [Security review](SECURITY_REVIEW.md) · [Version B design evidence](VERSION_B_REVIEW.md) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html)
+[Native setup](native/API_SETUP.md) · [Security review](SECURITY_REVIEW.md) · [Privacy policy](https://kurtlehnardt.github.io/treatable/privacy.html)

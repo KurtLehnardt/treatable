@@ -16,7 +16,6 @@ const PRIVATE_CONTEXT_TTL=5*60*1000,DERIVED_TTL=5*60*1000,RANK_CONFIRM_TTL=4*60*
  * tab without a readable URL reads as unsupported. */
 export function toolbarTitle(hidden:boolean,url:unknown){return hidden?'Treatable is hidden — click to reopen':isSupportedSite(typeof url==='string'?url:'')?'Open Treatable':'Open ClinicalTrials.gov to use Treatable'}
 export function isSitePort(name:unknown){return name===SITE_OVERLAY_PORT||name===SITE_BADGE_PORT}
-export function isProtectedPanelSender(api:any,sender:any){const url=api.runtime.getURL('panel.html');return sender?.id===api.runtime.id&&sender.url===url&&(!sender.tab||sender.frameId===0&&sender.tab.url===url)}
 function parseSnapshot(v:any):SiteSnapshot{if(!exactSiteKeys(v,['generation','url','nctIds','diagnostic','supported','distanceHiddenCards'])||typeof v.generation!=='string'||v.generation.length>160||typeof v.url!=='string'||!isSupportedSite(v.url)||typeof v.diagnostic!=='string'||v.diagnostic.length>2000||typeof v.supported!=='boolean')throw Error('Invalid page snapshot');const counts:Record<string,number>={};for(const key of ['distanceHiddenCards'])if(v[key]!==undefined){const n=v[key];if(typeof n!=='number'||!Number.isInteger(n)||n<0||n>100)throw Error('Invalid public count');counts[key]=n}return{generation:v.generation,url:v.url,nctIds:siteNctIds(v.nctIds),diagnostic:v.diagnostic,supported:v.supported,...counts}}
 function capability(){const bytes=crypto.getRandomValues(new Uint8Array(32));return Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('')}
 export class SiteCapabilities{

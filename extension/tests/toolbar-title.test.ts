@@ -15,7 +15,6 @@ test('the hidden title survives onUpdated and onActivated, and leaving for an un
   action:area('action',{setTitle:async(v:any)=>{titles.push(v)},setBadgeText:async()=>{}}),
   tabs:area('tabs',{get:async(id:number)=>({id,url:readable(id)}),query:async()=>[...urls.keys()].map(id=>({id,windowId:1,url:readable(id)})),sendMessage:async(id:number,m:any)=>({ok:true,result:m.type==='snapshot'?{generation:'g',url:urls.get(id),nctIds:[],diagnostic:'',supported:true}:{}})}),
   scripting:area('scripting',{executeScript:async(v:any)=>{scripts.push(v);return[]}}),
-  sidePanel:area('sidePanel',{setOptions:async()=>{},setPanelBehavior:async()=>{}}),
  };
  await import('../src/background');await flush();
  const ports=new Map<number,any>();
