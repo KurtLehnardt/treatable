@@ -1,6 +1,6 @@
 import test from'node:test';import assert from'node:assert/strict';import{readFileSync}from'node:fs';
-import{installSiteAssistant}from'../src/site-background';import{installApplyBroker,APPLY_PORT}from'../src/apply-background';import{FAILURE_COPY}from'../src/failures';
-import{rawStudy,preparedFixture,agentFixture,briefTraceFixture,TOKEN,DIGEST}from'./apply-fixture';import{traceBody,APPLY_TOKEN_TTL_MS}from'../shared/apply-contract.mjs';
+import{installSiteAssistant}from'../src/site-background';import{installApplyBroker,APPLY_PORT,APPLY_NATIVE_TIMEOUT_MS}from'../src/apply-background';import{FAILURE_COPY,GENERIC_FAILURE_COPY}from'../src/failures';
+import{rawStudy,briefTraceFixture,TOKEN,DIGEST}from'./apply-fixture';import{traceBody,APPLY_TOKEN_TTL_MS}from'../shared/apply-contract.mjs';
 import{SESSION_TTL_MS}from'../src/session-lease';
 class Events{listeners:((...v:any[])=>void)[]=[];addListener=(f:(...v:any[])=>void)=>this.listeners.push(f);removeListener=()=>{};emit=(...v:any[])=>{for(const f of this.listeners)f(...v)}}
 const flush=async()=>{for(let i=0;i<6;i++)await new Promise(r=>setImmediate(r))};
@@ -29,39 +29,7 @@ test('only the authenticated overlay frame on a study page may open the apply ch
  await h.overlay();for(const over of [{id:'other'},{frameId:0},{frameId:3},{documentId:'other-doc'},{url:'chrome-extension://test/panel.html'},{url:'https://clinicaltrials.gov/overlay.html'},{tab:{id:7,url:STUDY}}]){const p=await h.apply(h.frame(over));assert.equal(p.closed,true,JSON.stringify(over))}
  const ok=await h.apply();assert.equal(ok.closed,false);assert.equal(ok.sent[0].kind,'applyReady');assert.equal(ok.sent[0].nctId,'NCT07254806');assert.deepEqual(ok.sent[0].nctIds,['NCT07254806']);assert.equal(h.natives.length,0,'nothing reaches native on connect');
  const s=harness('https://clinicaltrials.gov/search?cond=pain');await s.overlay();const search=await s.apply();assert.equal(search.closed,true,'search pages have no apply channel');
- ok.onMessage.emit({kind:'applyNative',request:{id:'x',type:'prepareApply',payload:{nctId:'NCT07254806',name:'Morgan'}}});await flush();assert.equal(ok.closed,true,'invalid request shape ends the channel');assert.equal(h.natives.length,0);
-});
-test('prepare is bound to the tab study; execute needs the stored one-use receipt; replies are revalidated',async()=>{
- const h=harness();await h.overlay();const p=await h.apply();
- await h.send(p,{id:'w',type:'prepareApply',payload:{nctId:'NCT00000001'}});assert.deepEqual(replies(p).at(-1),{id:'w',type:'result',ok:false,code:'NOT_STUDY_PAGE',error:FAILURE_COPY.NOT_STUDY_PAGE});assert.equal(h.natives.length,0);
- await h.send(p,{id:'e0',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','no receipt before prepare');assert.equal(h.natives.length,0);
- await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});const n=h.natives[0];assert.deepEqual(n.sent,[{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}}]);
- await h.reply(n,{id:'p1',type:'result',ok:true,result:preparedFixture()});assert.equal(replies(p).at(-1).result.kind,'preparedApply');
- await h.send(p,{id:'e1',type:'executeApply',payload:{token:'U'.repeat(43),digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT');assert.equal(n.sent.length,1);
- await h.send(p,{id:'e2',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.deepEqual(n.sent.at(-1),{id:'e2',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});
- await h.reply(n,{id:'e2',type:'result',ok:true,result:agentFixture({digest:'e'.repeat(64)})});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH');
- await h.send(p,{id:'e3',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','receipt is one-use');assert.equal(n.sent.length,2);
- await h.send(p,{id:'p2',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p2',type:'result',ok:true,result:preparedFixture()});await h.send(p,{id:'e4',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});await h.reply(n,{id:'e4',type:'result',ok:true,result:agentFixture()});assert.equal(replies(p).at(-1).result.kind,'applyAgent');
- await h.send(p,{id:'p3',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p3',type:'result',ok:false,code:'API_ERROR',error:'PRIVATE_CANARY'.repeat(10)});assert.deepEqual(replies(p).at(-1),{id:'p3',type:'result',ok:false,code:'API_ERROR',error:FAILURE_COPY.API_ERROR});
- await h.send(p,{id:'p4',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(n,{id:'p4',type:'result',ok:true,result:{...preparedFixture(),extra:1}});assert.equal(replies(p).at(-1).code,'INVALID_NATIVE_REPLY');
- await h.reply(n,{id:'unsolicited',type:'result',ok:true});assert.ok(!replies(p).some((r:any)=>r.id==='unsolicited'));
-});
-test('expired receipts are refused locally; a missing helper reports its specific code',async()=>{
- let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
- await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture(now+1000)});now+=2000;
- await h.send(p,{id:'e1',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.deepEqual(replies(p).at(-1),{id:'e1',type:'result',ok:false,code:'APPLY_EXPIRED',error:FAILURE_COPY.APPLY_EXPIRED});assert.equal(h.natives[0].sent.length,1);
- await h.send(p,{id:'p2',type:'prepareApply',payload:{nctId:'NCT07254806'}});h.api.runtime.lastError={message:'Specified native messaging host not found.'};h.natives[0].onDisconnect.emit();await flush();assert.equal(replies(p).at(-1).code,'NATIVE_HOST_MISSING');
-});
-test('official-record fallback uses the background fetch and the shared normalizer; failures are specific',async()=>{
- const h=harness();await h.overlay();const p=await h.apply();p.onMessage.emit({kind:'applyRecord',id:'r1'});await flush();const r=replies(p).at(-1);assert.equal(r.type,'record');assert.equal(r.ok,true);assert.equal(r.record.nctId,'NCT07254806');assert.equal(r.record.sites.length,4);assert.equal(h.natives.length,0);
- const f=harness(STUDY,{fetchStudyJson:async()=>{throw Error('offline')}});await f.overlay();const q=await f.apply();q.onMessage.emit({kind:'applyRecord',id:'r2'});await flush();assert.deepEqual(replies(q).at(-1),{id:'r2',type:'result',ok:false,code:'RECORD_UNAVAILABLE',error:FAILURE_COPY.RECORD_UNAVAILABLE});
- const w=harness(STUDY,{fetchStudyJson:async()=>rawStudy()});await w.overlay();const x=await w.apply();w.setUrl('https://clinicaltrials.gov/study/NCT00000001');x.onMessage.emit({kind:'applyRecord',id:'r3'});await flush();assert.equal(x.closed,true,'source change ends the old session');
-});
-test('closing the frame or navigating to another study revokes the receipt and ends the channel',async()=>{
- const h=harness();await h.overlay();const p=await h.apply();await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});const n=h.natives[0];await h.reply(n,{id:'p1',type:'result',ok:true,result:preparedFixture()});
- h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT07254806#contacts'},{id:1});assert.equal(p.closed,false,'same study, different anchor');
- h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'},{id:1});assert.equal(p.closed,true);assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.deepEqual(n.sent.at(-1).type,'revokeApply');assert.deepEqual(n.sent.at(-1).payload,{token:TOKEN});
- const g=harness();await g.overlay();const q=await g.apply();await g.send(q,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await g.reply(g.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture()});q.disconnect();assert.equal(g.natives[0].sent.at(-1).type,'revokeApply');assert.equal(g.broker.sessionCount(),0);
+ ok.onMessage.emit({kind:'applyNative',request:{id:'x',type:'prepareStudyBrief',payload:{nctIds:['NCT07254806'],name:'Morgan'}}});await flush();assert.equal(ok.closed,true,'invalid request shape ends the channel');assert.equal(h.natives.length,0);
 });
 test('built background routes the apply port to its broker',()=>{const bundle=readFileSync(new URL('../dist/background.js',import.meta.url),'utf8');assert.ok(bundle.includes('treatable-apply-v1'));assert.ok(bundle.includes('applyReady'))});
 
@@ -87,8 +55,8 @@ test('brief records loaded for the local contact plan keep every listed site rat
 // The request is built by the real ApplyClient, routed through the actual broker and validated by a real installed helper over stdio.
 import{ApplyClient}from'../src/apply-client';
 import{readFile as readText,writeFile as writeText}from'node:fs/promises';import nodePath from'node:path';
-// core.mjs validateRequest exactly as shipped before the Help me apply and study-brief operations were added.
-const PRE_APPLY_VALIDATE_REQUEST='export function validateRequest(v){return LIVE_REQUEST_TYPES.includes(v?.type)?parseLiveRequest(v):parseDemoRequest(v);}';
+// A helper from before the study-brief operations existed: its validateRequest knows other operations only, so it rejects prepareStudyBrief.
+const PRE_APPLY_VALIDATE_REQUEST='export function validateRequest(v){if(RANK_REQUEST_TYPES.includes(v?.type))return parseRankRequest(v);throw new Error(\'Unsupported native operation\');}';
 function stdioNative(host:any){
  const native={sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(structuredClone(v));host.send(v)},disconnect(){if(this.closed)return;this.closed=true;host.child.stdin.end()}};
  const decoder=new MessageDecoder((v:any)=>native.onMessage.emit(v),()=>{throw Error('Invalid test frame')});host.child.stdout.on('data',(chunk:any)=>decoder.push(chunk));return native;
@@ -151,24 +119,105 @@ test('a trace that breaks the contract is refused as an invalid helper reply and
  for(const[name,trace]of Object.entries(bad))await assert.rejects(executeBriefWith(briefResult(ids,trace)),(error:any)=>error.code==='INVALID_NATIVE_REPLY',name);
 });
 
-test('applyRenew slides the 30-minute session forward from the moment of renewal and never touches the helper',async()=>{
- let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
- assert.equal(p.sent[0].expiresAt,now+SESSION_TTL_MS);
- now+=20*60*1000;p.onMessage.emit({kind:'applyRenew'});await flush();assert.deepEqual(p.sent.at(-1),{kind:'applyRenewed',expiresAt:now+SESSION_TTL_MS});
- now+=25*60*1000;p.onMessage.emit({kind:'applyRecord',id:'r1'});await flush();assert.equal(replies(p).at(-1).type,'record','45 minutes after connecting is past the original deadline but inside the renewed one');assert.equal(p.closed,false);
- now+=5*60*1000+1;p.onMessage.emit({kind:'applyRecord',id:'r2'});await flush();assert.equal(p.closed,true,'the renewed deadline ends the session');assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.equal(h.natives.length,0,'renewing never opens the helper');
-});
 test('applyRenew cannot revive an expired session, carry extra fields, or outlive navigation',async()=>{
  let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();
  const extra=await h.apply();extra.onMessage.emit({kind:'applyRenew',patient:'PATIENT_CANARY'});await flush();assert.equal(extra.closed,true,'a renewal carries nothing but its kind');assert.ok(!extra.sent.some((v:any)=>v.kind==='applyRenewed'));
  const late=await h.apply();now+=SESSION_TTL_MS+1;late.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(late.closed,true);assert.ok(!late.sent.some((v:any)=>v.kind==='applyRenewed'),'expiry is final');
  now=Date.UTC(2026,9,24,15,15);const moved=await h.apply();h.setUrl('https://clinicaltrials.gov/study/NCT00000001');moved.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(moved.closed,true,'another study never inherits the session');assert.ok(!moved.sent.some((v:any)=>v.kind==='applyRenewed'));
 });
-test('prepared requests keep their own five-minute one-use receipt even though the session lasts 30 minutes',async()=>{
+
+// The Help me apply agent (prepareApply, executeApply, revokeApply, applyRecord) was removed. The broker properties its tests asserted
+// apply to the study brief, the operation that remains, and are asserted on it here.
+const ONE=['NCT07254806'];
+const briefRequest=(id:string,nctIds=ONE)=>({id,type:'prepareStudyBrief',payload:{nctIds}});
+const briefExecute=(id:string,token=TOKEN)=>({id,type:'executeStudyBrief',payload:{token,digest:DIGEST}});
+test('a brief preparation is bound to the tab study; execute needs the stored one-use receipt; replies are revalidated',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();
+ await h.send(p,briefRequest('w',['NCT00000001']));assert.deepEqual(replies(p).at(-1),{id:'w',type:'result',ok:false,code:'NOT_STUDY_PAGE',error:FAILURE_COPY.NOT_STUDY_PAGE});assert.equal(h.natives.length,0);
+ await h.send(p,briefExecute('e0'));assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','no receipt before prepare');assert.equal(h.natives.length,0);
+ await h.send(p,briefRequest('p1'));const n=h.natives[0];assert.deepEqual(n.sent,[briefRequest('p1')]);
+ await h.reply(n,{id:'p1',type:'result',ok:true,result:briefPrepared(ONE)});assert.equal(replies(p).at(-1).result.kind,'preparedStudyBrief');
+ await h.send(p,briefExecute('e1','U'.repeat(43)));assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT');assert.equal(n.sent.length,1);
+ await h.send(p,briefExecute('e2'));assert.deepEqual(n.sent.at(-1),briefExecute('e2'),'an OpenAI brief carries exactly the receipt, no budget');
+ await h.reply(n,{id:'e2',type:'result',ok:true,result:{...briefResult(ONE),digest:'e'.repeat(64)}});assert.equal(replies(p).at(-1).code,'RESULT_MISMATCH');
+ await h.send(p,briefExecute('e3'));assert.equal(replies(p).at(-1).code,'INVALID_APPLY_RECEIPT','receipt is one-use');assert.equal(n.sent.length,2);
+ await h.send(p,briefRequest('p2'));await h.reply(n,{id:'p2',type:'result',ok:true,result:briefPrepared(ONE)});await h.send(p,briefExecute('e4'));await h.reply(n,{id:'e4',type:'result',ok:true,result:briefResult(ONE)});assert.equal(replies(p).at(-1).result.kind,'studyBrief');
+ await h.send(p,briefRequest('p3'));await h.reply(n,{id:'p3',type:'result',ok:false,code:'API_ERROR',error:'PRIVATE_CANARY'.repeat(10)});assert.deepEqual(replies(p).at(-1),{id:'p3',type:'result',ok:false,code:'API_ERROR',error:FAILURE_COPY.API_ERROR});
+ await h.send(p,briefRequest('p4'));await h.reply(n,{id:'p4',type:'result',ok:true,result:{...briefPrepared(ONE),extra:1}});assert.equal(replies(p).at(-1).code,'INVALID_NATIVE_REPLY');
+ await h.reply(n,{id:'unsolicited',type:'result',ok:true});assert.ok(!replies(p).some((r:any)=>r.id==='unsolicited'));
+ assert.ok(!JSON.stringify(p.sent).includes('PRIVATE_CANARY'),'transported error text never reaches the frame');
+});
+test('expired brief receipts are refused locally; a missing helper reports its specific code',async()=>{
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
+ await h.send(p,briefRequest('p1'));await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:{...briefPrepared(ONE),expiresAt:now+1000}});now+=2000;
+ await h.send(p,briefExecute('e1'));assert.deepEqual(replies(p).at(-1),{id:'e1',type:'result',ok:false,code:'APPLY_EXPIRED',error:FAILURE_COPY.APPLY_EXPIRED});assert.equal(h.natives[0].sent.length,1);
+ await h.send(p,briefRequest('p2'));h.api.runtime.lastError={message:'Specified native messaging host not found.'};h.natives[0].onDisconnect.emit();await flush();assert.equal(replies(p).at(-1).code,'NATIVE_HOST_MISSING');
+});
+test('official-record loading uses the background fetch; failures are specific; the retired applyRecord message ends the session',async()=>{
+ const f=harness(STUDY,{fetchStudyJson:async()=>{throw Error('offline')}});await f.overlay();const q=await f.apply();q.onMessage.emit({kind:'studyBriefRecord',id:'r2',nctIds:ONE});await flush();assert.deepEqual(replies(q).at(-1),{id:'r2',type:'result',ok:false,code:'RECORD_UNAVAILABLE',error:FAILURE_COPY.RECORD_UNAVAILABLE});assert.equal(f.natives.length,0);
+ const w=harness();await w.overlay();const x=await w.apply();w.setUrl('https://clinicaltrials.gov/study/NCT00000001');x.onMessage.emit({kind:'studyBriefRecord',id:'r3',nctIds:ONE});await flush();assert.equal(x.closed,true,'source change ends the old session');
+ const r=harness();await r.overlay();const y=await r.apply();y.onMessage.emit({kind:'applyRecord',id:'r1'});await flush();assert.equal(y.closed,true,'applyRecord is no longer a broker message');assert.ok(!replies(y).length);assert.equal(r.natives.length,0);
+});
+test('closing the frame or navigating to another study revokes the brief receipt and ends the channel',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();await h.send(p,briefRequest('p1'));const n=h.natives[0];await h.reply(n,{id:'p1',type:'result',ok:true,result:briefPrepared(ONE)});
+ h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT07254806#contacts'},{id:1});assert.equal(p.closed,false,'same study, different anchor');
+ h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'},{id:1});assert.equal(p.closed,true);assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.equal(n.sent.at(-1).type,'revokeStudyBrief');assert.deepEqual(n.sent.at(-1).payload,{token:TOKEN});
+ const g=harness();await g.overlay();const q=await g.apply();await g.send(q,briefRequest('p1'));await g.reply(g.natives[0],{id:'p1',type:'result',ok:true,result:briefPrepared(ONE)});q.disconnect();assert.equal(g.natives[0].sent.at(-1).type,'revokeStudyBrief');assert.equal(g.broker.sessionCount(),0);
+});
+test('removed helper operations sent over the apply port end the session before any helper connection',async()=>{
+ const requests=[{id:'a',type:'prepareApply',payload:{nctId:'NCT07254806'}},{id:'b',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}},{id:'c',type:'revokeApply',payload:{}},{id:'d',type:'executeLive',payload:{token:TOKEN,digest:DIGEST,operation:'score'}},{id:'e',type:'scoreDemo',payload:{fixtureId:'fibromyalgia',consent:true}},{id:'f',type:'prepareReal',payload:{}},{id:'g',type:'status',payload:{}},{id:'h',type:'cancel',payload:{requestId:'a'}}];
+ for(const request of requests){const h=harness();await h.overlay();const p=await h.apply();await h.send(p,request);assert.equal(p.closed,true,request.type);assert.equal(h.natives.length,0,request.type);assert.deepEqual(replies(p),[],request.type)}
+});
+test('applyRenew slides the 30-minute session forward from the moment of renewal and never touches the helper',async()=>{
+ let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
+ assert.equal(p.sent[0].expiresAt,now+SESSION_TTL_MS);
+ now+=20*60*1000;p.onMessage.emit({kind:'applyRenew'});await flush();assert.deepEqual(p.sent.at(-1),{kind:'applyRenewed',expiresAt:now+SESSION_TTL_MS});
+ now+=25*60*1000;p.onMessage.emit({kind:'studyBriefRecord',id:'r1',nctIds:ONE});await flush();assert.equal(replies(p).at(-1).type,'briefRecords','45 minutes after connecting is past the original deadline but inside the renewed one');assert.equal(p.closed,false);
+ now+=5*60*1000+1;p.onMessage.emit({kind:'studyBriefRecord',id:'r2',nctIds:ONE});await flush();assert.equal(p.closed,true,'the renewed deadline ends the session');assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.equal(h.natives.length,0,'renewing never opens the helper');
+});
+test('prepared briefs keep their own five-minute one-use receipt even though the session lasts 30 minutes',async()=>{
  assert.equal(APPLY_TOKEN_TTL_MS,5*60*1000);
  let now=Date.UTC(2026,9,24,15,15);const h=harness(STUDY,{now:()=>now});await h.overlay();const p=await h.apply();
- await h.send(p,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture(now+SESSION_TTL_MS)});
+ await h.send(p,briefRequest('p1'));await h.reply(h.natives[0],{id:'p1',type:'result',ok:true,result:{...briefPrepared(ONE),expiresAt:now+SESSION_TTL_MS}});
  assert.equal(replies(p).at(-1).result.expiresAt,now+APPLY_TOKEN_TTL_MS,'a longer claim is cut back to five minutes');
  now+=4*60*1000;p.onMessage.emit({kind:'applyRenew'});await flush();assert.equal(p.sent.at(-1).kind,'applyRenewed');
- now+=60*1000+1;await h.send(p,{id:'e1',type:'executeApply',payload:{token:TOKEN,digest:DIGEST}});assert.equal(replies(p).at(-1).code,'APPLY_EXPIRED','renewing the session does not renew the receipt');assert.equal(h.natives[0].sent.length,1);assert.equal(p.closed,false,'the session itself is still open');
+ now+=60*1000+1;await h.send(p,briefExecute('e1'));assert.equal(replies(p).at(-1).code,'APPLY_EXPIRED','renewing the session does not renew the receipt');assert.equal(h.natives[0].sent.length,1);assert.equal(p.closed,false,'the session itself is still open');
+});
+
+// Transport hardening first asserted on the removed private-matching broker (tests/live-broker-transport.test.ts). The study brief broker is
+// the frame-to-helper transport that remains, so the same properties are asserted on it.
+function nativeTimers(){const list:{fn:()=>void;ms:number;handle:number}[]=[],cleared=new Set<unknown>(),realSet=globalThis.setTimeout,realClear=globalThis.clearTimeout;
+ globalThis.setTimeout=((fn:any,ms?:number,...a:any[])=>{if(ms===APPLY_NATIVE_TIMEOUT_MS){const handle=list.length+1000;list.push({fn:()=>fn(...a),ms,handle});return handle as any}return realSet(fn,ms,...a)}) as any;
+ globalThis.clearTimeout=((handle:any)=>{if(typeof handle==='number'&&list.some(t=>t.handle===handle)){cleared.add(handle);return}realClear(handle)}) as any;
+ return{list,cleared,restore:()=>{globalThis.setTimeout=realSet;globalThis.clearTimeout=realClear}}}
+test('a duplicate request ID while it is pending ends the session; another request while one is pending is BUSY and never reaches the helper',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();await h.send(p,briefRequest('a'));assert.equal(h.natives[0].sent.length,1);
+ await h.send(p,briefRequest('b'));assert.deepEqual(replies(p).at(-1),{id:'b',type:'result',ok:false,code:'BUSY',error:FAILURE_COPY.BUSY});assert.equal(h.natives[0].sent.length,1);
+ await h.send(p,briefRequest('a'));assert.equal(p.closed,true,'reusing a pending ID ends the session');assert.equal(h.natives[0].sent.length,1);
+});
+test('each apply session owns its helper connection; ending one leaves the other connected',async()=>{
+ const h=harness();await h.overlay();const a=await h.apply(),b=await h.apply();await h.send(a,briefRequest('a'));await h.send(b,briefRequest('b'));assert.equal(h.natives.length,2);
+ a.disconnect();await new Promise(r=>setTimeout(r,10));assert.equal(h.natives[0].closed,true);assert.equal(h.natives[1].closed,false);b.disconnect();
+});
+test('a helper failure code reaches the frame with fixed copy only; an unknown code gets the generic copy',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();await h.send(p,briefRequest('u'));await h.reply(h.natives[0],{id:'u',type:'result',ok:false,code:'SOME_NEW_CODE',error:'PRIVATE_CANARY'});
+ assert.deepEqual(replies(p).at(-1),{id:'u',type:'result',ok:false,code:'SOME_NEW_CODE',error:GENERIC_FAILURE_COPY});assert.ok(!JSON.stringify(p.sent).includes('PRIVATE_CANARY'));
+});
+test('the helper timeout uses its own code, ends the session and closes the helper connection; a settled request clears its timer',async()=>{
+ const t=nativeTimers();try{
+  const h=harness();await h.overlay();const p=await h.apply();await h.send(p,briefRequest('t'));assert.equal(t.list.length,1);t.list[0].fn();await flush();
+  assert.deepEqual(replies(p).at(-1),{id:'t',type:'result',ok:false,code:'NATIVE_TIMEOUT',error:FAILURE_COPY.NATIVE_TIMEOUT});assert.equal(p.closed,true);await new Promise(r=>setTimeout(r,10));assert.equal(h.natives[0].closed,true);
+  const g=harness();await g.overlay();const q=await g.apply();await g.send(q,briefRequest('s'));const timer=t.list.at(-1)!;await g.reply(g.natives[0],{id:'s',type:'result',ok:true,result:briefPrepared(ONE)});
+  assert.ok(t.cleared.has(timer.handle),'the settled request cleared its timer');assert.equal(q.closed,false);q.disconnect();
+ }finally{t.restore()}
+});
+test('a helper port that throws on send fails that request with a specific code, and the next request opens a fresh connection',async()=>{
+ let first=true;const h=harness(STUDY,{nativeFactory:()=>({sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){if(first){first=false;throw new Error('Attempting to use a disconnected port object')}this.sent.push(structuredClone(v))},disconnect(){this.closed=true}})});
+ await h.overlay();const p=await h.apply();
+ await h.send(p,briefRequest('a'));assert.deepEqual(replies(p).at(-1),{id:'a',type:'result',ok:false,code:'NATIVE_HOST_DISCONNECTED',error:FAILURE_COPY.NATIVE_HOST_DISCONNECTED});assert.equal(h.natives[0].closed,true);assert.equal(h.natives[0].sent.length,0);
+ await h.send(p,briefRequest('b'));assert.equal(h.natives.length,2);assert.equal(h.natives[1].sent.length,1);p.disconnect();
+});
+test('successful helper replies are rebuilt from validated fields: error text or a code on an ok reply never reaches the frame',async()=>{
+ const h=harness();await h.overlay();const p=await h.apply();await h.send(p,briefRequest('p'));await h.reply(h.natives[0],{id:'p',type:'result',ok:true,result:briefPrepared(ONE),error:'PRIVATE_CANARY'.repeat(5),code:'AGE_CANARY'});
+ const r=replies(p).at(-1);assert.deepEqual(Object.keys(r).sort(),['id','ok','result','type']);assert.ok(!JSON.stringify(p.sent).includes('CANARY'));
 });

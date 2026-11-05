@@ -21,9 +21,7 @@ function broker(url=SEARCH){
  function port(name:string,sender:any){const p:any={name,sender,sent:[] as any[],closed:false,onMessage:new Events(),onDisconnect:new Events(),postMessage(v:any){this.sent.push(JSON.parse(JSON.stringify(v)))},disconnect(){if(this.closed)return;this.closed=true;this.onDisconnect.emit()}};connect.emit(p);return p}
  /** A registered overlay: the toolbar click minted a one-use capability and the frame authenticated with it. */
  async function overlay(){clicked.emit({id:1,url});await until(()=>scripts.at(-1)?.args?.[0]?.capability,'the activation script');const capability=scripts.at(-1).args[0].capability,p=port(OVERLAY,frame());p.onMessage.emit({type:'site.authenticate',capability});await until(()=>p.sent.some((m:any)=>m.type==='site.ready'),'site.ready');return p}
- /** A registered private-matching sender: the registered overlay also asked the worker to open its protected context. */
- async function privateOverlay(){const p=await overlay();p.onMessage.emit({id:'open',type:'site.openPrivate',payload:{}});await until(()=>p.sent.some((m:any)=>m.id==='open'),'the site.openPrivate reply');const reply=p.sent.find((m:any)=>m.id==='open');assert.equal(reply.ok,true,JSON.stringify(reply));return p}
- return{chrome,natives,scripts,port,frame,overlay,privateOverlay};
+ return{chrome,natives,scripts,port,frame,overlay};
 }
 const quiet=(p:any)=>{assert.equal(p.closed,true,`${p.name} must be disconnected`);assert.deepEqual(p.sent,[],`${p.name} must receive nothing`)};
 
@@ -44,18 +42,17 @@ test('unregistered senders are refused on every owned port name and no native co
  };
  for(const name of [OVERLAY,BADGE,LIVE,APPLY])for(const[label,make]of Object.entries(foreign)){const b=broker(STUDY);const p=b.port(name,make(b));await flush();p.onMessage.emit({type:'site.authenticate',capability:'x'.repeat(64)});p.onMessage.emit({kind:'liveNative',request:{id:'a',type:'liveCatalog',payload:{}}});p.onMessage.emit({kind:'applyNative',request:{id:'a',type:'prepareApply',payload:{}}});await flush();assert.equal(p.closed,true,`${name} from ${label}`);assert.deepEqual(p.sent,[],`${name} from ${label}`);assert.equal(b.natives.length,0,`${name} from ${label}`)}});
 
-test('a registered private sender gets the live port ready, but only on the exact live name',async()=>{
- const b=broker();await b.privateOverlay();const ok=b.port(LIVE,b.frame());await until(()=>ok.sent.length>0,'liveReady');assert.equal(ok.closed,false);assert.deepEqual(ok.sent,[{kind:'liveReady'}]);
- for(const name of ['treatable-private-live-v1 ','TREATABLE-PRIVATE-LIVE-V1','treatable-private-live','bogus-port','treatable-panel-v2']){const c=broker();await c.privateOverlay();const p=c.port(name,c.frame());await flush();quiet(p);assert.equal(c.natives.length,0,name)}});
+test('the retired private-matching port is disconnected without an answer, even for a registered overlay that asks to open private matching, and opens no native connection',async()=>{
+ const b=broker();const o=await b.overlay();for(const name of [LIVE,'treatable-private-live-v1 ','TREATABLE-PRIVATE-LIVE-V1']){const p=b.port(name,b.frame());p.onMessage.emit({kind:'liveNative',request:{id:'a',type:'liveCatalog',payload:{nctIds:['NCT00000001'],source:{generation:'doc-1',queryKey:'a'.repeat(64)}}}});p.onMessage.emit({kind:'requestLiveConfirmation',request:{id:'b',analysisId:'x',digest:'a'.repeat(64),operation:'score'}});await flush();quiet(p)}
+ o.onMessage.emit({id:'open',type:'site.openPrivate',payload:{}});await until(()=>o.closed,'the overlay port to end');assert.ok(!o.sent.some((m:any)=>m.id==='open'),'the retired request gets no reply');assert.equal(b.natives.length,0)});
 
 test('a registered study-page overlay gets the apply port ready, but only on the exact apply name',async()=>{
  const s=broker(STUDY);await s.overlay();const applying=s.port(APPLY,s.frame());await until(()=>applying.sent.length>0,'applyReady');assert.equal(applying.closed,false);assert.equal(applying.sent[0].kind,'applyReady');
  for(const name of ['treatable-apply-v1 ','TREATABLE-APPLY-V1','treatable-apply','bogus-port','treatable-panel-v2']){const c=broker(STUDY);await c.overlay();const p=c.port(name,c.frame());await flush();quiet(p);assert.equal(c.natives.length,0,name)}});
 
-test('a registered overlay that was never opened for private matching cannot use the live port',async()=>{const b=broker();await b.overlay();const p=b.port(LIVE,b.frame());await flush();quiet(p);assert.equal(b.natives.length,0)});
 
 test('a port no broker owns, including the retired side-panel port, is disconnected without an answer and without a native connection',async()=>{
- const b=broker();for(const name of ['bogus-port','treatable-panel-v2','treatable-panel-v1','treatable-panel','','TREATABLE-PANEL-V2']){const p=b.port(name,{id,url:`${origin}/panel.html`});p.onMessage.emit({kind:'native',request:{id:'s',type:'status',payload:{}}});await flush();quiet(p)}
+ const b=broker();for(const name of ['bogus-port','treatable-panel-v2','treatable-panel-v1','treatable-panel','','TREATABLE-PANEL-V2',LIVE]){const p=b.port(name,{id,url:`${origin}/panel.html`});p.onMessage.emit({kind:'native',request:{id:'s',type:'status',payload:{}}});await flush();quiet(p)}
  assert.equal(b.natives.length,0);const own=b.port(OVERLAY,{id,url:`${origin}/overlay.html`});assert.equal(own.closed,false,'ports on an owned name are left to their broker until it refuses them')});
 
 test('the built worker ignores runtime messages from the retired page and exposes no readPage handler',async()=>{const b=broker();assert.ok(b.chrome.runtime.onMessage.listeners.length>0,'the worker registers runtime message listeners, so the loop below checks them');for(const sender of [{id,url:`${origin}/panel.html`},{id,url:`${origin}/overlay.html`,tab:{id:1}}]){for(const listener of b.chrome.runtime.onMessage.listeners){let answered:any='none';const keep=listener({kind:'readPage'},sender,(v:any)=>{answered=v});assert.notEqual(keep,true,'no listener keeps the channel open for readPage');assert.equal(answered,'none')}}assert.equal(b.scripts.length,0,'no page was read')});

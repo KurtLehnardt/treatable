@@ -17,7 +17,7 @@ function rig({decisions='ok'}:{decisions?:'ok'|'fail'}={}){
  const api:any={storage:{onChanged:prefsChanged},runtime:{id:'test',getURL:(p:string)=>origin+'/'+p,onConnect:connect,onMessage:messages},action:{onClicked:new Events()},tabs:{get:async()=>({id:1,url:snap.url}),update:async()=>{},sendMessage:async(_id:number,m:any)=>{commands.push(structuredClone(m));return{ok:true,result:['snapshot','availability','clearAvailability','restore','reorder'].includes(m.type)?snap:{}}},onUpdated:new Events(),onRemoved:new Events()},scripting:{executeScript:async(v:any)=>{scripts.push(v);return[]}},windows:{create:async(v:any)=>{windows.push(v);return{id:2,tabs:[{id:9,url:origin+'/panel.html'}]}},remove:async()=>{}}};
  const rankNative=()=>{const onMessage=new Events(),onDisconnect=new Events();return{onMessage,onDisconnect,disconnect(){},postMessage(m:any){nativeSent.push(structuredClone(m));setTimeout(()=>{if(m.type==='prepareRank')onMessage.emit({id:m.id,type:'result',ok:true,result:{kind:'preparedRank',token:TOKEN,digest:DIGEST,expiresAt:Date.now()+300000,provider:'openai',nctIds:m.payload.nctIds,preview:{profile:m.payload.profile,request:{model:'gpt-6-luna',questions:m.payload.nctIds.map((name:string)=>({type:'score',name}))}}}});else if(m.type==='executeRank')onMessage.emit(decisions==='fail'?{id:m.id,type:'result',ok:false,code:'API_ERROR',error:'fixed'}:{id:m.id,type:'result',ok:true,result:{kind:'rankResult',mode:'test',provider:'openai',digest:DIGEST,scores:[[A,33],[B,100],[C,100]].map(([nctId,score])=>({nctId,score,reasonId:(score as number)>=75?'strong_match':'unclear',probabilities:RANK_LEVELS.map((_,i)=>i===((score as number)>=75?3:1)?1:0)}))}})},1)}}};
  const rankConsent={has:async()=>session.get('consent')===true,grant:async()=>{session.set('consent',true)},clear:async()=>{session.delete('consent')}};
- const service=installSiteAssistant(api,{privateMatchingReady:true,lookupPublicStudy:async(id:string)=>records[id],rankNative,rankConsent});
+ const service=installSiteAssistant(api,{lookupPublicStudy:async(id:string)=>records[id],rankNative,rankConsent});
  function port(purpose='overlay',nct?:string){const onMessage=new Events(),onDisconnect=new Events(),sent:any[]=[];const p:any={name:`treatable.site.${purpose}.v1`,sender:{id:'test',tab:{id:1,url:snap.url},frameId:purpose==='overlay'?2:5,documentId:purpose+'-document',url:origin+'/'+(purpose==='overlay'?'overlay.html':`score-badge.html?nct=${nct}`)},onMessage,onDisconnect,sent,closed:false,postMessage(v:any){sent.push(structuredClone(v))},disconnect(){p.closed=true;onDisconnect.emit()}};connect.emit(p);return p}
  const confirmSender={id:'test',url:origin+'/confirm-send.html',frameId:0,documentId:'confirm-doc',tab:{id:9,windowId:2,url:origin+'/confirm-send.html'}};
  return{api,service,commands,scripts,windows,nativeSent,session,messages,port,confirmSender,prefsChanged,setSnapshot:(s:any)=>{snap=s}};
@@ -113,5 +113,43 @@ test('hiding the popup closes an open ranking confirmation and sends nothing; no
  await h.service.launch({id:1,url:'https://clinicaltrials.gov/search?cond=Asthma'});
  await h.service.handle(1,{id:'r3',type:'site.aiRank',payload:{details:{}}});
  await until(()=>h.windows.length===2);assert.ok(ranking(p).some((s:any)=>s.phase==='confirming'),'the closed confirmation was not taken as Not now');
+ p.disconnect();
+});
+
+/* Confirmation-window properties first asserted on the removed private-matching confirmation; they apply to the ranking confirmation. */
+test('the ranking confirmation binds to its first document and is one-use; closing its tab never approves and scores nothing',async()=>{
+ const h=rig(),p=await connected(h);await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length===1);
+ let context:any;h.messages.emit({kind:'site.confirmContext'},h.confirmSender,(v:any)=>context=v);assert.equal(context.ok,true);
+ const replacement={...h.confirmSender,documentId:'replacement'};let other:any;h.messages.emit({kind:'site.confirmContext'},replacement,(v:any)=>other=v);assert.equal(other,undefined,'another document in the same window cannot read it');assert.equal(h.service.confirmSender(replacement),undefined);
+ h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});await until(()=>ranking(p).some((s:any)=>s.phase==='done'));
+ assert.equal(h.service.confirmSender(h.confirmSender),undefined,'an answered confirmation is gone');let again:any;h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,(v:any)=>again=v);assert.equal(again,undefined);
+ p.disconnect();
+ const c=rig(),q=await connected(c);await c.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>c.windows.length===1);
+ c.api.tabs.onRemoved.emit(9);await until(()=>ranking(q).some((s:any)=>s.phase==='done'));
+ assert.deepEqual(c.nativeSent.map(m=>m.type),['prepareRank'],'closing the confirmation sends nothing to the provider');assert.equal(c.session.get('consent'),undefined);assert.equal(ranking(q).find((s:any)=>s.phase==='done').failure,'CONFIRMATION_CANCELLED');assert.equal(c.service.confirmSender(c.confirmSender),undefined);
+ q.disconnect();
+});
+test('a ranking confirmation window still being created when Treatable ends is closed and can never approve',async()=>{
+ const h=rig(),p=await connected(h);let release!:(v:any)=>void;const removed:number[]=[];h.api.windows.create=(v:any)=>{h.windows.push(v);return new Promise(r=>release=r)};h.api.windows.remove=async(id:number)=>{removed.push(id)};
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length===1);
+ h.service.endTab(1);release({id:17,tabs:[{id:19}]});await flush();
+ assert.deepEqual(removed,[17],'only the late window is closed');const late={...h.confirmSender,tab:{id:19,windowId:17,url:h.confirmSender.url}};assert.equal(h.service.confirmSender(late),undefined);
+ assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank']);assert.equal(h.session.get('consent'),undefined);assert.equal(p.closed,true);
+});
+test('navigating while a ranking confirmation window is being created cancels the run: accepting that window scores nothing and records no confirmation',async()=>{
+ const h=rig(),p=await connected(h);let release!:(v:any)=>void;h.api.windows.create=(v:any)=>{h.windows.push(v);return new Promise(r=>release=r)};
+ await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length===1);
+ h.api.tabs.onUpdated.emit(1,{status:'loading'},{id:1,url:'https://clinicaltrials.gov/search?cond=Asthma'});release({id:17,tabs:[{id:19}]});await flush();
+ const late={...h.confirmSender,tab:{id:19,windowId:17,url:h.confirmSender.url}};h.messages.emit({kind:'site.confirmSend',accepted:true},late,()=>{});await flush();await new Promise(r=>setTimeout(r,20));
+ assert.deepEqual(h.nativeSent.map(m=>m.type),['prepareRank'],'the cancelled run never executes');assert.equal(h.session.get('consent'),undefined,'no browser-session confirmation is recorded');
+ p.disconnect();
+});
+test('site.ping never extends an applied ranking: the applied order lapses five minutes after it was applied',async t=>{
+ const h=rig(),p=await connected(h);await h.service.handle(1,{id:'r1',type:'site.aiRank',payload:{details:{}}});await until(()=>h.windows.length===1);
+ h.messages.emit({kind:'site.confirmSend',accepted:true},h.confirmSender,()=>{});await until(()=>ranking(p).some((s:any)=>s.phase==='done'&&s.applied));
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});const start=Date.now();
+ assert.deepEqual((await h.service.handle(1,{id:'ping',type:'site.ping',payload:{generation:'doc-1'}})).result,{active:true});
+ t.mock.timers.setTime(start+4*60*1000);assert.deepEqual((await h.service.handle(1,{id:'alive',type:'site.ping',payload:{generation:'doc-1'}})).result,{active:true});
+ t.mock.timers.setTime(start+6*60*1000);await assert.rejects(h.service.handle(1,{id:'expired',type:'site.rank',payload:{generation:'doc-1'}}),'the applied order expired even though the search session was pinged');
  p.disconnect();
 });

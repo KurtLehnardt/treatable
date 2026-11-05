@@ -1,4 +1,4 @@
-import test from'node:test';import assert from'node:assert/strict';import React from'react';import TestRenderer,{act}from'react-test-renderer';import{useSiteController,SEARCH_SESSION_TTL_MS}from'../src/use-site-controller';import{captureSiteActivations}from'../src/overlay-port';import{OverlayView}from'../src/overlay-view';import{PrivateMatchingView}from'../src/private-match-view';import{SITE_FILTERS}from'../src/site-filter-catalog';
+import test from'node:test';import assert from'node:assert/strict';import React from'react';import TestRenderer,{act}from'react-test-renderer';import{useSiteController,SEARCH_SESSION_TTL_MS}from'../src/use-site-controller';import{captureSiteActivations}from'../src/overlay-port';import{OverlayView}from'../src/overlay-view';import{SITE_FILTERS}from'../src/site-filter-catalog';
 class E{l:((...v:any[])=>void)[]=[];addListener=(f:(...v:any[])=>void)=>this.l.push(f);emit=(...v:any[])=>this.l.forEach(f=>f(...v))}
 const flush=async()=>{for(let i=0;i<5;i++)await new Promise<void>(r=>queueMicrotask(r))};
 const STEP=10000;
