@@ -11,7 +11,6 @@ test('a stale hidden badge left on a tab is cleared when the background initiali
   runtime:area('runtime',{id:'test',getURL:(p:string)=>'chrome-extension://test/'+p,getManifest:()=>({action:{default_title:'Open Treatable'}})}),
   action:area('action',{setTitle:async()=>{},setBadgeText:async(v:any)=>{badges.push(v)}}),
   tabs:area('tabs',{get:async(id:number)=>({id}),query:async()=>[{id:1,windowId:1},{id:2,windowId:1}]}),
-  sidePanel:area('sidePanel',{setOptions:async()=>{},setPanelBehavior:async()=>{}}),
  };
  await import('../src/background');await flush();
  for(const id of [1,2])assert.equal(badges.some(b=>b.tabId===id&&b.text===''),true,`tab ${id}: the badge is cleared at startup`);

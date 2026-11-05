@@ -63,7 +63,7 @@ test('closing the frame or navigating to another study revokes the receipt and e
  h.updates.emit(1,{url:'https://clinicaltrials.gov/study/NCT00000001'},{id:1});assert.equal(p.closed,true);assert.ok(p.sent.some((v:any)=>v.kind==='applyEnded'));assert.deepEqual(n.sent.at(-1).type,'revokeApply');assert.deepEqual(n.sent.at(-1).payload,{token:TOKEN});
  const g=harness();await g.overlay();const q=await g.apply();await g.send(q,{id:'p1',type:'prepareApply',payload:{nctId:'NCT07254806'}});await g.reply(g.natives[0],{id:'p1',type:'result',ok:true,result:preparedFixture()});q.disconnect();assert.equal(g.natives[0].sent.at(-1).type,'revokeApply');assert.equal(g.broker.sessionCount(),0);
 });
-test('built background routes the apply port to its broker, not the legacy panel',()=>{const bundle=readFileSync(new URL('../dist/background.js',import.meta.url),'utf8');assert.ok(bundle.includes('treatable-apply-v1'));assert.ok(bundle.includes('applyReady'))});
+test('built background routes the apply port to its broker',()=>{const bundle=readFileSync(new URL('../dist/background.js',import.meta.url),'utf8');assert.ok(bundle.includes('treatable-apply-v1'));assert.ok(bundle.includes('applyReady'))});
 
 // Public-only brief authority uses the same real overlay registration harness as the existing apply tests.
 import{normalizeApplyRecord,normalizeStudyBrief}from'../shared/apply-record.mjs';

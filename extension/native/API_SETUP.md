@@ -12,7 +12,7 @@ node extension/native/credentials-setup.mjs configure
 node extension/native/credentials-setup.mjs status
 ```
 
-`extension/dist` is the primary Version B build; `dist-b` has the same identity and interface. Install the final helper **before** credential configuration. The installer copies the current bridge code, compiles the Keychain helper, registers `com.treatable.local` and pins `process.execPath` in its launcher. Reinstall after replacing or moving that Node executable or updating native source. It changes only Treatable’s own registration/helper and retains the dedicated Keychain item.
+`extension/dist` is the only build. Install the final helper **before** credential configuration. The installer copies the current bridge code, compiles the Keychain helper, registers `com.treatable.local` and pins `process.execPath` in its launcher. Reinstall after replacing or moving that Node executable or updating native source. It changes only Treatable’s own registration/helper and retains the dedicated Keychain item.
 
 Credential setup prompts in an interactive terminal with echo disabled. It stores only the dedicated macOS Keychain item (service `com.treatable.openai`, account `api-key`, label “Treatable OpenAI API key”, not synchronized to other devices), using the installed helper when present. Never pass a key in an argument, environment variable, browser, chat, configuration file or logs. Installation and configuration do not make provider requests. Keychain may request access; replacing the helper can require access approval again.
 
@@ -43,7 +43,7 @@ Replace the path with your checkout’s location. Do not copy a key into this co
 
 ## Current-page analysis
 
-The protected `private-match.html` window is non-web-accessible and must match its registered top-level window/document/source context. The website overlay and badge frames cannot invoke native model operations.
+Native model operations for page matching (`liveNative`) are available only to the `overlay.html` subframe that the service worker registered for the current tab and opened for private matching (`privateSender` in `src/site-background.ts` checks the extension ID, a non-zero frame ID, the exact `overlay.html` URL, and the registered document and source context). The apply and study-brief channel uses the weaker `overlaySender` check instead: the authenticated `overlay.html` subframe of a study page, with no private matching context required. The website overlay and badge frames cannot invoke native model operations.
 
 - `liveCatalog` fetches fresh official ClinicalTrials.gov records for **all loaded current-page NCT IDs, maximum 10**. It checks TLS, strict record/response IDs, byte/time bounds and bounded concurrency. Immutable public evidence snapshots expire after five minutes. Condition labels come from these records, not the older bundled corpus. Missing facts stay unknown; truncation is visible.
 - `prepareLive` requires the current policy receipt and a strict minimized packet: age band, optional US state/sex, 1–6 explicitly selected public condition IDs, every loaded NCT ID for Decisions, and 1–2 selected NCT IDs for Agents. No provider call occurs. The helper pins both exact API bodies and public tool outputs to a digest and opaque five-minute token bound to the source snapshot/query/profile.
@@ -73,7 +73,7 @@ node extension/native/install.mjs --manifest extension/dist/manifest.json
 
 ## Retained fictional and snapshot paths
 
-The older protected panel retains `scoreDemo`/`agentDemo`: one compiled fictional profile and two fixed public study excerpts, with explicit preview and consent. The separate `prepareReal`/`executeReal` path uses up to two native-owned snapshot records and the matching 3,514-label vocabulary from the bundled 2,000-record corpus. That path’s snapshot limit does **not** apply to current-page matching.
+The helper retains `scoreDemo`/`agentDemo` from the retired protected panel (no extension page calls them now): one compiled fictional profile and two fixed public study excerpts, with explicit preview and consent. The separate `prepareReal`/`executeReal` path uses up to two native-owned snapshot records and the matching 3,514-label vocabulary from the bundled 2,000-record corpus. That path’s snapshot limit does **not** apply to current-page matching.
 
 Both paths reject arbitrary raw patient text, notes, page text, names, exact age/ZIP/coordinates, endpoints, prompts, tools and credentials. Minimized health labels, age band and optional state/sex remain sensitive and potentially identifying; no anonymity, HIPAA certification or legal sufficiency is claimed.
 

@@ -1,25 +1,18 @@
-import {createHash} from 'node:crypto';
-import {PUBLIC_CATALOG_METADATA} from '../shared/public-catalog.mjs';
 import {build} from 'esbuild';
 import {mkdir,cp,readFile,writeFile,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const explicitA=process.argv.includes('--variant=a'),explicitB=process.argv.includes('--variant=b');
-if(explicitA&&explicitB)throw Error('Choose one UI variant.');
-const variant=explicitA?'a':'b';
 /* The guide's stylesheet module is empty in source; the build fills it with the packaged sweetalert2 CSS text so no stylesheet is fetched at run time. */
 const swalCssText=await readFile(path.join(root,'node_modules/sweetalert2/dist/sweetalert2.min.css'),'utf8');
 const swalCssPlugin={name:'swal-css',setup(b){b.onLoad({filter:/guide-swal-css\.ts$/},()=>({contents:`export default ${JSON.stringify(swalCssText)};`,loader:'ts'}))}};
-const output=explicitA?'dist-a':explicitB?'dist-b':'dist';
+const output='dist';
 await rm(path.join(root,output),{recursive:true,force:true});
 await mkdir(path.join(root,output,'data'),{recursive:true});
-await build({entryPoints:{panel:path.join(root,variant==='b'?'src/panel-b.tsx':'src/panel.tsx'),background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'private-match':path.join(root,'src/private-match.tsx'),'confirm-send':path.join(root,'src/confirm-send.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')},plugins:[swalCssPlugin]});
+await build({entryPoints:{background:path.join(root,'src/background.ts'),overlay:path.join(root,'src/overlay-entry.tsx'),'score-badge':path.join(root,'src/score-badge.tsx'),'private-match':path.join(root,'src/private-match.tsx'),'confirm-send':path.join(root,'src/confirm-send.tsx')},outdir:path.join(root,output),bundle:true,format:'esm',platform:'browser',target:'chrome116',minify:true,legalComments:'eof',jsx:'automatic',alias:{zod:path.join(root,'node_modules/zod')},plugins:[swalCssPlugin]});
 try{await readFile(path.join(root,'src/site-content.ts'));await build({entryPoints:[path.join(root,'src/site-content.ts')],outfile:path.join(root,output,'site-content.js'),bundle:true,format:'iife',platform:'browser',target:'chrome142',minify:true,legalComments:'eof',plugins:[swalCssPlugin]});}catch(error){if(error.code!=='ENOENT')throw error;}
-if(variant==='b')console.log('Building primary Version B presentation.');
 const sites=JSON.parse(await readFile(path.join(root,'sites.json'),'utf8'));
 const manifest=JSON.parse(await readFile(path.join(root,'manifest.json'),'utf8'));
-manifest.name=variant==='b'?'Treatable · Version B':'Treatable · Version A reference';
 manifest.host_permissions=sites.origins.map(origin=>`${origin}/*`);
 manifest.web_accessible_resources=[{resources:['overlay.html','score-badge.html'],matches:manifest.host_permissions}];
 // Fail closed if the extension-page CSP drifts toward remote, inline, eval, data: or blob: sources.
@@ -31,11 +24,6 @@ if(!csp.includes(networkRule+';'))throw Error('Only named registry origins may r
 const privateCsp=csp.replace(ancestorRule,"frame-ancestors 'none'").replace(networkRule,"connect-src 'self'");
 if(!/(^|; )default-src 'none'(;|$)/.test(privateCsp)||!/(^|; )script-src 'self'(;|$)/.test(privateCsp)||/https?:|\*|data:|blob:|'unsafe-/.test(privateCsp))throw new Error('Extension-page CSP must stay self-only with default-src none');
 await writeFile(path.join(root,output,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
-for(const name of ['panel','overlay','score-badge','private-match','confirm-send'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
-for(const name of ['studies.json','us-zip-centroids.json'])await cp(path.join(root,'../scaffold/data',name),path.join(root,output,'data',name));
-const studyBytes=await readFile(path.join(root,output,'data/studies.json'));
-if(createHash('sha256').update(studyBytes).digest('hex')!==PUBLIC_CATALOG_METADATA.corpusSha256)throw Error('UI/native public corpus hash mismatch');
-const studies=JSON.parse(studyBytes.toString('utf8'));
-if(studies.length!==2000)throw new Error(`Expected 2,000 shipped studies, got ${studies.length}`);
-await writeFile(path.join(root,output,'data/provenance.json'),JSON.stringify({count:studies.length,fetchedAt:studies[0]?.fetchedAt,source:'ClinicalTrials.gov API v2',search:'Local keyword retrieval; snapshot is incomplete and recruitment may change',zipAttribution:'GeoNames, CC BY 4.0; approximate postal-area centers'},null,2));
-console.log(`Built private Chrome extension with ${studies.length} studies`);
+for(const name of ['overlay','score-badge','private-match','confirm-send'])await cp(path.join(root,'public',name+'.html'),path.join(root,output,name+'.html'));
+await cp(path.join(root,'../scaffold/data/us-zip-centroids.json'),path.join(root,output,'data/us-zip-centroids.json'));
+console.log('Built private Chrome extension');
