@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import{mkdtemp,readFile,writeFile,rm,stat}from'node:fs/promises';import os from 'node:os';import path from 'node:path';
 import{PendingCleanup,deleteSessions,MAX_PENDING,MAX_AGE_MS,MIN_LEFTOVER_AGE_MS,PENDING_FILE}from'../pending-cleanup.mjs';
 import{ApiError}from'../transport.mjs';
-import{installHost,writeHook,startHost,readLines,poll}from'./host-harness.mjs';
+import{installHost,writeHook,startHost,readLines,poll,prepareBrief,prepareRank,receipt,withHost,BRIEF_IDS,RANK_IDS,RANK_PROFILE}from'./host-harness.mjs';
 const SHAPE=/^\[(\{"id":"[A-Za-z0-9_-]{1,160}","at":\d+\},?)*\]$/;
 const tmp=async()=>mkdtemp(path.join(os.tmpdir(),'treatable-pending-'));
 const keyReads=async file=>(await readFile(file,'utf8').catch(()=>'')).split('\n').filter(Boolean).length;
@@ -29,12 +29,13 @@ test('deleteSessions confirms only 2xx and 404, retries within a short budget an
  assert.deepEqual(calls.map(c=>c.method+' '+c.url),['POST /v1/agents/sessions/sess_ok/events','DELETE /v1/agents/sessions/sess_ok','POST /v1/agents/sessions/sess_fail/events','DELETE /v1/agents/sessions/sess_fail','DELETE /v1/agents/sessions/sess_fail']);assert.ok(calls[0].timeout<=1000);
  const slow={async request(){await new Promise(r=>setTimeout(r,30));throw new ApiError('NETWORK_ERROR');}};const started=Date.now();assert.deepEqual(await deleteSessions(slow,Array.from({length:40},(_,i)=>`sess_${i}`),{budget:100}),[]);assert.ok(Date.now()-started<1000);
 });
-const agent={id:'agent',type:'agentDemo',payload:{fixtureId:'fibromyalgia',consent:true}};
+// The study brief is the one shipped path that opens an OpenAI Agents session; its session is tracked like every earlier agent path's.
+const agent=p=>({id:'agent',type:'executeStudyBrief',payload:receipt(p)});
 const pendingIds=async dir=>new PendingCleanup(path.join(dir,PENDING_FILE)).read().then(rows=>rows.map(e=>e.id));
 test('stdio: an observed agent session is recorded while live and removed only after a confirmed delete',async()=>{
  for(const session of ['sess_live_ok','sess_live_fail']){const installed=await installHost('treatable-track-');let host;try{
   host=startHost(installed,{hook:await writeHook(installed.home,{log:installed.log,session,delay:150})});
-  host.send(agent);await host.until(m=>m.trace?.stage==='agent.session.created'&&m.trace.sessionId===session);
+  host.send(agent(await prepareBrief(host)));await host.until(m=>m.trace?.stage==='agent.session.created'&&m.trace.sessionId===session);
   assert.deepEqual(await poll(async()=>{const ids=await pendingIds(installed.dir);return ids.length&&ids;}),[session]);
   const result=await host.result('agent');assert.equal(result.ok,true,result.code);
   const raw=await readFile(path.join(installed.dir,PENDING_FILE),'utf8');assert.match(raw,SHAPE);assert.equal((await stat(path.join(installed.dir,PENDING_FILE))).mode&0o777,0o600);
@@ -47,18 +48,19 @@ test('stdio: an observed agent session is recorded while live and removed only a
    await poll(async()=>(await readLines(installed.log)).filter(x=>x.pid!==hostPid&&x.method==='DELETE').length===2);await new Promise(r=>setTimeout(r,200));assert.deepEqual(await pendingIds(installed.dir),[session]);}
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});}}
 });
-test('stdio: leftovers are deleted only after the first normal key read, never on status, and only when older than a live run',async()=>{
+test('stdio: leftovers are deleted only after the first normal key read, never on a revoke or a public preparation, and only when older than a live run',async()=>{
  const installed=await installHost('treatable-leftover-');let host;try{
   const now=Date.now(),old=now-MIN_LEFTOVER_AGE_MS-60000;
   await writeFile(path.join(installed.dir,PENDING_FILE),JSON.stringify([{id:'sess_expired',at:now-MAX_AGE_MS-1000},{id:'sess_young',at:now-60000},{id:'sess_left_ok',at:old},{id:'sess_left_gone',at:old},{id:'sess_left_fail',at:old},{id:'bad/../id',at:old}]),{mode:0o600});
   host=startHost(installed,{hook:await writeHook(installed.home,{log:installed.log})});
-  assert.equal((await host.call({id:'s',type:'status',payload:{}})).ok,true);await new Promise(r=>setTimeout(r,300));
-  assert.deepEqual(await readLines(installed.log),[]);assert.equal(await keyReads(installed.reads),0);
-  const scored=await host.call({id:'score',type:'scoreDemo',payload:{fixtureId:'fibromyalgia',consent:true}});assert.equal(scored.ok,true,scored.code);
+  assert.equal((await host.call({id:'s',type:'revokeStudyBrief',payload:{}})).ok,true);const prepared=await prepareRank(host,'prep');await new Promise(r=>setTimeout(r,300));
+  assert.deepEqual((await readLines(installed.log)).filter(x=>x.host!=='clinicaltrials.gov'),[]);assert.equal(await keyReads(installed.reads),0);
+  // A ranking opens no Agents session, so every DELETE below is a leftover cleanup.
+  const scored=await host.call({id:'score',type:'executeRank',payload:receipt(prepared)});assert.equal(scored.ok,true,scored.code);
   await poll(async()=>(await pendingIds(installed.dir)).join()==='sess_young,sess_left_fail');
   const deletes=(await readLines(installed.log)).filter(x=>x.method==='DELETE').map(x=>x.path).sort();
   assert.deepEqual(deletes,['/v1/agents/sessions/sess_left_fail','/v1/agents/sessions/sess_left_gone','/v1/agents/sessions/sess_left_ok']);assert.equal(await keyReads(installed.reads),1);
-  assert.equal((await host.call({id:'score2',type:'scoreDemo',payload:{fixtureId:'fibromyalgia',consent:true}})).ok,true);await new Promise(r=>setTimeout(r,300));
+  assert.equal((await host.call({id:'score2',type:'executeRank',payload:receipt(await prepareRank(host,'prep2'))})).ok,true);await new Promise(r=>setTimeout(r,300));
   assert.equal((await readLines(installed.log)).filter(x=>x.method==='DELETE').length,3,'each leftover is attempted once per host process');
   host.child.stdin.end();assert.equal((await host.exit).code,0);host=undefined;
  }finally{host?.child.kill('SIGKILL');await rm(installed.home,{recursive:true,force:true});}
@@ -67,11 +69,26 @@ test('stdio: leftovers are deleted only after the first normal key read, never o
 test('stdio: SIGTERM or stdin end mid-agent-run starts a detached cleanup that deletes the session after the host is SIGKILLed',async()=>{
  for(const close of ['SIGTERM','stdin-end']){const installed=await installHost('treatable-detached-');let host;try{
   host=startHost(installed,{hook:await writeHook(installed.home,{log:installed.log,agent:'hang',session:'sess_orphan',eventsDelay:5000})});
-  host.send(agent);await host.until(m=>m.trace?.stage==='agent.session.created');await poll(async()=>(await pendingIds(installed.dir)).includes('sess_orphan'));
+  host.send(agent(await prepareBrief(host)));await host.until(m=>m.trace?.stage==='agent.session.created');await poll(async()=>(await pendingIds(installed.dir)).includes('sess_orphan'));
   const hostPid=host.child.pid;if(close==='SIGTERM')host.child.kill('SIGTERM');else host.child.stdin.end();await new Promise(r=>setTimeout(r,300));host.child.kill('SIGKILL');assert.equal((await host.exit).signal,'SIGKILL');host=undefined;
   const removal=await poll(async()=>(await readLines(installed.log)).find(x=>x.pid!==hostPid&&x.method==='DELETE'));
   assert.equal(removal.path,'/v1/agents/sessions/sess_orphan');assert.equal(removal.auth,true);
   assert.deepEqual(removal.argv.slice(-1),['sess_orphan']);assert.ok(removal.argv.at(-2).endsWith(path.join('native','cleanup.mjs')));assert.ok(!JSON.stringify(removal.argv).includes('sk-'));assert.deepEqual(removal.envKeys,['HOME','PATH']);
   await poll(async()=>(await pendingIds(installed.dir)).length===0);assert.equal(await keyReads(installed.reads),2);
  }finally{host?.child.kill('SIGKILL');await new Promise(r=>setTimeout(r,200));await rm(installed.home,{recursive:true,force:true});}}
+});
+// Ported from the removed Help me apply stdio suite: the same guarantees on the study brief and AI ranking paths.
+test('stdio: an unavailable record is RECORD_UNAVAILABLE on both paths with no key read or OpenAI call; a brief revoked mid-run cancels and deletes its session',async()=>{
+ await withHost('treatable-gov-down-',{govStatus:404},async(host,installed)=>{
+  for(const [id,type,payload] of [['brief','prepareStudyBrief',{nctIds:BRIEF_IDS}],['rank','prepareRank',{nctIds:RANK_IDS,profile:RANK_PROFILE}]]){const r=await host.call({id,type,payload});assert.equal(r.ok,false);assert.equal(r.code,'RECORD_UNAVAILABLE',type);assert.match(r.error,/official ClinicalTrials\.gov record/);}
+  assert.deepEqual((await readLines(installed.log)).filter(x=>x.host==='api.openai.com'),[]);assert.equal(await keyReads(installed.reads),0);
+ });
+ await withHost('treatable-brief-revoke-',{agent:'hang',session:'sess_brief_revoke'},async(host,installed)=>{
+  const p=await prepareBrief(host);host.send({id:'run',type:'executeStudyBrief',payload:receipt(p)});await host.until(m=>m.id==='run'&&m.trace?.stage==='agent.session.created');
+  assert.equal((await host.call({id:'busy',type:'prepareStudyBrief',payload:{nctIds:BRIEF_IDS}})).code,'BUSY');assert.equal((await host.call({id:'busyRank',type:'prepareRank',payload:{nctIds:RANK_IDS,profile:RANK_PROFILE}})).code,'BUSY');
+  assert.equal((await host.call({id:'stop',type:'revokeStudyBrief',payload:{token:p.token}})).ok,true);assert.equal((await host.result('run')).code,'CANCELLED');
+  assert.ok(host.frames.some(m=>m.id==='run'&&m.trace?.stage==='agent.cleanup.deleted'));await poll(async()=>(await pendingIds(installed.dir)).length===0);
+  const calls=(await readLines(installed.log)).filter(x=>x.host==='api.openai.com');assert.ok(calls.some(x=>x.path==='/v1/agents/sessions/sess_brief_revoke/events'&&x.body.events[0].type==='agent.session.input.cancel'));assert.ok(calls.some(x=>x.method==='DELETE'&&x.path==='/v1/agents/sessions/sess_brief_revoke'));
+  assert.ok(!calls.some(x=>x.path==='/v1/decisions'),'a cancelled brief never reaches Decisions');
+ });
 });

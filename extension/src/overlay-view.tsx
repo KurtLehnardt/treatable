@@ -1,5 +1,3 @@
-import{trialUrl}from'./core';
-import{LIVE_MAX_STUDIES}from'../shared/live-analysis-contract.mjs';
 import React,{useEffect,useRef,useState,type ReactNode} from 'react';
 import type {OverlayViewModel,OverlayTheme,UnsavedWorkHost} from './overlay-types';
 import {closeDiscardDialog,confirmDiscard} from './confirm-close';
@@ -15,11 +13,10 @@ function useResolvedTheme(theme: OverlayTheme) {
  return theme === 'system' ? systemDark ? 'dark' : 'light' : theme;
 }
 function SettingsIcon() {return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9.5 3-.6 2.2-1.8 1-2.2-.6-2.5 4.3 1.7 1.6v2l-1.7 1.6 2.5 4.3 2.2-.6 1.8 1 .6 2.2h5l.6-2.2 1.8-1 2.2.6 2.5-4.3-1.7-1.6v-2l1.7-1.6-2.5-4.3-2.2.6-1.8-1L14.5 3z"/><circle cx="12" cy="12" r="3"/></svg>}
-/** `ranking` is the AI-matched results section for a results page; `apply` is the study brief. The reference build passes neither and shows the inline matching callout. */
-export function OverlayView({vm, inlineMatching, apply, settings, ranking}: {vm: OverlayViewModel & UnsavedWorkHost; inlineMatching?: ReactNode; apply?: ReactNode; settings?: ReactNode; ranking?: ReactNode}) {
- const heading = useRef<HTMLHeadingElement>(null), [settingsOpen, setSettingsOpen] = useState(false);
+/** `ranking` is the AI-matched results section for a results page; `apply` is the study brief. */
+export function OverlayView({vm, apply, settings, ranking}: {vm: OverlayViewModel & UnsavedWorkHost; apply?: ReactNode; settings?: ReactNode; ranking?: ReactNode}) {
+ const [settingsOpen, setSettingsOpen] = useState(false);
  const displayMode = vm.displayMode || 'popup', theme = vm.theme || 'system', resolvedTheme = useResolvedTheme(theme);
- useEffect(() => {heading.current?.focus()}, []);
  const latest = useRef(vm), confirming = useRef(false), alive = useRef(true), themeNow = useRef(resolvedTheme);
  latest.current = vm; themeNow.current = resolvedTheme;
  /* Closing ends the session and clears what was typed. Ask first only when there is something to lose; otherwise close at once. */
@@ -75,8 +72,6 @@ export function OverlayView({vm, inlineMatching, apply, settings, ranking}: {vm:
   if (typeof document !== 'undefined' && typeof document.getElementById === 'function') (document.getElementById('apply-heading') as HTMLElement | null)?.focus();
  }, [vm.connected, hasApply]);
  useEffect(() => {const key = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); if (confirming.current || event.repeat) return; if (settingsOpen) setSettingsOpen(false); else void requestClose()}}; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)}, [settingsOpen]);
- const matchingOpen = vm.matchingOpen ?? !!inlineMatching;
- const loadedCount = vm.snapshot?.nctIds.length || 0, tooManyStudies = loadedCount > LIVE_MAX_STUDIES, canOpenMatching = vm.connected && !vm.busy && loadedCount > 0 && !tooManyStudies;
  /* Before the toolbar button connects this frame, or after the session ends, one sentence says what to do instead of a form that cannot be used. */
  const idle = !vm.connected || vm.ended;
  const header = <header className="overlay-header"><div className="overlay-brand"><span className="brand-symbol" aria-hidden="true">t</span><div><h1>Treatable</h1></div></div><div className="header-actions"><button type="button" className="icon-button settings-button" data-treatable-guide="appearance" aria-label="Treatable settings" aria-expanded={settingsOpen} aria-controls="treatable-settings" onClick={() => setSettingsOpen(!settingsOpen)}><SettingsIcon/></button><button type="button" className="icon-button" aria-label={vm.collapsed ? 'Expand search assistant' : 'Collapse search assistant'} onClick={() => vm.setCollapsed(!vm.collapsed)}>{vm.collapsed ? '↗' : '−'}</button><button type="button" className="icon-button" aria-label="Close Treatable and end session" onClick={() => void requestClose()}>×</button></div></header>;
@@ -90,13 +85,6 @@ export function OverlayView({vm, inlineMatching, apply, settings, ranking}: {vm:
   {vm.setAiRanking && <div className="ai-switch-row"><label className="ai-switch" data-treatable-guide="ai-ranking"><input type="checkbox" role="switch" checked={vm.aiRanking !== 'off'} disabled={vm.ended} onChange={event => vm.setAiRanking?.(event.target.checked ? 'on' : 'off')}/><span><strong>AI-matched results</strong><small>{vm.aiRanking !== 'off' ? 'Best matches first, with a match % on each card.' : 'The website keeps its own order.'}</small></span></label></div>}
   {!vm.collapsed && <><div className="overlay-content">{ranking}{apply}{vm.study&&vm.guide&&<div className="search-elsewhere"><button type="button" className="quiet" disabled={!vm.connected||vm.ended} onClick={() => void requestOpenSearch()}>Search for other studies on ClinicalTrials.gov</button></div>}
    {vm.error && <p role="alert" className="notice error">{vm.error}</p>}
-   {!apply && !ranking && <section className="page-results" aria-labelledby="page-heading"><div className="section-intro"><span className="eyebrow">Work with the website’s results</span><h2 id="page-heading" tabIndex={-1} ref={heading}>On this page</h2><p>Only the visible cards loaded on this results page are included. Other pages are not ranked.</p></div><div className="result-count"><strong>{loadedCount}</strong><span>studies shown on this page</span></div>
-    
-    {vm.snapshot?.diagnostic && <p className="notice">{vm.snapshot.diagnostic}</p>}
-    <div className="button-row"><button type="button" disabled={!vm.connected || vm.busy} onClick={vm.refresh}>Check this page</button><button type="button" disabled={!vm.connected || vm.busy || !loadedCount} onClick={vm.fetchRecords}>Load fresh study records</button><button type="button" className="quiet" disabled={!vm.connected || vm.busy} onClick={vm.copyDiagnostics}>Show diagnostics</button><button type="button" className="quiet" disabled={!vm.connected || vm.busy} onClick={vm.restore}>Restore original order</button></div>
-    {vm.diagnostics && <details className="diagnostic-report"><summary>Diagnostic report · no search terms or profile</summary><p>Select this report and press Ctrl+C or Command+C to copy.</p><textarea aria-label="Copyable diagnostic report" readOnly rows={12} wrap="soft" value={vm.diagnostics} onFocus={event => event.currentTarget.select()}/></details>}
-    {vm.records.length > 0 && <ul className="public-studies">{vm.records.map(record => <li key={record.nctId}><span className="eyebrow">{record.status.replaceAll('_', ' ')}</span><h3><a href={trialUrl(record.nctId)} target="_blank" rel="noopener noreferrer">{record.title}</a></h3><span className="study-id">{record.nctId}</span></li>)}</ul>}
-    <section className="matching-callout" aria-labelledby="inline-matching-title"><div className="matching-callout-heading"><div><h3 id="inline-matching-title">See which studies fit your needs.</h3><p>Use a few details to compare this page’s studies. You review and confirm exactly what is sent before any analysis.</p></div><button type="button" className="primary" aria-expanded={matchingOpen} disabled={!matchingOpen && !canOpenMatching} onClick={() => {if (matchingOpen) vm.closePrivate?.(); else if (canOpenMatching) vm.openPrivate()}}>{matchingOpen ? 'Close matching details' : 'Find my matches'}</button></div><p className="analysis-boundary">Match up to {LIVE_MAX_STUDIES} visible studies at a time. Relevance scores do not determine eligibility.</p>{tooManyStudies && <p role="status" className="notice">To match these results, set ClinicalTrials.gov to {LIVE_MAX_STUDIES} studies per page, then choose Check this page.</p>}{inlineMatching && <div className="inline-matching">{inlineMatching}</div>}<button type="button" className="quiet end-matching" disabled={!vm.connected || vm.busy} onClick={vm.endMatching}>End page matching</button></section>
-   </section>}</div></>}
+  </div></>}
  </main>;
 }

@@ -1,6 +1,6 @@
 // Public-study-only preparation and bounded Agent -> Decisions pipeline. No caller profile, HTML, prompt or URL is accepted.
 import{createHash,randomBytes}from'node:crypto';
-import{fetchGovRecord,freezeLive}from'./live-evidence.mjs';import{sameSecret}from'./real.mjs';import{ApiError}from'./transport.mjs';import{runPinnedToolAgent,MAX_TOOL_ARGUMENT_BYTES}from'./provider.mjs';
+import{fetchGovRecord,freezeLive,sameSecret}from'./live-evidence.mjs';import{ApiError}from'./transport.mjs';import{runPinnedToolAgent,MAX_TOOL_ARGUMENT_BYTES}from'./provider.mjs';
 import{normalizeApplyRecord,normalizeStudyBrief}from'../shared/apply-record.mjs';
 import{parseStudyBriefRequest,parsePreparedStudyBrief,parseStudyBriefResult,parsePublicStudyBrief,APPLY_TOKEN_TTL_MS,STUDY_BRIEF_MAX_BYTES,APPLY_QUESTION_TEMPLATES,APPLY_PRESCREEN_TEMPLATES,APPLY_FLAG_TEMPLATES,STUDY_BRIEF_CATEGORIES,STUDY_BRIEF_ROUTES,STUDY_BRIEF_TOOL_NAME,redactKeyLike,redactedTraceBody,redactedTraceBodyCost}from'../shared/apply-contract.mjs';
 import{exactKeys,isRecord,templateIdList,utf8Bytes,MAX_MESSAGE_BYTES}from'../shared/demo-contract.mjs';import{UNTRUSTED_TEXT_RULE,UNTRUSTED_FIELD}from'../shared/untrusted-text.mjs';

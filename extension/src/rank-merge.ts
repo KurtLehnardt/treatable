@@ -2,7 +2,7 @@
  * Known mismatches from structured record fields (recruiting status, listed age range, listed sex) always sort last with a short
  * factual reason. Missing data is never a mismatch. Everything else sorts by the provider's 0-100 relevance score. */
 import type{RankScore}from'../shared/rank-contract.mjs';
-import{AGE_BANDS,type AgeBand}from'../shared/real-contract.mjs';
+import{AGE_BANDS,type AgeBand}from'../shared/age-bands.mjs';
 import{rankTerm,RANK_MAX_TERMS}from'../shared/rank-contract.mjs';
 import{type CheckReason,type RankReasonId}from'./rank-labels';
 export{REASON_TEXT,isReasonId,CHECK_REASONS,type CheckReason,type RankReasonId}from'./rank-labels';

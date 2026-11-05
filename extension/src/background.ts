@@ -1,14 +1,11 @@
-import './zod-jitless';
-import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
 import {installSiteAssistant,isSitePort,toolbarTitle} from './site-background';
 import {clearLegacyPatientData} from './storage';
-// Every port belongs to exactly one broker below (site overlay/badge, private live matching, apply). Any other name, including the retired side-panel port, is disconnected unanswered.
-chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==PRIVATE_LIVE_PORT&&port.name!==APPLY_PORT)try{port.disconnect()}catch{}});
-let liveBroker:ReturnType<typeof installLiveBroker>|undefined;
-const siteAssistant=installSiteAssistant(chrome,{onProtectedEnd:tabId=>{liveBroker?.endTab(tabId)}});
-liveBroker=installLiveBroker(chrome,siteAssistant);
-// Help me apply: study-page overlay frame only; public NCT ID and prepared receipt only.
+// Every port belongs to exactly one broker below (site overlay/badge, study page). Any other name, including the retired side-panel and
+// private-matching ports, is disconnected unanswered.
+chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==APPLY_PORT)try{port.disconnect()}catch{}});
+const siteAssistant=installSiteAssistant(chrome);
+// Study page (study brief and local model check): the authenticated overlay frame only; public NCT IDs and prepared receipts only.
 installApplyBroker(chrome,siteAssistant);
 // The toolbar title says what a click does on this tab, or that Treatable is hidden there. toolbarTitle is its one source, shared with the hidden cue. Titles need no permission.
 function setActionTitle(tab:any){try{void Promise.resolve(chrome.action.setTitle({tabId:tab.id,title:toolbarTitle(siteAssistant.isHidden(tab.id),tab.url)})).catch(()=>{})}catch{}}

@@ -1,8 +1,8 @@
-// "Help me apply" protocol. Only a public NCT ID crosses to the native helper; no patient data is accepted or sent to a model.
-// The native helper fetches the official record, pins the exact Agents request, and returns fixed-catalog IDs only.
+// Study page protocol: the source-only study brief and the local model check. Only public NCT IDs cross to the native helper; no patient
+// data is accepted or sent to a model. The native helper fetches the official records, pins the exact requests, and returns validated output only.
 import {exactKeys,isRecord,validId,utf8Bytes,templateIdList,MAX_MESSAGE_BYTES} from './demo-contract.mjs';
 import {isLocalModelName} from './local-model.mjs';
-export const APPLY_REQUEST_TYPES=Object.freeze(['prepareApply','executeApply','revokeApply','prepareStudyBrief','executeStudyBrief','revokeStudyBrief','localModels']);
+export const APPLY_REQUEST_TYPES=Object.freeze(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief','localModels']);
 export const APPLY_TOKEN_TTL_MS=5*60*1000;
 export const APPLY_MAX_SITES=150;
 export const APPLY_MAX_SITE_CONTACTS=4;
@@ -10,7 +10,6 @@ export const APPLY_MAX_CENTRAL_CONTACTS=4;
 export const APPLY_MAX_OFFICIALS=6;
 // Upper bound for a normalized record (unchanged value); normalizeApplyRecord drops trailing sites to stay within a budget instead of failing.
 export const APPLY_RECORD_MAX_BYTES=MAX_MESSAGE_BYTES-8*1024;
-export const APPLY_TOOL_SECTIONS=Object.freeze(['overview','eligibility','design','locations_contacts']);
 // Questions the patient can ask the study team. Rendered only from this table.
 export const APPLY_QUESTION_TEMPLATES=Object.freeze({
  still_enrolling:'Is the study still enrolling at this site?',
@@ -77,31 +76,12 @@ export function parseApplyRequest(v){
  if(['prepareStudyBrief','executeStudyBrief','revokeStudyBrief'].includes(v.type))return parseStudyBriefRequest(v);
  // Local model detection takes no input at all: no study ID, path, model name or patient field.
  if(v.type==='localModels'){if(Object.keys(p).length)throw Error('Invalid local model check');return v;}
- if(v.type==='prepareApply'){if(!exactKeys(p,['nctId']))throw Error('Invalid apply preparation');applyNctId(p.nctId);}
- else if(v.type==='executeApply'){if(!exactKeys(p,['token','digest'])||typeof p.token!=='string'||!TOKEN.test(p.token)||typeof p.digest!=='string'||!HASH.test(p.digest))throw Error('Invalid prepared apply receipt');}
- else if(v.type==='revokeApply'){if(!exactKeys(p,['token'])||p.token!==undefined&&(typeof p.token!=='string'||!TOKEN.test(p.token)))throw Error('Invalid apply revocation');}
- else throw Error('Unsupported apply operation');return v;
-}
-// Prepared: the record for local planning plus the exact Agents request body and pinned tool outputs that executeApply will send.
-export function parsePreparedApply(v){
- if(!exactKeys(v,['kind','token','digest','expiresAt','nctId','record','preview'])||v.kind!=='preparedApply'||typeof v.token!=='string'||!TOKEN.test(v.token)||typeof v.digest!=='string'||!HASH.test(v.digest)||!Number.isSafeInteger(v.expiresAt))throw Error('Invalid prepared apply plan');
- applyNctId(v.nctId);parseApplyRecord(v.record);if(v.record.nctId!==v.nctId)throw Error('Prepared record mismatch');
- if(!exactKeys(v.preview,['agentsRequest','toolResults'])||!isRecord(v.preview.agentsRequest)||!Array.isArray(v.preview.toolResults)||v.preview.toolResults.length!==APPLY_TOOL_SECTIONS.length)throw Error('Invalid apply preview');
- for(const t of v.preview.toolResults)if(!exactKeys(t,['section','output'])||!APPLY_TOOL_SECTIONS.includes(t.section)||typeof t.output!=='string'||utf8Bytes(t.output)>12*1024)throw Error('Invalid pinned tool output');
- if(new Set(v.preview.toolResults.map(t=>t.section)).size!==APPLY_TOOL_SECTIONS.length||utf8Bytes(v)>MAX_MESSAGE_BYTES-1024)throw Error('Invalid apply preview');return v;
-}
-export function parseApplyResult(v){
- if(!exactKeys(v,['kind','mode','nctId','digest','questionIds','prescreenIds','flagIds','sectionsRead','toolCalls','cleanup'])||v.kind!=='applyAgent'||!['live','test'].includes(v.mode)||typeof v.digest!=='string'||!HASH.test(v.digest))throw Error('Invalid apply result');applyNctId(v.nctId);
- if(!templateIdList(v.questionIds,APPLY_QUESTION_TEMPLATES,3,8))throw Error('Invalid question selection');
- if(!templateIdList(v.prescreenIds,APPLY_PRESCREEN_TEMPLATES,2,8))throw Error('Invalid pre-screen selection');
- if(!templateIdList(v.flagIds,APPLY_FLAG_TEMPLATES,0,4))throw Error('Invalid flag selection');
- if(!Array.isArray(v.sectionsRead)||!v.sectionsRead.length||v.sectionsRead.length>APPLY_TOOL_SECTIONS.length||new Set(v.sectionsRead).size!==v.sectionsRead.length||v.sectionsRead.some(s=>typeof s!=='string'||!APPLY_TOOL_SECTIONS.includes(s))||!v.sectionsRead.includes('eligibility'))throw Error('Agent did not read the eligibility evidence');
- if(!Number.isInteger(v.toolCalls)||v.toolCalls<v.sectionsRead.length||v.toolCalls>6||!['deleted','failed'].includes(v.cleanup))throw Error('Invalid apply agent trace');return v;
+ throw Error('Unsupported apply operation');
 }
 export function parseApplyReply(v,expectedId){
  if(!isRecord(v)||v.id!==expectedId||!validId(v.id)||utf8Bytes(v)>MAX_MESSAGE_BYTES||v.type!=='result'||typeof v.ok!=='boolean'||!exactKeys(v,['id','type','ok','result','code','error']))throw Error('Invalid apply reply');
  if(!v.ok){if(typeof v.code!=='string'||!/^[A-Z_]{1,40}$/.test(v.code)||typeof v.error!=='string'||v.error.length>300)throw Error('Invalid apply error');}
- else if(v.result!==undefined){if(v.result?.kind==='preparedApply')parsePreparedApply(v.result);else if(v.result?.kind==='preparedStudyBrief')parsePreparedStudyBrief(v.result);else if(v.result?.kind==='studyBrief')parseStudyBriefResult(v.result);else if(v.result?.kind==='localModels')parseLocalModelsResult(v.result);else parseApplyResult(v.result);}return v;
+ else if(v.result!==undefined){if(v.result?.kind==='preparedStudyBrief')parsePreparedStudyBrief(v.result);else if(v.result?.kind==='studyBrief')parseStudyBriefResult(v.result);else if(v.result?.kind==='localModels')parseLocalModelsResult(v.result);else throw Error('Invalid apply result');}return v;
 }
 
 // Source-only study brief: this authority accepts public NCT IDs and receipts, never a patient profile.

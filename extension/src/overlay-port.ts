@@ -10,7 +10,7 @@ const object=(v:unknown):v is Record<string,any>=>!!v&&typeof v==='object'&&!Arr
 export function parseSnapshot(v:unknown):OverlaySnapshot {
  if(!object(v)||typeof v.generation!=='string'||v.generation.length>160||typeof v.url!=='string'||typeof v.diagnostic!=='string'||v.diagnostic.length>2000||typeof v.supported!=='boolean'||!Array.isArray(v.nctIds)||v.nctIds.length>100||v.nctIds.some((id:unknown)=>typeof id!=='string'||!/^NCT[0-9]{8}$/.test(id))||new Set(v.nctIds).size!==v.nctIds.length)throw Error('The page snapshot was rejected.');
  const url=new URL(v.url);if(!TRIAL_ORIGINS.includes(url.origin)||url.username||url.password)throw Error('Unsupported page snapshot.');
- for(const key of ['distanceHiddenCards'])if(v[key]!==undefined&&(!Number.isInteger(v[key])||v[key]<0||v[key]>100))throw Error('Invalid public card count');return {generation:v.generation,url:v.url,nctIds:[...v.nctIds],diagnostic:v.diagnostic,supported:v.supported,...(v.distanceHiddenCards!==undefined?{distanceHiddenCards:v.distanceHiddenCards}:{})};
+ return {generation:v.generation,url:v.url,nctIds:[...v.nctIds],diagnostic:v.diagnostic,supported:v.supported};
 }
 export function readActivation(event:Pick<MessageEvent,'source'|'origin'|'data'>,parent:Window,purpose:SitePurpose){
  if(event.source!==parent||!(TRIAL_ORIGINS as readonly string[]).includes(event.origin)||!object(event.data))return;

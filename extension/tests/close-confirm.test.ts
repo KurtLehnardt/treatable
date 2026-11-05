@@ -13,7 +13,7 @@ const snapshot = {generation: 'page-1', url: 'https://clinicaltrials.gov/search?
 type Vm = OverlayViewModel & UnsavedWorkHost;
 let counts = {closed: 0, collapsed: [] as boolean[]};
 function view(overrides: Partial<Vm> = {}): Vm {
-  return {connected: true, ended: false, busy: false, error: '', snapshot, records: [], opacity: .9, collapsed: false, refresh() {}, fetchRecords() {}, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, openPrivate() {}, close: () => {counts.closed++}, ...overrides};
+  return {connected: true, ended: false, busy: false, error: '', snapshot, opacity: .9, collapsed: false, setOpacity() {}, setCollapsed: value => {counts.collapsed.push(value)}, restore() {}, close: () => {counts.closed++}, ...overrides};
 }
 let mounted: Array<() => Promise<void>> = [];
 async function mountView(vm: Vm, extra: Record<string, unknown> = {}) {

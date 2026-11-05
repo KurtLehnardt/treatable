@@ -14,7 +14,7 @@
  * Every reader and writer goes through DetailsStore. A later "Remember on this device" option would add another
  * DetailsStore implementation with a different `persistence` value; it is deliberately not implemented here. */
 import {createContext,useContext,useSyncExternalStore} from 'react';
-import {AGE_BANDS,type AgeBand} from '../shared/real-contract.mjs';
+import {AGE_BANDS,type AgeBand} from '../shared/age-bands.mjs';
 export interface YourDetails{name:string;condition:string;extra:string;ageBand?:''|AgeBand;sex?:''|'female'|'male'}
 type TextField='name'|'condition'|'extra';
 export const YOUR_DETAILS_LIMITS:Readonly<Record<TextField,number>>=Object.freeze({name:120,condition:1000,extra:1000});

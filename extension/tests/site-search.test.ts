@@ -1,12 +1,14 @@
 import test from'node:test';import assert from'node:assert/strict';import{readdirSync,readFileSync,statSync}from'node:fs';import{join}from'node:path';
 import{readSiteCondition}from'../src/site-search';import{parseSiteRequest}from'../src/site-contract';
-test('cross-context request rejects unknown keys, oversized values and coercible IDs',()=>{assert.equal(parseSiteRequest({id:'abc',type:'site.snapshot',payload:{}}).id,'abc');for(const input of [{id:123,type:'site.snapshot',payload:{}},{id:'abc',type:'site.snapshot',payload:{},secret:'bad'},{id:'abc',type:'site.snapshot',payload:{x:'a'.repeat(140000)}}])assert.throws(()=>parseSiteRequest(input));});
+test('cross-context request rejects unknown keys, oversized values and coercible IDs',()=>{assert.equal(parseSiteRequest({id:'abc',type:'site.ping',payload:{}}).id,'abc');for(const input of [{id:123,type:'site.ping',payload:{}},{id:'abc',type:'site.ping',payload:{},secret:'bad'},{id:'abc',type:'site.ping',payload:{x:'a'.repeat(140000)}}])assert.throws(()=>parseSiteRequest(input));});
 test('the removed in-overlay search messages are rejected, not silently accepted',()=>{
  for(const type of ['site.search','site.availability'])assert.throws(()=>parseSiteRequest({id:'abc',type,payload:{}}),/Invalid site operation/,type);
  assert.throws(()=>parseSiteRequest({id:'abc',type:'site.search',payload:{filters:{cond:'asthma'}}}));
 });
 test('the site request allow-list still carries every message the remaining features send',()=>{
- for(const type of ['site.snapshot','site.layout','site.restore','site.close','site.fetch','site.rank','site.openPrivate','site.diagnostics','site.endMatching','site.ping','site.guide','site.openSearch','site.aiRank','site.aiRankStop','site.hide'])assert.equal(parseSiteRequest({id:'abc',type,payload:{}}).type,type);
+ for(const type of ['site.layout','site.restore','site.close','site.rank','site.ping','site.guide','site.openSearch','site.aiRank','site.aiRankStop','site.hide'])assert.equal(parseSiteRequest({id:'abc',type,payload:{}}).type,type);
+ /* The page-matching requests went with the private-matching form: nothing sends them, so they are refused. */
+ for(const type of ['site.snapshot','site.fetch','site.openPrivate','site.diagnostics','site.endMatching'])assert.throws(()=>parseSiteRequest({id:'abc',type,payload:{}}),/Invalid site operation/,type);
 });
 test('readSiteCondition reads only the website cond parameter and ignores every other filter',()=>{
  assert.equal(readSiteCondition('https://clinicaltrials.gov/search?cond=asthma&term=x&locStr=83702&lat=1&lng=2&aggFilters=status:rec'),'asthma');

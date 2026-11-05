@@ -6,7 +6,7 @@
  * If the helper or the provider fails, the record checks still order the page and the overlay is told what failed. */
 import{parseRankReply,parsePreparedRank,parseRankResult,rankTerm,RANK_MAX_STUDIES,RANK_MAX_TERMS,RANK_SEXES,type RankProfile,type RankScore,type RankSex}from'../shared/rank-contract.mjs';
 import{isLocalModelName}from'../shared/local-model.mjs';
-import{AGE_BANDS,type AgeBand}from'../shared/real-contract.mjs';
+import{AGE_BANDS,type AgeBand}from'../shared/age-bands.mjs';
 import{redactedTraceBody}from'../shared/apply-contract.mjs';
 import{NOT_SENT_CODES,NativeOperationError,failureCodeOf,nativeDisconnectCode}from'./failures';
 import{mergeRanking,rankConditions,recordChecks,type RankedStudy,type StudyFacts}from'./rank-merge';

@@ -1,12 +1,13 @@
-import {parseDemoRequest,MAX_MESSAGE_BYTES,validId} from '../shared/demo-contract.mjs';
+import {MAX_MESSAGE_BYTES,validId} from '../shared/demo-contract.mjs';
 export {MAX_MESSAGE_BYTES};
 export const HOST_NAME='com.treatable.local';
 export const EXTENSION_ID='lmgmjeabbalehlcakdbolielnfgchojf';
 export const ID_PATTERN=/^[A-Za-z0-9_-]{1,80}$/;
-import {parseLiveRequest,LIVE_REQUEST_TYPES} from '../shared/live-analysis-contract.mjs';
 import {parseApplyRequest,APPLY_REQUEST_TYPES} from '../shared/apply-contract.mjs';
 import {parseRankRequest,RANK_REQUEST_TYPES} from '../shared/rank-contract.mjs';
-export function validateRequest(v){return LIVE_REQUEST_TYPES.includes(v?.type)?parseLiveRequest(v):APPLY_REQUEST_TYPES.includes(v?.type)?parseApplyRequest(v):RANK_REQUEST_TYPES.includes(v?.type)?parseRankRequest(v):parseDemoRequest(v);}
+// The only operations the helper accepts: the study brief and local model check (apply-contract.mjs) and AI ranking (rank-contract.mjs).
+// Any other name, including the removed demo, bundled-catalog, private-matching, Help me apply, status and cancel operations, is rejected.
+export function validateRequest(v){if(APPLY_REQUEST_TYPES.includes(v?.type))return parseApplyRequest(v);if(RANK_REQUEST_TYPES.includes(v?.type))return parseRankRequest(v);throw new Error('Unsupported native operation');}
 export function validateOrigin(origin,extensionId=EXTENSION_ID){return typeof extensionId==='string'&&/^[a-p]{32}$/.test(extensionId)&&origin===`chrome-extension://${extensionId}/`;}
 export function encodeMessage(message){const body=Buffer.from(JSON.stringify(message),'utf8');if(!body.length||body.length>MAX_MESSAGE_BYTES)throw new Error('Invalid frame size');const header=Buffer.alloc(4);header.writeUInt32LE(body.length);return Buffer.concat([header,body]);}
 export class MessageDecoder{

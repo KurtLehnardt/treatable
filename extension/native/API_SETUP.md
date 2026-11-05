@@ -1,6 +1,6 @@
 # Consented OpenAI native bridge
 
-The Chrome extension’s matching window uses a stdio-only native helper registered for its pinned extension ID. The helper has no HTTP listener of its own. When the user chooses Settings → Model provider → Local model, the helper starts a private `ollama serve` for that purpose only (see [Local model](#local-model-ollama-on-this-device)); it never uses the user's own Ollama daemon. The browser cannot provide credentials, prompts, endpoints, model settings or tool definitions.
+The Chrome extension’s overlay uses a stdio-only native helper registered for its pinned extension ID for two features: AI-matched results and the study brief. The helper has no HTTP listener of its own. When the user chooses Settings → Model provider → Local model, the helper starts a private `ollama serve` for that purpose only (see [Local model](#local-model-ollama-on-this-device)); it never uses the user's own Ollama daemon. The browser cannot provide credentials, prompts, endpoints, model settings or tool definitions.
 
 ## Setup on macOS
 
@@ -41,15 +41,18 @@ node "$HOME/path/to/treatable/extension/native/credentials-setup.mjs" configure
 
 Replace the path with your checkout’s location. Do not copy a key into this command; the helper requests it privately in the terminal.
 
-## Current-page analysis
+## Accepted operations
 
-Native model operations for page matching (`liveNative`) are available only to the `overlay.html` subframe that the service worker registered for the current tab and opened for private matching (`privateSender` in `src/site-background.ts` checks the extension ID, a non-zero frame ID, the exact `overlay.html` URL, and the registered document and source context). The apply and study-brief channel uses the weaker `overlaySender` check instead: the authenticated `overlay.html` subframe of a study page, with no private matching context required. The website overlay and badge frames cannot invoke native model operations.
+The helper accepts seven operations and rejects every other operation name with `INVALID_REQUEST` before it reads a credential or opens a connection (`core.mjs` `validateRequest`):
 
-- `liveCatalog` fetches fresh official ClinicalTrials.gov records for **all loaded current-page NCT IDs, maximum 10**. It checks TLS, strict record/response IDs, byte/time bounds and bounded concurrency. Immutable public evidence snapshots expire after five minutes. Condition labels come from these records, not the older bundled corpus. Missing facts stay unknown; truncation is visible.
-- `prepareLive` requires the current policy receipt and a strict minimized packet: age band, optional US state/sex, 1–6 explicitly selected public condition IDs, every loaded NCT ID for Decisions, and 1–2 selected NCT IDs for Agents. No provider call occurs. The helper pins both exact API bodies and public tool outputs to a digest and opaque five-minute token bound to the source snapshot/query/profile.
-- `executeLive` accepts only that pinned token/digest/current receipt and an operation. It cannot replace the packet, evidence or tools. Each operation is one-use. Changed form/source, revocation, expiry, disconnect and cancellation invalidate relevant state. Model request bodies exclude local authorization/binding IDs, tokens, digest, operator/contact text and patient identity fields.
-- `scoreLive` makes one `POST https://api.openai.com/v1/decisions` with `gpt-6-luna` and one typed relevance question per loaded record. The index is neither eligibility, enrollment probability, safety nor benefit. Apply requires a full validated score map for the same page; larger/partial pages are not ranked.
-- `agentLive` uses `POST https://api.openai.com/v1/agents/sessions`, `OpenAI-Beta: agents=v1`, `gpt-6-astra`, `environment.type: none` and one read-only `get_public_trial_evidence` function restricted to the selected 1–2 NCT IDs. It must read each study, complete its turn, and return known study/question/caution IDs. Trusted templates render the result. Agents does not consume Decisions scores.
+- AI-matched results: `prepareRank`, `executeRank` and `revokeRank` (below).
+- Study brief: `prepareStudyBrief`, `executeStudyBrief` and `revokeStudyBrief`, plus `localModels` for the local model check (see [Local model](#local-model-ollama-on-this-device)).
+
+Only `executeRank` and `executeStudyBrief` can read the Keychain key or contact OpenAI, and each needs the one-use token and digest that its own preparation returned on the same helper connection. A preparation fetches public ClinicalTrials.gov records only. `revokeRank` has no caller in the current extension; it stays part of the ranking receipt contract, reads no key and makes no network request.
+
+In the extension, only the background service worker opens helper connections: `src/rank-background.ts` for AI-matched results, and `src/apply-background.ts` for the study brief, which serves only the authenticated `overlay.html` subframe of a ClinicalTrials.gov tab (`overlaySender` in `src/site-background.ts`). Chrome grants native messaging to every page of the extension, so the helper does not rely on that: it enforces the operation list and the receipts itself.
+
+The helper protocol has no version number. Because the browser side validates every request against the shared contract before it is sent, an `INVALID_REQUEST` reply means the installed helper is older or newer than the extension, and the extension shows it as `HELPER_VERSION_MISMATCH`. Reinstall the helper after updating the extension.
 
 ### AI-matched results ranking
 
@@ -71,11 +74,9 @@ Reinstall the helper after updating native source so the local model files are c
 node extension/native/install.mjs --manifest extension/dist/manifest.json
 ```
 
-## Retained fictional and snapshot paths
+## Removed operations
 
-The helper retains `scoreDemo`/`agentDemo` from the retired protected panel (no extension page calls them now): one compiled fictional profile and two fixed public study excerpts, with explicit preview and consent. The separate `prepareReal`/`executeReal` path uses up to two native-owned snapshot records and the matching 3,514-label vocabulary from the bundled 2,000-record corpus. That path’s snapshot limit does **not** apply to current-page matching.
-
-Both paths reject arbitrary raw patient text, notes, page text, names, exact age/ZIP/coordinates, endpoints, prompts, tools and credentials. Minimized health labels, age band and optional state/sex remain sensitive and potentially identifying; no anonymity, HIPAA certification or legal sufficiency is claimed.
+The fictional demo operations (`scoreDemo`, `agentDemo`), the bundled-catalog operations (`prepareReal`, `executeReal`, `revokeReal`), the private page-matching operations (`liveCatalog`, `prepareLive`, `executeLive`, `revokeLive`), the Help me apply operations (`prepareApply`, `executeApply`, `revokeApply`) and the `status` and `cancel` operations were removed. No extension page sent them. The helper now answers each of them with `INVALID_REQUEST`, without reading the key or opening a connection. The bundled 2,000-record corpus and its condition vocabulary were removed with them. Reinstalling the helper deletes `real.mjs`, `live.mjs`, `apply.mjs`, `data/studies.json` and the retired shared contracts from an earlier installation; `credentials-setup.mjs status` is unaffected.
 
 ## Provider and lifecycle limits
 
@@ -83,13 +84,15 @@ Decisions has a 25-second timeout; Agents has 90 seconds, at most six tool calls
 
 Requests go to the fixed TLS provider host with certificate verification and no redirects. The launcher starts Node in an empty environment with only non-secret HOME/PATH, avoiding inherited proxy/Node/TLS routing flags. Keys exist only in the dedicated Keychain item and transient native memory; status does not expose the value.
 
-Stop/stdio EOF aborts work, requests cancellation for incomplete/active turns with a fresh cleanup budget, then attempts session DELETE with bounded polling/retries (at most 5.5 seconds). Cancellation acceptance is not completion. Only the validated deletion acknowledgment is labeled deleted. Agents stores application state until deletion and is not a ZDR endpoint; successful DELETE does not promise immediate physical erasure. Creation failure before receiving a session ID leaves cleanup unconfirmed. Failure stays visible in the in-memory trace; no history is retained after the private window ends. Cleanup diagnostics contain only an allowlisted reason, bounded HTTP status and 0–2 deletion attempts. They exclude response bodies, headers, URLs and provider session IDs.
+Stop/stdio EOF aborts work, requests cancellation for incomplete/active turns with a fresh cleanup budget, then attempts session DELETE with bounded polling/retries (at most 5.5 seconds). Cancellation acceptance is not completion. Only the validated deletion acknowledgment is labeled deleted. Agents stores application state until deletion and is not a ZDR endpoint; successful DELETE does not promise immediate physical erasure. Creation failure before receiving a session ID leaves cleanup unconfirmed. Failure stays visible in the in-memory trace; no history is retained after the overlay session ends. Cleanup diagnostics contain only an allowlisted reason, bounded HTTP status and 0–2 deletion attempts. They exclude response bodies, headers, URLs and provider session IDs.
 
-OpenAI default abuse monitoring may retain content for up to 30 days, subject to legal exceptions; API data is not used for training by default. The notice and exact-payload confirmation precede real-data sends. Closing local UI cannot retract data already sent to the provider.
+OpenAI default abuse monitoring may retain content for up to 30 days, subject to legal exceptions; API data is not used for training by default. The first OpenAI ranking in a browser session waits for a confirmation window that shows the notice and the exact request; a study brief sends only public study data. Closing local UI cannot retract data already sent to the provider.
 
-Raw private state ends with the protected window/native session. After explicit Apply, only validated NCT IDs, derived scores and fixed compatibility buckets remain in tab-bound extension RAM for at most five minutes. No browser profile or credential persistence, and no service-worker storage fallback, is used. The dedicated OS Keychain credential deliberately persists until removed. Application clearing is not forensic erasure and cannot defend against a compromised browser/OS, same-user malware or administrator access.
+Raw private state ends with the overlay session. After AI-matched results are applied, only validated NCT IDs, match percentages and reason IDs remain in tab-bound extension memory: the applied order expires after five minutes and the cached ranking after 30 minutes. No browser profile or credential persistence, and no service-worker storage fallback, is used. The dedicated OS Keychain credential deliberately persists until removed. Application clearing is not forensic erasure and cannot defend against a compromised browser/OS, same-user malware or administrator access.
 
 ## Verification
+
+The records below were made at earlier source checkpoints, before the demo, bundled-catalog, private-matching and Help me apply operations were removed. They describe those checkpoints, not the current helper.
 
 At source checkpoint `2acc6a2`, 55 native tests pass alongside 118 extension tests, typecheck and all three builds. Tests use fake Keychain helpers and intercepted provider transports, including strict request serialization, source/packet/token binding, replay/expiry, unknown-field rejection, key/canary non-egress, required evidence calls, fatal/incomplete event handling and cleanup failures. These are automated boundary checks, not live API acceptance.
 
@@ -99,6 +102,6 @@ Authorized live checks used fictional profile values and public evidence: **one 
 
 A separately authorized Agents-only probe then completed one required evidence call, validated its study/question IDs and received the exact deletion acknowledgment after two attempts. Task request to completion took 10.925 seconds; cleanup took 2.872 seconds; request to result took 13.798 seconds. The later session is acknowledged deleted; this does not establish deletion of the first session or explain its failure. No Decisions request was repeated. No further authenticated calls were made.
 
-Actual Chrome rendering and the Chrome-to-native handshake remain outstanding. Any further live check requires an explicit bounded scope; identify fictional inputs clearly and inspect the exact preview. The current-page transport remains labeled as real analysis even when the operator enters fictional example values. Show request and cleanup failures honestly.
+Actual Chrome rendering and the Chrome-to-native handshake remain outstanding. Any further live check requires an explicit bounded scope; identify fictional inputs clearly and inspect the exact preview. Show request and cleanup failures honestly.
 
 Official contracts: [Decisions](https://developers.openai.com/api/docs/guides/decisions), [create decision](https://developers.openai.com/api/reference/resources/decisions/methods/create), [Agents create](https://developers.openai.com/api/reference/resources/beta/subresources/agents/subresources/sessions/methods/create), [functions](https://developers.openai.com/api/docs/guides/agents-api/tools/functions), [events](https://developers.openai.com/api/docs/guides/agents-api/sessions/events), [session deletion](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [data controls](https://developers.openai.com/api/docs/guides/your-data).

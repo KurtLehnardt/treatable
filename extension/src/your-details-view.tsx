@@ -2,7 +2,7 @@ import React from 'react';
 import {PRIVATE_TEXT_FIELD} from './patient-form';
 import {hasDetails,useYourDetails,YOUR_DETAILS_LIMITS,type YourDetails} from './your-details';
 import {detailConditionTerms} from './rank-merge';
-import {AGE_BANDS} from '../shared/real-contract.mjs';
+import {AGE_BANDS} from '../shared/age-bands.mjs';
 const ageLabel=(v:string)=>v==='90_plus'?'90 or older':v==='under_18'?'Under 18':v.replace('_','–');
 /** Settings fields for "Your details". Values go only to the session store; see your-details.ts for the boundaries. */
 export function YourDetailsSettings({ended=false}:{ended?:boolean}){
