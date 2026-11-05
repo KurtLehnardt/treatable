@@ -65,10 +65,14 @@ test('the contact plan lists each phone contact; Call and Copy number render onl
  const vm=(p:typeof plan):any=>({phase:'ready',step:'email',nctId:r.nctId,activity:[],candidates:[],selectedIds:[r.nctId],records:[r],record:r,agentBusy:false,patient:patient(),zipNote:'',plan:p,draftEdited:false,draftOutdated:false,draftHeaders:false,copied:'',reminder:'',goStep(){},edit(){},answer(){},chooseSite(){},requestReview(){},editDraft(){},updateDraft(){},copyMessage(){},copyNumber(){},saveReminder(){}});
  const html=renderToStaticMarkup(React.createElement(ApplyView,{vm:vm(plan)}));
  const hrefs=[...html.matchAll(/href="(tel:[^"]*)"/g)].map(m=>m[1].replace(/&amp;/g,'&'));
- assert.deepEqual(hrefs,['tel:+18015550100','tel:+18015550100','tel:+18015550101;ext=22','tel:+18015550199','tel:+18015550100'],'Call the listed contact, three script numbers and the follow-up call, all under After you send');
+ assert.deepEqual(hrefs,['tel:+18015550100','tel:+18015550101;ext=22','tel:+18015550199'],'the three numbers to call; Call the listed contact and the follow-up number repeat Sam Lee, so they are not shown twice');
+ assert.doesNotMatch(html,/Call the listed contact/);assert.doesNotMatch(html,/class="button primary" href="tel:/,'no primary call button under After you send');
  assert.ok(html.indexOf('href="tel:')>html.indexOf('<details class="apply-step apply-after"'),'every call link sits in the After you send disclosure');
- assert.match(renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm(plan),step:'contact'}})),/<option value=""[^>]*>Nearest site, or the central contact<\/option>/,'the automatic site choice says what it does');
- assert.equal((html.match(/>Copy number</g)??[]).length,4);assert.match(html,/Phone: 801-555-0101 ext\. 22/);assert.match(html,/Dials \+1 801-555-0101 ext\. 22/);
+ const contactHtml=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm(plan),step:'contact',zipNote:'ZIP_NOTE_CANARY'}})),emailHtml=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm(plan),zipNote:'ZIP_NOTE_CANARY'}}));
+ assert.match(contactHtml,/<option value=""[^>]*>Nearest site, or the central contact<\/option>/,'the automatic site choice says what it does');
+ assert.match(contactHtml,/<label>Your ZIP code <span class="optional">\(finds the nearest site; not put in the email\)<\/span><input[^>]*data-apply-field="zip"[^>]*\/><\/label><p role="status" class="fine">ZIP_NOTE_CANARY<\/p><label>Study site<select/,'the ZIP code and its note sit directly above the site choice');
+ assert.doesNotMatch(emailHtml,/data-apply-field="zip"|ZIP_NOTE_CANARY/,'and not on the email step');
+ assert.equal((html.match(/>Copy number</g)??[]).length,3);assert.match(html,/Phone: 801-555-0101 ext\. 22/);assert.match(html,/Dials \+1 801-555-0101 ext\. 22/);
  assert.match(html,/Phone Link on Windows/);assert.match(html,/FaceTime/);assert.match(html,/use Copy number instead/);assert.doesNotMatch(html,/autoplay|onload/i);
  const junkHtml=renderToStaticMarkup(React.createElement(ApplyView,{vm:{...vm(junkPlan),record:junk,records:[junk],nctId:junk.nctId,selectedIds:[junk.nctId]}}));
  assert.doesNotMatch(junkHtml,/href="tel:/);assert.doesNotMatch(junkHtml,/>Copy number</);assert.doesNotMatch(junkHtml,/>Call</);assert.match(junkHtml,/Phone: Call 801-555-0199 after 5pm/,'the listed text stays visible');assert.match(junkHtml,/No Call button/);

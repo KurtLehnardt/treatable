@@ -56,8 +56,8 @@ export const FAILURE_COPY:Readonly<Record<string,string>>=Object.freeze({
  LOCAL_OLLAMA_OUTDATED:'Ollama on this device is too old for the structured output Treatable needs (0.5 or later). Update it from ollama.com/download, then retry. Nothing was sent to OpenAI.',
  LOCAL_SESSION_TOO_SHORT:'Too little time is left in this study session for the local model. Choose Keep working, or close and reopen Treatable on this page, then get the study summary again. Nothing was sent.',
  LOCAL_MODEL_NOT_CHOSEN:'Choose a local model in Settings → Model provider first, or switch back to OpenAI. Nothing was sent.',
- LOCAL_TIMEOUT:'The local model took too long on this device and was stopped. Try a smaller model or use OpenAI. Nothing was sent to OpenAI; the official excerpts are still shown.',
- LOCAL_INVALID_OUTPUT:'The local model returned output that failed validation, so it was discarded. The official record excerpts and standard questions are shown instead. Nothing was sent to OpenAI.',
+ LOCAL_TIMEOUT:'The local model took too long on this device and was stopped. Try a smaller model or use OpenAI. Nothing was sent to OpenAI; the official record excerpts are still available.',
+ LOCAL_INVALID_OUTPUT:'The local model returned output that failed validation, so it was discarded. The standard questions are used instead, and the official record excerpts stay available. Nothing was sent to OpenAI.',
  CLEANUP_ERROR:'The provider session could not be confirmed as deleted. The result, if shown, is still valid; deletion may need a retry later.',
 });
 /** Failures known to happen before any request body reaches the provider. */

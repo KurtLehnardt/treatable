@@ -10,8 +10,8 @@ function result(ids=IDS,trace:{none?:boolean;live?:boolean;cut?:boolean}={}):Stu
 const flush=async()=>{for(let i=0;i<20;i++)await new Promise<void>(r=>queueMicrotask(r))};
 class Events{listeners:((v:any)=>void)[]=[];addListener=(f:(v:any)=>void)=>this.listeners.push(f);emit=(v?:any)=>this.listeners.forEach(f=>f(v))}
 class Port{sent:any[]=[];closed=false;onMessage=new Events();onDisconnect=new Events();constructor(private handler:(v:any,p:Port)=>void){queueMicrotask(()=>this.onMessage.emit({kind:'applyReady',nctId:IDS[0],nctIds:IDS,expiresAt:EXPIRES,studies:records().map(r=>({nctId:r.nctId,title:r.title}))}))}postMessage(v:any){this.sent.push(structuredClone(v));this.handler(v,this)}reply(reply:any){queueMicrotask(()=>this.onMessage.emit({reply}))}disconnect(){this.closed=true}}
-function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown;noTrace?:boolean;live?:boolean;cutTrace?:boolean;/** Holds every prepare reply after this many. */holdPrepareAfter?:number;/** Extra activity stages streamed before the result. */traces?:string[]}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[],heldPrepare:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true,prepares=0;
- const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;const send=()=>p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});if(options.holdPrepareAfter!==undefined&&++prepares>options.holdPrepareAfter)heldPrepare.push(send);else send();return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});(options.traces??[]).forEach((stage,i)=>p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:i+2,stage,nctId:ids[0]}}));const send=()=>p.reply({id:request.id,type:'result',ok:true,result:result(ids,{none:options.noTrace,live:options.live,cut:options.cutTrace})});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
+function harness(options:{holdExecute?:boolean;holdRecords?:boolean;failPrepare?:boolean;emitTrace?:boolean;truncatePrepared?:boolean;failCopy?:boolean;withoutPurposes?:boolean;purposes?:unknown;noTrace?:boolean;live?:boolean;cutTrace?:boolean;/** Holds every prepare reply after this many. */holdPrepareAfter?:number;/** Extra activity stages streamed before the result. */traces?:string[];/** The run fails with this code instead of returning a result. */failExecute?:string}={}){const ports:Port[]=[],copies:string[]=[],attempts:string[]=[],opened:string[]=[],downloads:any[]=[],held:(()=>void)[]=[],heldRecords:(()=>void)[]=[],heldPrepare:(()=>void)[]=[];let clock=NOW,selected=IDS.slice(0,1),active=true,prepares=0;
+ const runtime={connect:()=>{const p=new Port((v,p)=>{if(v.kind==='studyBriefRecord'){const ids=v.nctIds;const send=()=>p.reply({id:v.id,type:'briefRecords',ok:true,records:records(ids),briefs:briefs(ids),...(options.withoutPurposes?{}:{purposes:options.purposes??ids.map((id:string)=>studyPurposeText(raw(id)))})});if(options.holdRecords)heldRecords.push(send);else send();return}const request=v.request;if(request?.type==='revokeStudyBrief'){p.reply({id:request.id,type:'result',ok:true});return}if(request?.type==='prepareStudyBrief'){selected=request.payload.nctIds;const send=()=>p.reply(options.failPrepare?{id:request.id,type:'result',ok:false,code:'NATIVE_HOST_MISSING',error:'Helper unavailable'}:{id:request.id,type:'result',ok:true,result:options.truncatePrepared?{...prepared(selected),records:prepared(selected).records.map(r=>({...r,sites:[],sitesTruncated:true}))}:prepared(selected)});if(options.holdPrepareAfter!==undefined&&++prepares>options.holdPrepareAfter)heldPrepare.push(send);else send();return}if(request?.type==='executeStudyBrief'){const ids=[...selected];if(options.emitTrace)p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:1,stage:'agent.tool.request',nctId:ids[0],sessionId:'PROVIDER_ID_CANARY'}});(options.traces??[]).forEach((stage,i)=>p.reply({id:request.id,type:'trace',ok:true,trace:{sequence:i+2,stage,nctId:ids[0]}}));const send=()=>p.reply(options.failExecute?{id:request.id,type:'result',ok:false,code:options.failExecute,error:'Run failed'}:{id:request.id,type:'result',ok:true,result:result(ids,{none:options.noTrace,live:options.live,cut:options.cutTrace})});if(options.holdExecute)held.push(send);else send();return}throw Error('Unexpected request')});ports.push(p);return p}};
  const env:ApplyEnv={runtime,loadZips:async()=>({zips:{'84101':{city:'Example',state:'UT',lat:40.7,lon:-111.9}}}),userActivated:()=>active,today:()=>new Date(NOW),now:()=>clock,copyText:value=>{attempts.push(value);if(options.failCopy)return Promise.reject(Error('clipboard denied'));copies.push(value);return Promise.resolve()},download:(name,text,type)=>downloads.push({name,text,type}),openMailto:url=>{opened.push(url)}};return{env,runtime,ports,copies,attempts,opened,downloads,held,heldRecords,heldPrepare,setClock:(v:number)=>{clock=v},setActive:(v:boolean)=>{active=v}};
 }
 function mount(h:ReturnType<typeof harness>){const ref:{vm?:ApplyController}={};function Probe(){const vm=useApply(IDS[0],h.env);ref.vm=vm;return React.createElement(ApplyView,{vm})};let renderer!:TestRenderer.ReactTestRenderer;act(()=>{renderer=TestRenderer.create(React.createElement(Probe))});return{ref,renderer,unmount:()=>act(()=>renderer.unmount())}}
@@ -24,7 +24,7 @@ async function toStep(m:ReturnType<typeof mount>,step:StudyStep){await act(async
 const insideClosedDetails=(node:any)=>{for(let n=node.parent;n;n=n.parent)if(n.type==='details'&&!n.props.open)return true;return false};
 
 test('source-linked summary renders readable participation, unknowns, three questions and an editable email, each in its own step, without duplicate consent',async()=>{const h=harness(),m=mount(h);try{await act(flush);assert.equal(m.ref.vm!.phase,'ready');assert.equal(h.ports[0].sent.some(v=>v.kind==='applyNative'),false,'initial load is public browser fetch only');await act(async()=>{m.ref.vm!.requestReview();await flush()});const vm=m.ref.vm!;
- const expected:[StudyStep,string[]][]=[['understand',['Understand this study','Treatable sends this study’s public record to OpenAI','Nothing you type is included']],['contact',['Two treatments are spaced 4 weeks apart.','Read the supporting record text','Not in the record','Ask the study team']],['email',['Your email draft','Open in my email app']]];
+ const expected:[StudyStep,string[]][]=[['understand',['Understand this study','Treatable sends this study’s public record to OpenAI','Nothing you type is included']],['contact',['Two treatments are spaced 4 weeks apart.','record text','Not in the record','Three questions to start with']],['email',['Your email draft','Open in my email app']]];
  for(const [step,phrases] of expected){const text=at(vm,step);for(const phrase of phrases)assert.ok(text.includes(phrase),`${step}: ${phrase}`)}
  const all=STUDY_STEPS.map(s=>at(vm,s)).join('');assert.doesNotMatch(all,/Copy full email/,'the records-only copy button is gone');assert.match(at(vm,'email'),/textarea/);assert.match(at(vm,'understand'),/official record/);assert.doesNotMatch(all,/Confirm what you|Review what you will share|Exact API input/);assert.equal(vm.result?.studyPlans[0].prioritizedQuestionIds.length,3);}finally{m.unmount()}});
 
@@ -235,9 +235,9 @@ test('the intro tour points at the right Treatable controls on a study page and 
   const expectations:[Parameters<typeof guide.show>[0],string,RegExp,RegExp][]=[
    ['appearance','button[aria-label="Treatable settings"]',/Make Treatable look the way you like/,/Popup is a window in the middle of the page/],
    ['understand','.apply-section .section-intro',/Understand this study/,/public study data/],
-   ['brief','.brief-generate button.apply-big',/Get my study summary/,/You choose when to press this button/],
-   ['personalize','#root-email #apply-you',/Personalize your email/,/stays on your device/],
-   ['draft','#root-email section[aria-labelledby="apply-send"]',/Edit your email draft/,/subject and message/],
+   ['brief','[data-treatable-guide="brief"]',/Get my study summary/,/You choose when to press this button/],
+   ['personalize','#root-email [data-treatable-guide="personalize"]',/Personalize your email/,/stays on your device/],
+   ['draft','#root-email [data-treatable-guide="draft"]',/Edit your email draft/,/subject and message/],
    ['send','#root-email .apply-actions[data-treatable-guide="send"]',/You send the email, not Treatable/,/Treatable never sends the email/],
   ];
   for(const [id,selector,title,text] of expectations){
@@ -344,7 +344,7 @@ test('a study heading can take script focus, and ApplyView no longer moves focus
 
 test('a retry after a failed generation keeps the excerpts and unknowns on screen while it runs',async()=>{
  const h=harness({failPrepare:true,holdPrepareAfter:1}),m=mount(h);try{await act(flush);await act(async()=>{m.ref.vm!.requestReview();await flush()});await toStep(m,'contact');
-  const unknowns=()=>m.renderer.root.findAllByProps({className:'apply-step brief-unknown'}).length,cards=()=>m.renderer.root.findAllByProps({className:'brief-fact'}).length;
+  const unknowns=()=>m.renderer.root.findAllByProps({className:'brief-unknown'}).length,cards=()=>m.renderer.root.findAllByProps({className:'brief-fact'}).length;
   assert.equal(unknowns(),1);assert.ok(cards()>0);
   await act(async()=>{m.ref.vm!.requestReview();await flush()});
   /* The second reply is held, so the retry is still running with no code and no result. The sections must not vanish meanwhile. */
@@ -381,9 +381,10 @@ const visibleControls=(root:any):string[]=>root.findAll((n:any)=>(n.type==='butt
 
 test('each step renders only its own content',async()=>{
  const h=harness(),m=mount(h);try{await generate(m);const vm=m.ref.vm!;
-  const own:Record<StudyStep,RegExp[]>={understand:[/data-treatable-guide="brief"/,/Get the study summary again/,/Open the official record/,/Next: who to contact/],contact:[/Three questions to start with/,/Who to contact/,/What participation could involve/,/Write my email/],email:[/Personalize your email/,/class="apply-email"/,/Open in my email app/,/After you send/]};
+  const own:Record<StudyStep,RegExp[]>={understand:[/data-treatable-guide="brief"/,/Get the study summary again/,/Open the official record/,/Next: who to contact/],contact:[/Three questions to start with/,/Who to contact/,/What participation could involve/,/Write my email/],email:[/data-apply-field="name"/,/class="apply-email"/,/Open in my email app/,/After you send/]};
   for(const step of STUDY_STEPS){const page=at(vm,step);for(const other of STUDY_STEPS)for(const marker of own[other]){if(other===step)assert.match(page,marker,`${step} step shows ${marker}`);else assert.doesNotMatch(page,marker,`${step} step hides ${marker}`)}}
-  assert.equal(new Set(STUDY_STEPS.map(s=>/<h2 id="apply-heading"[^>]*>([^<]*)</.exec(at(vm,s))![1])).size,3,'each step has its own heading');
+  const headings=STUDY_STEPS.map(s=>/<h2 id="apply-heading"[^>]*>(.*?)<\/h2>/.exec(at(vm,s))![1].replace(/<[^>]+>/g,''));
+  assert.deepEqual(headings,['Step 1 of 3. Understand this study','Step 2 of 3. Who to contact','Step 3 of 3. Write your email'],'each step has its own heading, which says which step it is');
  }finally{m.unmount()}
 });
 
@@ -395,11 +396,11 @@ test('Next and the step list move back and forth; the current step is marked, an
   assert.equal(list().type,'ol','the step list is a list');assert.equal(stepButtons().length,3,'every step is a keyboard-reachable button');
   assert.equal(vm().step,'understand');assert.equal(current().length,1);assert.match(current()[0],/Understand/);
   assert.ok(!root.findAllByType('button').some(n=>renderedText(n).startsWith('Next: who to contact')),'no Next before a summary exists');
-  await act(async()=>stepButtons()[1].props.onClick());assert.equal(vm().step,'contact','the step list goes straight to step 2 without generating');assert.match(renderedText(stepButtons()[0]),/Done:\s+Standard questions/);
+  await act(async()=>stepButtons()[1].props.onClick());assert.equal(vm().step,'contact','the step list goes straight to step 2 without generating');assert.match(renderedText(stepButtons()[0]),/No summary yet\s+›/);assert.doesNotMatch(renderedText(stepButtons()[0]),/Done:/,'a skipped step is not called done');
   await act(async()=>stepButtons()[0].props.onClick());assert.equal(vm().step,'understand');
   await act(async()=>{vm().requestReview();await flush()});await press('Next: who to contact');assert.equal(vm().step,'contact');assert.equal(current().length,1);assert.match(current()[0],/Contact/);
   assert.match(renderedText(stepButtons()[0]),/Done:\s+Summary ready/,'the finished step collapses to a one-line summary');
-  await press('Write my email');assert.equal(vm().step,'email');assert.match(renderedText(stepButtons()[1]),/Done:\s+Study coordinator/);assert.match(current()[0],/Email/);
+  await press('Write my email');assert.equal(vm().step,'email');assert.match(renderedText(stepButtons()[1]),/Done:\s+To: Study coordinator\s+›/);assert.match(current()[0],/Email/);
   await act(async()=>stepButtons()[1].props.onClick());assert.equal(vm().step,'contact','back to step 2');
   await act(async()=>stepButtons()[0].props.onClick());assert.equal(vm().step,'understand','back to step 1');
   assert.doesNotMatch(renderedText(stepButtons()[0]),/Done:/,'the step on screen carries no summary');
@@ -412,7 +413,10 @@ test('the email step shows at most two send actions; After you send holds the ca
   assert.deepEqual(sends(),['Open in my email app','Copy message'],'one primary and one secondary');
   assert.equal(root.findAll(n=>(n.type==='button'||n.type==='a')&&String(n.props.className).includes('primary')&&!insideClosedDetails(n)).length,1,'one primary action');
   const after=root.findByProps({className:'apply-step apply-after'});assert.equal(after.type,'details');assert.equal(after.props.open,undefined,'collapsed until opened');
-  const inside=renderedText(after);for(const part of ['After you send','Call the listed contact','Numbers to call','Your call script','Follow-up message','Copy follow-up message','Download follow-up reminder'])assert.ok(inside.includes(part),part);
+  const inside=renderedText(after);for(const part of ['After you send','Numbers to call','Your call script','Follow-up message','Copy follow-up message','Download follow-up reminder','Outlook on Windows','Treatable has not sent anything'])assert.ok(inside.includes(part),part);
+  assert.ok(!inside.includes('Call the listed contact'),'the listed contact is already in Numbers to call, so it is not repeated');
+  assert.equal(after.findAll(n=>String(n.props.className??'').split(' ').includes('primary')).length,0,'nothing in After you send competes with the send buttons');
+  assert.doesNotMatch(renderedText(root.findByProps({className:'apply-step apply-draft'})),/Outlook|outside Treatable/,'the edge-case fine print waits under After you send');
   assert.match(renderedText(root),/You press Send yourself\./);
   await act(async()=>m.ref.vm!.editDraft('body','My full message. '.repeat(450)));assert.deepEqual(sends(),['Copy message and open email app'],'a long draft has the combined button only');
  }finally{m.unmount()}
@@ -428,9 +432,9 @@ test('a step change from the study section moves focus to the new step heading; 
  await act(async()=>{renderer=TestRenderer.create(React.createElement(Probe),{createNodeMock:(el:any)=>({focus(){focused.push(`${el.props.id}:${renderedText(renderer.root.findByProps({id:el.props.id}))}`)}})})});
  try{await act(flush);assert.deepEqual(focused,[],'nothing is focused on mount');
   const press=(label:string)=>act(async()=>{renderer.root.findAllByType('button').find(n=>renderedText(n).includes(label))!.props.onClick();await flush()});
-  await press('Contact');assert.deepEqual(focused,['apply-heading:Questions and contact']);
-  await press('Write my email');assert.equal(focused.at(-1),'apply-heading:Write your email');
-  await press('Understand');assert.equal(focused.at(-1),'apply-heading:Understand this study');assert.equal(focused.length,3);
+  await press('Contact');assert.equal(focused.length,1);assert.match(focused[0],/^apply-heading:Step 2 of 3\.\s+Who to contact$/);
+  await press('Write my email');assert.match(focused.at(-1)!,/^apply-heading:Step 3 of 3\.\s+Write your email$/);
+  await press('Understand');assert.match(focused.at(-1)!,/^apply-heading:Step 1 of 3\.\s+Understand this study$/);assert.equal(focused.length,3);
   await act(async()=>ref.vm!.goStep('email'));assert.equal(ref.vm!.step,'email');assert.equal(focused.length,3,'a change not started from the section leaves focus alone');
  }finally{act(()=>renderer.unmount())}
 });
@@ -461,5 +465,86 @@ test('the old clear path is gone from the study page, and copy says summary, not
   for(const step of STUDY_STEPS){const page=at(m.ref.vm!,step);assert.doesNotMatch(page,/End and clear my details/,step);assert.doesNotMatch(page.replace(/(?:class|aria-labelledby|id|data-treatable-guide)="[^"]*"/g,''),/\bbrief\b/i,`${step}: no "brief" wording`)}
   assert.match(at(m.ref.vm!,'understand'),/This record cannot tell you whether you qualify or whether the treatment will help\./);
   assert.doesNotMatch(STUDY_STEPS.map(s=>at(m.ref.vm!,s)).join(''),/establish|Choose for me/);
+ }finally{m.unmount()}
+});
+
+// --- Round 2: the run outcome on every step, one primary button, and the contact and email layouts ---
+const primaries=(root:any):string[]=>root.findAll((n:any)=>(n.type==='button'||n.type==='a')&&String(n.props.className??'').split(' ').includes('primary')).map((n:any)=>renderedText(n).replace(/\s+/g,' ').trim());
+const insideClass=(node:any,className:string)=>{for(let n=node.parent;n;n=n.parent)if(String(n.props?.className??'').split(' ').includes(className))return true;return false};
+
+test('a summary run that fails while another step is open is shown there, in a live region that was already on the page',async()=>{
+ const h=harness({holdExecute:true,failExecute:'LOCAL_TIMEOUT'}),m=mount(h);try{await act(flush);
+  await act(async()=>{m.ref.vm!.requestReview();await flush()});assert.equal(m.ref.vm!.agentBusy,true);
+  await toStep(m,'email');
+  const run=()=>m.renderer.root.findByProps({className:'brief-run'});
+  assert.equal(run().props.role,'status','the outcome area is a live region before anything lands');assert.match(renderedText(run()),/Getting your study summary/);
+  await act(async()=>{h.held[0]();await flush()});assert.equal(m.ref.vm!.agentCode,'LOCAL_TIMEOUT');assert.equal(m.ref.vm!.step,'email','the person stays where they are');
+  assert.match(renderedText(run()),/The local model took too long on this device and was stopped\./,'the plain failure line is on the email step');assert.doesNotMatch(renderedText(run()),/LOCAL_TIMEOUT/,'the code stays in Technical details');
+  await toStep(m,'contact');assert.match(renderedText(run()),/took too long/,'and on the contact step');
+ }finally{m.unmount()}
+ const ok=harness({holdExecute:true}),s=mount(ok);try{await act(flush);await act(async()=>{s.ref.vm!.requestReview();await flush()});await toStep(s,'contact');await act(async()=>{ok.held[0]();await flush()});
+  assert.match(renderedText(s.renderer.root.findByProps({className:'brief-run'})),/Study summary ready\s+·\s+Questions sorted/,'a finished summary is announced on the step that is open');
+ }finally{s.unmount()}
+});
+
+test('step 1 has exactly one primary button before, after a summary and after a failure; after an attempt Next leads and the run button steps back',async()=>{
+ const h=harness(),m=mount(h);try{await act(flush);
+  assert.deepEqual(primaries(m.renderer.root),['Get my study summary'],'before');
+  await act(async()=>{m.ref.vm!.requestReview();await flush()});
+  assert.deepEqual(primaries(m.renderer.root),['Next: who to contact →'],'after a summary');
+  const again=m.renderer.root.findByProps({'data-treatable-guide':'brief'});assert.equal(renderedText(again),'Get the study summary again');assert.ok(String(again.props.className).split(' ').includes('quiet'),'a quiet link, so a second run is not the obvious next press');
+  const buttons=m.renderer.root.findAllByType('button').map(n=>renderedText(n));assert.ok(buttons.findIndex(t=>t.startsWith('Next: who to contact'))<buttons.indexOf('Get the study summary again'),'Next comes before the quiet link');
+  const page=at(m.ref.vm!,'understand');assert.ok(page.indexOf('class="brief-status"')<page.indexOf('Next: who to contact'),'the status line comes before Next');
+  assert.ok(insideClass(m.renderer.root.findAllByType('button').find(n=>renderedText(n).startsWith('Next: who to contact'))!,'brief-generate'),'Next takes the summary button’s place and width');
+ }finally{m.unmount()}
+ const f=harness({failPrepare:true}),g=mount(f);try{await act(flush);await act(async()=>{g.ref.vm!.requestReview();await flush()});
+  assert.deepEqual(primaries(g.renderer.root),['Next: who to contact →'],'after a failure');
+  const retry=g.renderer.root.findByProps({'data-treatable-guide':'brief'});assert.equal(renderedText(retry),'Try again');assert.ok(!String(retry.props.className).split(' ').includes('primary'));
+ }finally{g.unmount()}
+});
+
+test('no send action, mailto or tel link appears on the first two steps',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);
+  for(const step of ['understand','contact'] as const){await toStep(m,step);
+   const labels=m.renderer.root.findAll((n:any)=>n.type==='button'||n.type==='a').map((n:any)=>renderedText(n).replace(/\s+/g,' ').trim());
+   assert.deepEqual(labels.filter(t=>SEND_ACTION.test(t)),[],`${step}: no send action`);
+   assert.equal(m.renderer.root.findAll((n:any)=>n.type==='a'&&/^(mailto|tel):/.test(String(n.props.href??''))).length,0,`${step}: no mailto or tel link`);
+  }
+ }finally{m.unmount()}
+});
+
+test('a session end leaves no unsaved work: an edited draft, call script and follow-up message are all cleared',async()=>{
+ const h=harness(),m=mount(h);try{await act(flush);const vm=()=>m.ref.vm!;
+  await act(async()=>{vm().editDraft('body','EDITED_DRAFT');vm().editCallScript('EDITED_SCRIPT');vm().editFollowUp('EDITED_FOLLOW_UP')});
+  assert.equal(vm().dirty,true);assert.equal(vm().draftEdited,true);assert.equal(vm().callScriptEdited,true);assert.equal(vm().followUpEdited,true);
+  await act(async()=>{h.ports[0].onMessage.emit({kind:'applyEnded'});await flush()});
+  assert.equal(vm().dirty,false,'nothing typed is left, so Close has nothing to ask about');assert.equal(vm().draftEdited,false);assert.equal(vm().callScriptEdited,false);assert.equal(vm().followUpEdited,false);
+  assert.equal(vm().draft,undefined);assert.equal(vm().callScript,'');assert.equal(vm().followUpMessage,'');
+ }finally{m.unmount()}
+});
+
+test('the contact step: route badges only when the routes differ, a no-summary line with the excerpts folded away after a failure, and registry dates under Technical details',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);const vm=m.ref.vm!;
+  assert.doesNotMatch(at(vm,'contact'),/class="brief-route"/,'all three go to the study team, so no badges');
+  const plan=vm.result!.studyPlans[0],mixed={...vm.result!,studyPlans:[{...plan,routes:plan.routes.map((r,i)=>i===0?{...r,route:'answered_by_record' as const}:r)}]};
+  assert.equal((at({...vm,result:mixed},'contact').match(/class="brief-route"/g)??[]).length,3,'mixed routes show a badge on each question');
+  const page=at(vm,'contact');assert.equal((page.match(/<details class="brief-terms"><summary>What these words mean<\/summary>/g)??[]).length,1,'the definitions share one disclosure');assert.doesNotMatch(page,/Choose a study site, or use|have not been checked/);assert.match(page,/From the official record; not checked\./);
+  assert.match(page,/<summary><span class="sr-only">Read the supporting <\/span>record text<span aria-hidden="true"> ›<\/span><\/summary>/,'record text sits at the end of the line');
+ }finally{m.unmount()}
+ const f=harness({failPrepare:true}),g=mount(f);try{await act(flush);await act(async()=>{g.ref.vm!.requestReview();await flush()});await toStep(g,'contact');const root=g.renderer.root;
+  assert.match(renderedText(root),/No study summary this time\./);assert.doesNotMatch(renderedText(root.findByProps({'aria-labelledby':'brief-participation'})),/Get the study summary again/,'nothing points at a button on another step');
+  const cards=root.findAllByProps({className:'brief-fact'});assert.ok(cards.length>0);for(const card of cards)assert.ok(insideClosedDetails(card),'the raw excerpts wait behind one closed disclosure');
+  const registry=root.findByProps({className:'brief-registry'});assert.ok(insideClass(registry,'brief-how'),'registry milestones are under Technical details');
+ }finally{g.unmount()}
+});
+
+test('the email step: one short line instead of the Personalize heading, a shorter message box, and Back on steps 2 and 3',async()=>{
+ const h=harness(),m=mount(h);try{await generate(m);await toStep(m,'email');const root=m.renderer.root,page=html(m.ref.vm!);
+  assert.doesNotMatch(page,/Personalize your email|local only|Review the recipient and edit the message|<h3[^>]*>Your email draft/);assert.match(page,/<p class="fine">Stays on this device\.<\/p>/);
+  assert.equal(root.findByProps({className:'apply-email'}).props.rows,8);
+  assert.doesNotMatch(page,/data-apply-field="zip"|ZIP/,'the ZIP code is on the contact step, beside the site it picks');
+  const back=()=>root.findAll(n=>n.type==='button'&&String(n.props.className).includes('apply-back'));assert.equal(back().length,1);
+  await act(async()=>{back()[0].props.onClick();await flush()});assert.equal(m.ref.vm!.step,'contact');assert.equal(back().length,1,'step 2 has Back too');
+  await act(async()=>{back()[0].props.onClick();await flush()});assert.equal(m.ref.vm!.step,'understand');assert.equal(back().length,0,'step 1 has no Back');
  }finally{m.unmount()}
 });
