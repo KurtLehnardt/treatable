@@ -2,7 +2,6 @@ import './zod-jitless';
 import{installLiveBroker,PRIVATE_LIVE_PORT}from'./live-background';
 import{installApplyBroker,APPLY_PORT}from'./apply-background';
 import {installSiteAssistant,isSitePort,toolbarTitle} from './site-background';
-import {isSupportedSite} from './sites';
 import {clearLegacyPatientData} from './storage';
 // Every port belongs to exactly one broker below (site overlay/badge, private live matching, apply). Any other name, including the retired side-panel port, is disconnected unanswered.
 chrome.runtime.onConnect.addListener((port:any)=>{if(!isSitePort(port.name)&&port.name!==PRIVATE_LIVE_PORT&&port.name!==APPLY_PORT)try{port.disconnect()}catch{}});
